@@ -1,0 +1,105 @@
+{
+  "name": "TransPulse",
+  "short_name": "TransPulse",
+  "description": "Real-time bus tracking and transport management platform for Andhra Pradesh",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#040b18",
+  "theme_color": "#34d2ff",
+  "categories": [
+    "transportation",
+    "utilities"
+  ],
+  "screenshots": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 540 720'%3E%3Crect fill='%23040b18' width='540' height='720'/%3E%3Ctext x='50%25' y='50%25' font-size='80' font-weight='800' fill='%2334d2ff' text-anchor='middle' dy='.3em' font-family='Poppins'%3ETransPulse%3C/text%3E%3C/svg%3E",
+      "sizes": "540x720",
+      "form_factor": "narrow",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 768'%3E%3Crect fill='%23040b18' width='1024' height='768'/%3E%3Ctext x='50%25' y='50%25' font-size='120' font-weight='800' fill='%2334d2ff' text-anchor='middle' dy='.3em' font-family='Poppins'%3ETransPulse%3C/text%3E%3C/svg%3E",
+      "sizes": "1024x768",
+      "form_factor": "wide",
+      "type": "image/svg+xml"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/static/favicon-16x16.png?v=tp-refined-square",
+      "sizes": "16x16",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/favicon-32x32.png?v=tp-refined-square",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/apple-touch-icon.png?v=tp-refined-square",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-192.png?v=tp-refined-square",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-512.png?v=tp-refined-square",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/maskable-512.png?v=tp-refined-square",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Track Buses",
+      "short_name": "Track",
+      "description": "View live bus tracking map",
+      "url": "/dashboard/passenger",
+      "icons": [
+        {
+          "src": "/static/icon-192.png?v=tp-refined-square",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Fleet Operations",
+      "short_name": "Admin",
+      "description": "Access admin dashboard",
+      "url": "/dashboard/admin",
+      "icons": [
+        {
+          "src": "/static/icon-192.png?v=tp-refined-square",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

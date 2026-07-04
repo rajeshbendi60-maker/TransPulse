@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Bus Management{% endblock %}
+{% block content %}
+<div class="container pb-5">
+    
+    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
+        <a href="{{ url_for('admin_buses') }}" class="btn btn-outline-info me-3 px-4 rounded-pill fw-bold text-white" style="border-color:#34d2ff; background:rgba(52,210,255,0.1);">← Back to Fleet List</a>
+        <div>
+            <h2 class="fw-bold mb-1 text-white">Bus Management Center</h2>
+            <p class="text-muted mb-0">Unified operations panel for route architecture, bus registry telemetry, and driver assignments.</p>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-5 fade-up-1">
+        <div class="col-lg-12">
+            <div class="card" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <div class="card-body p-4 p-md-5">
+                    <h5 class="text-white fw-bold mb-4 d-flex align-items-center gap-2">
+                        📋 Modify Bus Configuration & Route Constraints
+                    </h5>
+                    
+                    <form method="POST" action="{{ url_for('edit_bus', bus_id=bus.id) }}">
+                        
+                        <!-- Section 1: Bus Configuration -->
+                        <h6 class="text-info pb-2 mb-3" style="border-bottom: 1px solid rgba(52, 210, 255, 0.3);">Bus Configuration</h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Bus Config Number *</label>
+                                <input type="text" name="bus_number" class="form-control bg-dark text-white border-secondary" value="{{ bus.bus_number }}" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Registration Plate *</label>
+                                <input type="text" name="registration_number" class="form-control bg-dark text-white border-secondary" value="{{ bus.registration_number }}" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Seat Capacity *</label>
+                                <input type="number" name="capacity" class="form-control bg-dark text-white border-secondary" value="{{ bus.capacity }}" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Assigned Driver ID</label>
+                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" value="{{ bus.assigned_driver_code or '' }}" placeholder="e.g. DRV-001">
+                            </div>
+                        </div>
+
+                        <!-- Section 2: Route Assignment -->
+                        <h6 class="text-info pb-2 mb-3 mt-2" style="border-bottom: 1px solid rgba(52, 210, 255, 0.3);">Route Assignment</h6>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label text-light small mb-1">Select Existing Route (Recommended)</label>
+                                <select name="existing_route_id" class="form-select bg-dark text-white border-secondary">
+                                    <option value="">— Select Existing Route OR Create New Below —</option>
+                                    {% for r in routes %}
+                                        <option value="{{ r.id }}" {% if assigned_route and assigned_route.id == r.id %}selected{% endif %}>{{ r.route_code }} — {{ r.origin }} → {{ r.destination }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <h6 class="text-muted pb-2 mb-3 mt-2 small">— OR Create New Route —</h6>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Route Code</label>
+                                <input type="text" name="route_code" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.route_code if assigned_route else '' }}" placeholder="e.g. 01004">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Route Name</label>
+                                <input type="text" name="route_name" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.name if assigned_route else '' }}" placeholder="Express Link">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Source City</label>
+                                <input type="text" name="origin" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.origin if assigned_route else '' }}" placeholder="Visakhapatnam">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Destination City</label>
+                                <input type="text" name="destination" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.destination if assigned_route else '' }}" placeholder="Vijayawada">
+                            </div>
+                        </div>
+                        
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-12">
+                                <label class="form-label text-light small mb-1">Intermediate Stops (Comma separated order)</label>
+                                <input type="text" name="intermediate_stops" class="form-control bg-dark text-white border-secondary" value="{{ intermediates_str }}" placeholder="Anakapalle, Tuni, Rajahmundry">
+                            </div>
+                        </div>
+
+                        <div class="text-end mt-4">
+                            <button type="submit" class="btn text-dark fw-bold px-5 py-2 rounded-3 shadow" style="background: linear-gradient(135deg, #34d2ff, #4f8dff); border: none;">Save Modified Configuration</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

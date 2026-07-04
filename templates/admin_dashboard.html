@@ -1,0 +1,506 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Admin Dashboard{% endblock %}
+{% block head_extras %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+{% block content %}
+<style>
+    @media(min-width: 992px) {
+        #liveFleetModal, #sosCenterModal {
+            left: 250px !important;
+            width: calc(100vw - 250px) !important;
+        }
+    }
+    .fc-arrow {
+        white-space: nowrap !important; 
+    }
+    @keyframes floatBus {
+        0% { transform: translateY(0px); }
+        100% { transform: translateY(-8px); }
+    }
+    .individual-fleet-card {
+        border: 1px solid rgba(52, 210, 255, 0.25);
+        background: linear-gradient(135deg, rgba(11, 29, 54, 0.8), rgba(4, 11, 24, 0.9));
+        border-radius: 16px;
+        transition: transform 0.25s ease, border-color 0.25s ease;
+    }
+    .individual-fleet-card:hover {
+        transform: translateY(-4px);
+        border-color: #34d2ff;
+        box-shadow: 0 15px 30px rgba(52, 210, 255, 0.15);
+    }
+    /* Dynamic UI Matcher Rules */
+    .admin-wide-glass-panel {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(52, 210, 255, 0.15);
+        border-radius: 16px;
+        width: 100% !important;
+    }
+</style>
+
+<div class="container position-relative pb-5">
+    
+    {% if show_fleet_only_table %}
+    <div class="fade-up mt-3">
+        <div class="d-flex justify-content-between align-items-center mb-4 border-bottom border-secondary pb-3">
+            <div>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-info me-3 px-4 rounded-pill text-white"><i class="fa-solid fa-arrow-left me-2"></i>Back to Hub</a>
+                <h3 class="fw-bold text-white d-inline-block m-0"><i class="fa-solid fa-satellite-dish text-info me-2"></i>Live Fleet Monitoring Snapshot</h3>
+            </div>
+            <input type="text" id="liveFleetIndividualSearch" class="form-control bg-dark text-white border-info w-25 shadow-none" placeholder="Search Bus Number, Driver ID or Route" onkeyup="executeIndividualFleetCardFilter()">
+        </div>
+
+        <div class="row g-4" id="individualFleetGridContainer">
+            {% for bus in fleet_snapshot %}
+            <div class="col-12 col-md-6 col-lg-4 fleet-individual-block-item">
+                <div class="card individual-fleet-card h-100">
+                    <div class="card-body p-4 d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div>
+                                    <h4 class="text-white fw-bold m-0">{{ bus.bus_number }}</h4>
+                                    <small class="text-info fw-bold font-monospace text-uppercase" style="letter-spacing: 0.5px;">{{ bus.route_code }}</small>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge {% if bus.bus_status == 'LIVE' or bus.is_live_gps %}bg-success{% else %}bg-secondary{% endif %} text-uppercase px-2 py-1 d-block mb-1">
+                                        {{ bus.bus_status or ('LIVE' if bus.is_live_gps else 'OFFLINE') }}
+                                    </span>
+                                    <span class="badge {% if bus.service_status == 'completed' %}bg-secondary{% elif bus.service_status == 'delayed' %}bg-danger{% else %}bg-success{% endif %} text-uppercase px-2 py-1">
+                                        {% if bus.service_status == 'completed' %}Trip Completed{% else %}{{ bus.schedule_status or bus.status }}{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="p-3 bg-dark bg-opacity-50 border border-secondary border-opacity-25 rounded-3 mb-4 small">
+                                <p class="mb-2 text-muted">Duty Pilot: <span class="text-info fw-bold ms-1">{{ bus.driver_id }}</span></p>
+                                <p class="mb-2 text-muted">Route Map: <span class="text-white fw-bold ms-1">{{ bus.route_name }}</span></p>
+                                <p class="mb-2 text-muted">Current Stop: <span class="text-white fw-bold ms-1">{{ bus.current_stop or '--' }}</span></p>
+                                <p class="mb-2 text-muted">Next Stop: <span class="text-warning fw-bold ms-1">{{ bus.next_stop or '--' }}</span></p>
+                                <p class="mb-2 text-muted">Scheduled Departure: <span class="text-white fw-bold ms-1">{{ bus.departure_time or '--' }}</span></p>
+                                <p class="mb-2 text-muted">Scheduled Arrival: <span class="text-white fw-bold ms-1">{{ bus.arrival_time or '--' }}</span></p>
+                                <p class="mb-2 text-muted">Updated Arrival: <span class="text-info fw-bold ms-1">{{ bus.updated_arrival_time or bus.arrival_time or '--' }}</span></p>
+                                <p class="mb-2 text-muted">Delay Cause: <span class="text-info fw-bold ms-1">{{ bus.current_delay_reason or 'On time' }}</span></p>
+                                <p class="mb-2 text-muted">Current Delay: <span class="text-warning fw-bold ms-1">{{ bus.current_delay_minutes or 0 }} min</span></p>
+                                <p class="mb-0 text-muted">Updated ETA: <span class="text-warning fw-bold ms-1">{{ bus.updated_eta_minutes or bus.eta_minutes or 0 }} min</span> | Progress: <span class="text-success fw-bold">{{ bus.trip_progress or 0 }}%</span> | Dist: <span class="text-white fw-bold">{{ bus.distance_remaining_km or 0 }} km</span></p>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center pt-2 border-top border-secondary border-opacity-25 text-center">
+                            <div>
+                                <small class="text-muted d-block small text-uppercase" style="font-size: 0.65rem;">Occupancy</small>
+                                <strong class="text-white">{{ bus.occupancy_pct }}%</strong>
+                                <small class="text-muted d-block">{{ bus.occupancy_level }}</small>
+                            </div>
+                            <div>
+                                <small class="text-muted d-block small text-uppercase" style="font-size: 0.65rem;">Velocity</small>
+                                <strong class="text-info">{{ bus.speed }} km/h</strong>
+                            </div>
+                            <div>
+                                <small class="text-muted d-block small text-uppercase" style="font-size: 0.65rem;">SOS Status</small>
+                                <span class="badge {% if bus.sos_active %}bg-danger animate-pulse{% else %}bg-secondary{% endif %} font-monospace" style="font-size: 0.6rem;">
+                                    {% if bus.sos_active %}ALERT{% else %}SECURE{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-12 text-center text-muted py-5">
+                <div class="spinner-border text-info mb-3" role="status" aria-label="Loading fleet telemetry"></div>
+                <div>Loading live fleet telemetry...</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <script>
+        function escapeAdminFleetText(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function adminBusStatusMeta(bus) {
+            const completed = bus.service_status === 'completed' || String(bus.trip_status || '').toUpperCase() === 'COMPLETED';
+            if (completed) return { live: 'OFFLINE', trip: 'Trip Completed', liveClass: 'bg-secondary', tripClass: 'bg-secondary' };
+            if (bus.bus_status === 'LIVE' || bus.is_live_gps) {
+                return { live: bus.gps_status || 'LIVE GPS', trip: bus.trip_status || bus.schedule_status || bus.status || 'ACTIVE', liveClass: 'bg-success', tripClass: bus.service_status === 'delayed' ? 'bg-danger' : 'bg-success' };
+            }
+            return { live: bus.gps_status || 'OFFLINE', trip: bus.trip_status || bus.schedule_status || bus.status || 'OFFLINE', liveClass: 'bg-secondary', tripClass: 'bg-secondary' };
+        }
+
+        function adminEtaText(bus) {
+            if (!bus) return 'Waiting for GPS';
+            if (bus.service_status === 'completed' || String(bus.trip_status || '').toUpperCase() === 'COMPLETED') return 'Offline';
+            if (bus.eta_label) return bus.eta_label;
+            const eta = bus.updated_eta_minutes ?? bus.eta_minutes;
+            return eta === null || eta === undefined ? 'Calculating...' : `${eta} min`;
+        }
+
+        function renderIndividualFleetCards(buses) {
+            const container = document.getElementById('individualFleetGridContainer');
+            if (!container) return;
+
+            if (!Array.isArray(buses) || buses.length === 0) {
+                container.innerHTML = '<div class="col-12 text-center text-muted py-5">No active fleet parameters reported in current deployment matrix.</div>';
+                return;
+            }
+
+            container.innerHTML = buses.map(bus => {
+                const busStatus = adminBusStatusMeta(bus);
+                const sosStatus = bus.sos_active ? 'bg-danger animate-pulse' : 'bg-secondary';
+                const sosText = bus.sos_active ? 'ALERT' : 'SECURE';
+                return `
+                    <div class="col-12 col-md-6 col-lg-4 fleet-individual-block-item">
+                        <div class="card individual-fleet-card h-100">
+                            <div class="card-body p-4 d-flex flex-column justify-content-between">
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div>
+                                            <h4 class="text-white fw-bold m-0">${escapeAdminFleetText(bus.bus_number)}</h4>
+                                            <small class="text-info fw-bold font-monospace text-uppercase" style="letter-spacing: 0.5px;">${escapeAdminFleetText(bus.route_code)}</small>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="badge ${busStatus.liveClass} text-uppercase px-2 py-1 d-block mb-1">
+                                                ${escapeAdminFleetText(busStatus.live)}
+                                            </span>
+                                            <span class="badge ${busStatus.tripClass} text-uppercase px-2 py-1">
+                                                ${escapeAdminFleetText(busStatus.trip)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="p-3 bg-dark bg-opacity-50 border border-secondary border-opacity-25 rounded-3 mb-4 small">
+                                        <p class="mb-2 text-muted">Duty Pilot: <span class="text-info fw-bold ms-1">${escapeAdminFleetText(bus.driver_id)}</span></p>
+                                        <p class="mb-2 text-muted">Route Map: <span class="text-white fw-bold ms-1">${escapeAdminFleetText(bus.route_name)}</span></p>
+                                        <p class="mb-2 text-muted">Current Stop: <span class="text-white fw-bold ms-1">${escapeAdminFleetText(bus.current_stop || '--')}</span></p>
+                                        <p class="mb-2 text-muted">Next Stop: <span class="text-warning fw-bold ms-1">${escapeAdminFleetText(bus.next_stop || '--')}</span></p>
+                                        <p class="mb-2 text-muted">Scheduled Departure: <span class="text-white fw-bold ms-1">${escapeAdminFleetText(bus.departure_time || '--')}</span></p>
+                                        <p class="mb-2 text-muted">Scheduled Arrival: <span class="text-white fw-bold ms-1">${escapeAdminFleetText(bus.arrival_time || '--')}</span></p>
+                                        <p class="mb-2 text-muted">Updated Arrival: <span class="text-info fw-bold ms-1">${escapeAdminFleetText(bus.updated_arrival_time || bus.arrival_time || '--')}</span></p>
+                                        <p class="mb-2 text-muted">Delay Cause: <span class="text-info fw-bold ms-1">${escapeAdminFleetText(bus.current_delay_reason || 'On time')}</span></p>
+                                        <p class="mb-2 text-muted">Current Delay: <span class="text-warning fw-bold ms-1">${escapeAdminFleetText(bus.current_delay_minutes || 0)} min</span></p>
+                                        <p class="mb-0 text-muted">Updated ETA: <span class="text-warning fw-bold ms-1">${escapeAdminFleetText(adminEtaText(bus))}</span> | Progress: <span class="text-success fw-bold">${escapeAdminFleetText(bus.trip_progress || 0)}%</span> | Dist: <span class="text-white fw-bold">${escapeAdminFleetText(bus.distance_remaining_km || 0)} km</span></p>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex justify-content-between align-items-center pt-2 border-top border-secondary border-opacity-25 text-center">
+                                    <div>
+                                        <small class="text-muted d-block small text-uppercase" style="font-size: 0.65rem;">Occupancy</small>
+                                        <strong class="text-white">${escapeAdminFleetText(bus.occupancy_pct || 0)}%</strong>
+                                        <small class="text-muted d-block">${escapeAdminFleetText(bus.occupancy_level || '--')}</small>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block small text-uppercase" style="font-size: 0.65rem;">Velocity</small>
+                                        <strong class="text-info">${escapeAdminFleetText(bus.speed || 0)} km/h</strong>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block small text-uppercase" style="font-size: 0.65rem;">SOS Status</small>
+                                        <span class="badge ${sosStatus} font-monospace" style="font-size: 0.6rem;">${sosText}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+            executeIndividualFleetCardFilter();
+        }
+
+        function loadIndividualFleetCards() {
+            fetch('/api/buses/live')
+                .then(response => response.ok ? response.json() : Promise.reject(new Error('Fleet telemetry unavailable')))
+                .then(data => renderIndividualFleetCards(data.buses || []))
+                .catch(() => {
+                    const container = document.getElementById('individualFleetGridContainer');
+                    if (container) container.innerHTML = '<div class="col-12 text-center text-warning py-5">Live fleet telemetry is temporarily unavailable.</div>';
+                });
+        }
+
+        function executeIndividualFleetCardFilter() {
+            let input = document.getElementById('liveFleetIndividualSearch').value.toLowerCase().trim();
+            let cards = document.querySelectorAll('#individualFleetGridContainer .fleet-individual-block-item');
+            cards.forEach(card => {
+                card.style.display = card.textContent.toLowerCase().includes(input) ? '' : 'none';
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadIndividualFleetCards();
+            if (window.__tpLiveFleetTimer) clearInterval(window.__tpLiveFleetTimer);
+            window.__tpLiveFleetTimer = setInterval(() => {
+                if (!document.hidden) loadIndividualFleetCards();
+            }, 6000); // More responsive 6s refresh rate
+        });
+    </script>
+    
+    {% elif show_tracking_search %}
+    <div class="d-flex justify-content-between align-items-center mb-4 mt-3 fade-up border-bottom border-secondary border-opacity-25 pb-3">
+        <div>
+            <h3 class="fw-bold mb-1 text-white">Smart Mobility Hub</h3>
+            <p class="text-info mb-0" style="opacity: 0.85;">Welcome, {{ current_user.full_name }} | APSRTC Admin Operations</p>
+        </div>
+        <span class="status-pill status-on-time shadow-sm">Control Uplink Active</span>
+    </div>
+
+    <div class="d-flex align-items-center gap-3 mb-4 fade-up">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-glass-back bg-dark bg-opacity-70 px-4 rounded-pill text-white border border-secondary" style="transition: background 0.2s;"><i class="fa-solid fa-arrow-left me-2"></i>Back to Hub</a>
+        <div class="status-glass d-flex align-items-center text-white fw-bold py-2 px-4 rounded-pill" style="background: rgba(11, 29, 54, 0.6); border: 1px solid rgba(52, 210, 255, 0.2); gap: 10px;">
+            <i class="fa-solid fa-map-location-dot text-info"></i> Live GPS Tracking
+        </div>
+    </div>
+
+    <div class="card admin-wide-glass-panel p-5 text-center shadow-lg fade-up" style="margin-bottom: 36px;">
+        <h4 class="text-white fw-bold mb-3" style="font-family: 'Poppins', sans-serif;">Enter Vehicle ID to Open Tracking Map</h4>
+        <p class="text-muted mb-4 small">You will be redirected to the dedicated fullscreen tracking portal views framework.</p>
+        
+        <div class="d-flex justify-content-center w-100">
+            <form onsubmit="event.preventDefault(); saveAdminSearchToHistoryAndNavigate();" style="width: 100%; max-width: 650px;">
+                <div class="input-group" style="box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-radius: 12px; overflow: hidden; border: 1px solid rgba(52, 210, 255, 0.25);">
+                    <input type="text" id="adminSystemTransitSearchField" class="form-control bg-dark text-white border-0 px-4" style="height: 58px; font-size: 1.15rem;" placeholder="Enter Bus Number or Registration Number" required>
+                    <button type="submit" class="btn btn-info text-dark fw-bold px-5" style="height: 58px; font-size: 1.1rem; background: #00e5ff; border: none; transition: background 0.2s;">Track Live</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="tracking-history-panel text-start mx-auto w-100 mb-5 fade-up" data-tracking-history-panel>
+        <div class="tracking-history-header">
+            <h5 class="tracking-history-title">Live Tracking History</h5>
+            <p class="tracking-history-subtitle">Recently tracked vehicles from your live tracking activity.</p>
+        </div>
+        <div class="table-responsive" data-tracking-history-table>
+            <table class="table tracking-history-table align-middle">
+                <thead>
+                    <tr>
+                        <th>Bus ID</th>
+                        <th>Route</th>
+                        <th>Source &rarr; Destination</th>
+                        <th>Last Tracked</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody data-tracking-history-body>
+                    <tr>
+                        <td colspan="6" class="tracking-history-empty">No recently tracked vehicles.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script>
+        function saveAdminSearchToHistoryAndNavigate() {
+            let val = document.getElementById('adminSystemTransitSearchField').value.trim().toUpperCase();
+            if(!val) return;
+
+            window.location.href = '/tracking/' + encodeURIComponent(val);
+        }
+    </script>
+    
+    {% else %}
+    <div id="main-admin-dashboard">
+        <div class="d-flex justify-content-between align-items-center mb-4 mt-3 fade-up">
+            <div>
+                <h3 class="fw-bold mb-1 text-white">Administrative Control Center</h3>
+                <p class="text-info mb-0" style="opacity: 0.85;">Operational Overview Hub | APSRTC Enterprise Platform Area</p>
+            </div>
+            <span class="status-pill status-on-time shadow-sm">System Operations Live</span>
+        </div>
+
+        <div class="row g-3 mb-5 fade-up-1">
+            <div class="col-6 col-md-3 col-lg-3">
+                <div class="metric-card">
+                    <h6><span class="icon"><i class="fa-solid fa-bus"></i></span>Total Fleet Buses</h6>
+                    <p>{{ total_buses }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-3 col-lg-3">
+                <div class="metric-card border-success bg-dark">
+                    <h6><span class="icon text-success"><i class="fa-solid fa-circle-check"></i></span>Active Deployed</h6>
+                    <p class="text-success">{{ active_buses }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-3 col-lg-3">
+                <div class="metric-card">
+                    <h6><span class="icon"><i class="fa-solid fa-id-card"></i></span>System Drivers</h6>
+                    <p>{{ total_drivers }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-3 col-lg-3">
+                <div class="metric-card">
+                    <h6><span class="icon"><i class="fa-solid fa-users"></i></span>Passengers Log</h6>
+                    <p>{{ total_passengers }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-4">
+                <div class="metric-card">
+                    <h6><span class="icon"><i class="fa-solid fa-route"></i></span>Configured Routes</h6>
+                    <p>{{ total_routes }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-4">
+                <div class="metric-card">
+                    <h6><span class="icon"><i class="fa-solid fa-clipboard-list"></i></span>Open Complaints</h6>
+                    <p style="color: var(--tp-warning);">{{ open_complaints }}</p>
+                </div>
+            </div>
+            <div class="col-12 col-md-4 col-lg-4">
+                <div class="metric-card" style="border-color: rgba(255, 93, 108, 0.4);">
+                    <h6><span class="icon"><i class="fa-solid fa-triangle-exclamation"></i></span>Active SOS Alerts</h6>
+                    <p style="color: var(--tp-danger);">{{ sos_alerts }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="feature-hub" class="feature-grid fade-up-2 mb-5">
+            
+            <div class="feature-card-lg fc-cyan" onclick="window.location.href='{{ url_for('admin_buses') }}'" style="cursor: pointer;">
+                <div class="fc-content">
+                    <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-gear"></i></div></div>
+                    <div>
+                        <h4 class="fc-title">Bus Management</h4>
+                        <p class="fc-desc">Unified interface to manage buses, custom routes, and assignments</p>
+                    </div>
+                </div>
+                <div class="fc-arrow">Open &rarr;</div>
+            </div>
+
+            <div class="feature-card-lg fc-blue" onclick="window.location.href='{{ url_for('live_fleet_monitoring') }}'" style="cursor: pointer;">
+                <div class="fc-content">
+                    <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-satellite-dish"></i></div></div>
+                    <div>
+                        <h4 class="fc-title">Live Fleet Monitoring</h4>
+                        <p class="fc-desc">Real-time status tracking telemetry parameters monitor panel</p>
+                    </div>
+                </div>
+                <div class="fc-arrow">Open &rarr;</div>
+            </div>
+
+            <div class="feature-card-lg fc-red" onclick="openModal('sosCenterModal')" style="cursor: pointer;">
+                <div class="fc-content">
+                    <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-triangle-exclamation"></i></div></div>
+                    <div>
+                        <h4 class="fc-title text-white">SOS Center</h4>
+                        <p class="fc-desc text-white-50">Review and acknowledge distress alerts uplink profile</p>
+                    </div>
+                </div>
+                <div class="fc-arrow text-white">Open &rarr;</div>
+            </div>
+
+            <div class="feature-card-lg fc-indigo" onclick="window.location.href='{{ url_for('admin_tracking_search') }}'" style="cursor: pointer;">
+                <div class="fc-content">
+                    <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-map-location-dot"></i></div></div>
+                    <div>
+                        <h4 class="fc-title">Live Tracking</h4>
+                        <p class="fc-desc">Access full screen geographical bus lookup stream portal views</p>
+                    </div>
+                </div>
+                <div class="fc-arrow">Open &rarr;</div>
+            </div>
+
+            <div class="feature-card-lg fc-orange" onclick="window.location.href='{{ url_for('complaints_page') }}'" style="cursor: pointer;">
+                <div class="fc-content">
+                    <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-clipboard-list"></i></div></div>
+                    <div>
+                        <h4 class="fc-title">Complaints Center</h4>
+                        <p class="fc-desc">Handle system disputes, operational updates, and logs review</p>
+                    </div>
+                </div>
+                <div class="fc-arrow">Open &rarr;</div>
+            </div>
+
+            <div class="feature-card-lg fc-yellow" onclick="window.location.href='{{ url_for('notifications_center') }}'" style="cursor: pointer;">
+                <div class="fc-content">
+                    <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-bell"></i></div></div>
+                    <div>
+                        <h4 class="fc-title">Notifications Broadcast</h4>
+                        <p class="fc-desc">Transmit announcements targeted at passenger or driver scopes</p>
+                    </div>
+                </div>
+                <div class="fc-arrow">Open &rarr;</div>
+            </div>
+
+            <div class="feature-card-lg fc-purple" onclick="window.location.href='{{ url_for('analytics_dashboard') }}'" style="cursor: pointer;">
+                <div class="fc-content">
+                    <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-chart-line"></i></div></div>
+                    <div>
+                        <h4 class="fc-title">System Analytics</h4>
+                        <p class="fc-desc">Analyze chart matrix allocations and metrics profiles logs</p>
+                    </div>
+                </div>
+                <div class="fc-arrow">Open &rarr;</div>
+            </div>
+
+            <div class="feature-card-lg fc-green" onclick="window.location.href='{{ url_for('heatmap_page') }}'" style="cursor: pointer;">
+                <div class="fc-content">
+                    <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-fire-flame-curved"></i></div></div>
+                    <div>
+                        <h4 class="fc-title">Transport Heatmap</h4>
+                        <p class="fc-desc">Geographical visual mapping of customer density coordinates</p>
+                    </div>
+                </div>
+                <div class="fc-arrow">Open &rarr;</div>
+            </div>
+
+        </div>
+    </div>
+    {% endif %}
+    
+</div>
+
+<div id="sosCenterModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(4,11,24,0.95); z-index:100000; overflow-y:auto; backdrop-filter: blur(10px);">
+    <div class="container py-4">
+        
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-2" style="border-bottom:1px solid rgba(255,255,255,0.05);">
+            <button onclick="closeModal('sosCenterModal')" class="btn btn-outline-info px-4 rounded-pill fw-bold"><i class="fa-solid fa-arrow-left me-2"></i>Back to Hub</button>
+        </div>
+        
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="text-danger fw-bold m-0"><i class="fa-solid fa-triangle-exclamation me-2"></i>SOS Command Center Uplink</h3>
+            <span id="sos-count-badge" class="badge bg-danger shadow fs-6" style="display:none;">0 Active</span>
+        </div>
+        <div class="card dark-glass-card border-danger">
+            <div class="card-body p-4">
+                <div id="admin-sos-container" style="max-height: 500px; overflow-y: auto; padding-right: 5px;">
+                    <div class="text-center text-muted py-4">
+                        <div class="spinner-border text-danger mb-3" role="status" aria-label="Loading SOS alerts"></div>
+                        <div>Initializing SOS Uplink...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openModal(modalId) {
+        document.getElementById(modalId).style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        if (modalId === 'sosCenterModal' && window.AdminSOS) window.AdminSOS.init();
+    }
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+
+    // Global Modal Close Handlers
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            const openModals = document.querySelectorAll('div[id$="Modal"][style*="display: flex"]');
+            openModals.forEach(modal => closeModal(modal.id));
+        }
+    });
+
+    window.addEventListener("click", (e) => {
+        const sosModal = document.getElementById('sosCenterModal');
+        if (e.target === sosModal) closeModal('sosCenterModal');
+    });
+</script>
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tracking-history.js') }}?v=tracking-history-compact"></script>
+{% endblock %}
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Route Management{% endblock %}
+{% block content %}
+<div class="container pb-5">
+    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-info me-3 px-4 rounded-pill fw-bold text-white">← Back to Hub</a>
+        <div>
+            <h2 class="fw-bold mb-1 text-white">Route Profiles Matrix</h2>
+            <p class="text-muted mb-0">Operational intercity transport paths configured across the smart network matrix profiles area.</p>
+        </div>
+    </div>
+
+    <div class="card" style="background: rgba(8, 22, 40, 0.6); border: 1px solid var(--tp-border);">
+        <div class="card-body p-4">
+            <h5 class="text-white fw-bold mb-4">Configured Routes Layout Directory</h5>
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Route Code</th>
+                            <th>Name</th>
+                            <th>Source Stop</th>
+                            <th>Destination Stop</th>
+                            <th>Distance</th>
+                            <th>Controls</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in routes %}
+                        <tr>
+                            <td class="text-info fw-bold">#{{ r.id }}</td>
+                            <td class="text-white fw-bold">{{ r.route_code }}</td>
+                            <td>{{ r.name }}</td>
+                            <td>{{ r.origin }}</td>
+                            <td>{{ r.destination }}</td>
+                            <td>{{ r.distance_km }} km</td>
+                            <td>
+                                <!-- FIXED: Correctly reference edit_route route function parameters setup preventing BuildError -->
+                                <a href="{{ url_for('edit_route', route_id=r.id) }}" class="btn btn-sm btn-outline-info px-3 fw-bold">Edit Path</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

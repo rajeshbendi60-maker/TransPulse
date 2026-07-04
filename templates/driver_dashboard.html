@@ -1,0 +1,1006 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Driver Dashboard{% endblock %}
+{% block head_extras %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+{% block content %}
+<div class="container position-relative driver-dashboard-shell">
+    <div class="section-head fade-up d-flex justify-content-between align-items-start">
+        <div>
+            <h2 class="mb-1 text-white">Driver Console</h2>
+            <p class="text-info">APSRTC Duty Management | {{ driver_id }}</p>
+        </div>
+        <div class="d-flex flex-column align-items-end gap-2">
+            <span class="status-pill status-on-time shadow">Duty Active</span>
+            <span id="gpsStatusBadge" class="badge bg-secondary p-2 shadow d-none text-center" style="font-size: 0.85rem;">
+                <i class="fa-solid fa-satellite-dish me-1"></i> Awaiting GPS...
+            </span>
+        </div>
+    </div>
+
+    {% if not has_assigned_bus %}
+    <div class="alert alert-info bg-dark border-info text-info mb-4 fade-up-1">
+        No bus assigned. Contact administrator.
+    </div>
+    {% endif %}
+
+    <div class="driver-ops-grid fade-up-1" id="assigned-bus-section" {% if not has_assigned_bus %}style="display:none"{% endif %}>
+        <div class="driver-left-column">
+            <section class="card glass-panel border-secondary driver-dashboard-card driver-ops-card">
+                <div class="driver-card-header driver-card-header-split border-bottom border-secondary pb-2 mb-3">
+                    <h5 class="text-white m-0">Trip Operations</h5>
+                    <span id="driver-trip-state-badge" class="badge bg-secondary">{{ driver_trip_state }}</span>
+                </div>
+                <div class="driver-control-grid">
+                    <button id="start-trip-btn" class="btn btn-success driver-action-btn fw-bold" onclick="startDriverTrip(false)">
+                        <i class="fa-solid fa-play me-1"></i> Start Trip
+                    </button>
+                    <button id="report-delay-btn" class="btn btn-warning driver-action-btn fw-bold text-dark" onclick="openDelayModal()">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i> Report Delay
+                    </button>
+                    <button id="occupancy-btn" class="btn btn-primary driver-action-btn fw-bold" onclick="openOccupancyModal()">
+                        <i class="fa-solid fa-users me-1"></i> Update Occupancy
+                    </button>
+                    <button id="passenger-emergency-btn" class="btn btn-success driver-action-btn fw-bold" onclick="triggerEmergencySuccess()">
+                        <i class="fa-solid fa-kit-medical me-1"></i> Passenger Emergency
+                    </button>
+                    <button id="end-trip-btn" class="btn btn-danger driver-action-btn fw-bold" onclick="endDriverTrip()">
+                        <i class="fa-solid fa-stop me-1"></i> End Trip
+                    </button>
+                </div>
+                <button id="start-return-trip-btn" class="btn btn-success driver-action-btn fw-bold w-100 mt-3 d-none" onclick="startDriverTrip(true)">
+                    <i class="fa-solid fa-rotate-left me-1"></i> Start Return Trip
+                </button>
+                <div id="driver-trip-status-panel" class="driver-trip-status-panel mt-3">
+                    <div class="d-flex align-items-center gap-2 text-muted">
+                        <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                        <span>Loading trip status...</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="driver-live-main card glass-panel border-primary">
+                <div class="driver-card-body">
+                    <h5 class="text-white border-bottom border-secondary pb-2 mb-4">Live Telemetry Dashboard</h5>
+                    <div id="dvr-telemetry-container">
+                        <div class="d-flex align-items-center gap-2 text-muted">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            <span>Waiting for live GPS telemetry...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card glass-panel border-danger driver-dashboard-card driver-bottom-card driver-sos-card">
+                <div class="driver-card-header driver-card-header-split">
+                    <h5 class="text-danger fw-bold m-0">Active SOS Alerts</h5>
+                    <span id="sos-count-badge" class="badge bg-danger shadow" style="display:none;">0 Active</span>
+                </div>
+                <div id="admin-sos-container" data-auto-init="true" data-empty-message="No active SOS alerts." data-driver-sos-fallback="true" data-assigned-bus-number="{{ assigned_bus.bus_number if assigned_bus else '' }}" class="small driver-lower-content">
+                    <div class="d-flex align-items-center gap-2 text-muted">
+                        <div class="spinner-border spinner-border-sm text-danger" role="status"></div>
+                        <span>Checking SOS status...</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card glass-panel border-warning driver-dashboard-card driver-bottom-card driver-lost-found-card" id="driver-lost-found-section">
+                <h5 class="text-white border-bottom border-secondary pb-2 mb-3">Lost Item Reports</h5>
+                <div id="driver-lnf-list" class="row g-3 driver-lower-content">
+                    <div class="col-12 text-muted small d-flex align-items-center gap-2">
+                        <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+                        <span>Loading reports...</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="premium-action-banner driver-dashboard-card driver-bottom-card driver-complaints-card">
+                <div class="driver-complaints-title driver-card-header-split">
+                    <h3 class="fw-bold m-0 text-white">Manage Operational Complaints</h3>
+                    <a href="{{ url_for('complaints_page') }}" class="driver-ui-btn driver-ui-btn-primary driver-complaints-btn">File New Dispute</a>
+                </div>
+            </section>
+        </div>
+
+        <aside class="driver-right-column">
+            <section class="driver-side-card card glass-panel border-info">
+                <h5 class="text-white border-bottom border-secondary pb-2">Trip Summary</h5>
+                <div id="dvr-trip-summary-container" class="driver-card-body">
+                    <div class="d-flex align-items-center gap-2 text-muted">
+                        <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                        <span>Awaiting trip progress...</span>
+                    </div>
+                </div>
+            </section>
+            <section class="driver-side-card card glass-panel border-info driver-route-path-card">
+                <h5 class="text-white border-bottom border-secondary pb-2">Route Path Sequence</h5>
+                <div id="dvr-route-sequence-container" class="driver-card-body driver-route-scroll">
+                    <div class="d-flex align-items-center gap-2 text-muted">
+                        <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                        <span>Awaiting stop sequence...</span>
+                    </div>
+                </div>
+            </section>
+        </aside>
+    </div>
+</div>
+
+<!-- Delay Report Modal -->
+<div id="delay-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:100000;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+    <div class="card glass-panel shadow-lg" style="width:90%;max-width:440px;border-color:#f5b342; border-radius:16px;">
+        <div class="card-body p-4">
+            <div class="d-flex align-items-center gap-2 mb-4">
+                <h4 class="m-0 text-warning fw-bold">⚠️ Report Operational Delay</h4>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label text-info fw-bold small text-uppercase mb-1">Select Delay Factor Cause</label>
+                <select id="delay-reason" class="form-select bg-dark text-white border-warning">
+                    <option value="Traffic">Traffic</option>
+                    <option value="Accident">Accident</option>
+                    <option value="Road Work">Road Work</option>
+                    <option value="Mechanical Issue">Mechanical Issue</option>
+                    <option value="Weather">Weather</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label text-info fw-bold small text-uppercase mb-1">Estimated Duration Time Taken</label>
+                <select id="delay-duration" class="form-select bg-dark text-white border-warning">
+                    <option value="5">5 Minutes</option>
+                    <option value="10">10 Minutes</option>
+                    <option value="15">15 Minutes</option>
+                    <option value="20">20 Minutes</option>
+                    <option value="30">30 Minutes</option>
+                </select>
+            </div>
+
+            <textarea id="delay-desc" class="form-control bg-dark text-white border-warning mb-4 d-none" rows="3" placeholder="Explain the issue details here..."></textarea>
+            
+            <div class="d-flex gap-3 mt-4">
+                <button class="btn btn-outline-secondary w-50 fw-bold" onclick="document.getElementById('delay-modal').style.display='none'">Cancel</button>
+                <button id="submit-delay-btn" class="btn btn-warning w-50 fw-bold text-dark" onclick="submitDelayTelemetry()">Submit Delay</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Occupancy Modal -->
+<div id="occupancy-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:100000;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+    <div class="card glass-panel shadow-lg" style="width:90%;max-width:440px;border-color:#34d2ff; border-radius:16px;">
+        <div class="card-body p-4">
+            <h4 class="m-0 text-info fw-bold mb-4">Update Occupancy</h4>
+            <div class="driver-occupancy-options">
+                <button class="btn btn-outline-success fw-bold" onclick="submitOccupancy('low')">Low</button>
+                <button class="btn btn-outline-warning fw-bold" onclick="submitOccupancy('medium')">Medium</button>
+                <button class="btn btn-outline-danger fw-bold" onclick="submitOccupancy('high')">High</button>
+            </div>
+            <button class="btn btn-outline-secondary w-100 fw-bold mt-4" onclick="document.getElementById('occupancy-modal').style.display='none'">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- GPS Error Modal -->
+<div id="gps-error-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
+    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#dc3545; border-radius:16px;">
+        <div class="card-body p-4 text-center">
+            <h4 class="text-danger fw-bold mb-3"><i class="fa-solid fa-triangle-exclamation"></i> GPS Not Supported</h4>
+            <p class="text-white mb-4">Geolocation is not supported by your mobile browser. Live vehicle tracking will be unavailable on this device.</p>
+            <button class="btn btn-outline-light w-100 fw-bold" onclick="document.getElementById('gps-error-modal').style.display='none'">Dismiss</button>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div id="successModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
+    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#22d39a; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
+        <div class="card-body p-5 text-center">
+            <div style="background: #22d39a; border-radius: 12px; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px auto; box-shadow: 0 10px 20px rgba(34,211,154,0.3);">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <h3 class="text-white fw-bold mb-3" id="modal-title-text">Delay Logged</h3>
+            <p class="text-muted mb-4" id="modal-desc-text">Your operational delay has been successfully recorded. Notifications have been dispatched to active route passengers and the administration immediately.</p>
+            <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" style="background: #22d39a; color: #040b18; border: none; font-size: 1.1rem; box-shadow: 0 8px 15px rgba(34,211,154,0.2);" onclick="document.getElementById('successModal').style.display='none'">Got It!</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let driverTripState = "{{ driver_trip_state }}";
+let driverGpsWatchId = null;
+let driverGpsInterval = null;
+let driverLatestPosition = null;
+const driverInitialContext = {{ driver_initial_context|tojson }};
+const driverInitialStops = {{ driver_route_points|tojson }};
+
+function isDriverTripActive() {
+    return driverTripState === 'ACTIVE';
+}
+
+function setTripState(state) {
+    driverTripState = state || 'OFFLINE';
+    updateDriverControls();
+}
+
+function formatDriverStateLabel(state) {
+    const labels = {
+        ACTIVE: 'Active',
+        READY: 'Not Started',
+        NOT_STARTED: 'Not Started',
+        RETURN_READY: 'Return Trip Ready',
+        COMPLETED: 'Trip Completed',
+        OFFLINE: 'Offline'
+    };
+    return labels[state] || String(state || 'OFFLINE').replace(/_/g, ' ');
+}
+
+function escapeDriverText(value) {
+    return String(value ?? '--').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function renderTripOperationsPanel(container, status) {
+    if (!container) return;
+    const field = (label, value) => `
+        <div class="telemetry-field">
+            <span class="telemetry-label">${escapeDriverText(label)}</span>
+            <span class="telemetry-value">${escapeDriverText(value)}</span>
+        </div>`;
+    container.innerHTML = `
+        <div class="telemetry-layout">
+            <section class="telemetry-section">
+                <div class="telemetry-section-title">Trip Status</div>
+                ${field('Bus Number', status.busNumber)}
+                ${field('Route', status.route)}
+                ${field('Direction', status.direction)}
+                ${field('Bus Status', status.busStatus)}
+                ${field('Trip Status', status.tripStatus)}
+                ${field('GPS Status', status.gpsStatus)}
+                ${field('Current Stop', status.currentStop)}
+                ${field('Next Stop', status.nextStop)}
+                ${field('Trip Progress', status.tripProgress)}
+            </section>
+        </div>`;
+}
+
+function openDelayModal() {
+    if (!isDriverTripActive()) return;
+    document.getElementById('delay-modal').style.display = 'flex';
+}
+
+function openOccupancyModal() {
+    if (!isDriverTripActive()) return;
+    document.getElementById('occupancy-modal').style.display = 'flex';
+}
+
+function showDriverSuccess(title, description) {
+    document.getElementById('modal-title-text').textContent = title;
+    document.getElementById('modal-desc-text').textContent = description;
+    document.getElementById('successModal').style.display = 'flex';
+}
+
+async function postDriverAction(url, body = {}) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+        body: JSON.stringify(body)
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload.success === false) {
+        throw new Error(payload.error || payload.message || 'Request failed');
+    }
+    return payload;
+}
+
+function requestDriverInitialPosition() {
+    return new Promise((resolve, reject) => {
+        if (!("geolocation" in navigator)) {
+            document.getElementById('gps-error-modal').style.display = 'flex';
+            reject(new Error('Geolocation is not supported on this device.'));
+            return;
+        }
+        let initialWatchId = null;
+        initialWatchId = navigator.geolocation.watchPosition(
+            (position) => {
+                if (initialWatchId !== null) navigator.geolocation.clearWatch(initialWatchId);
+                driverLatestPosition = position;
+                updateGpsBadge(true);
+                resolve(position);
+            },
+            (error) => {
+                if (initialWatchId !== null) navigator.geolocation.clearWatch(initialWatchId);
+                updateGpsBadge(false, 'GPS Blocked');
+                reject(new Error(error.message || 'Location permission is required to start the trip.'));
+            },
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+        );
+    });
+}
+
+async function startDriverTrip(returnTrip) {
+    try {
+        const initialPosition = await requestDriverInitialPosition();
+        const payload = await postDriverAction('/api/driver/start-trip', { return_trip: !!returnTrip });
+        setTripState(payload.trip_status || 'ACTIVE');
+        startDriverGpsBroadcast(initialPosition);
+        updateTelemetry();
+        showDriverSuccess(returnTrip ? 'Return Trip Active' : 'Trip Active', 'GPS transmission is enabled and passengers can now track this bus.');
+    } catch (error) {
+        stopDriverGpsBroadcast();
+        showDriverSuccess('Action Failed', error.message);
+    }
+}
+
+async function endDriverTrip() {
+    if (!isDriverTripActive()) return;
+    try {
+        stopDriverGpsBroadcast();
+        const payload = await postDriverAction('/api/driver/end-trip');
+        setTripState(payload.next_trip_status || 'RETURN_READY');
+        updateTelemetry();
+        showDriverSuccess('Trip Completed', 'GPS transmission has stopped. Return trip is ready when you are.');
+    } catch (error) {
+        showDriverSuccess('Action Failed', error.message);
+    }
+}
+
+async function submitOccupancy(level) {
+    if (!isDriverTripActive()) return;
+    try {
+        await postDriverAction('/api/driver/update-occupancy', { level });
+        document.getElementById('occupancy-modal').style.display = 'none';
+        updateTelemetry();
+        showDriverSuccess('Occupancy Updated', `Passenger load marked as ${level}.`);
+    } catch (error) {
+        showDriverSuccess('Action Failed', error.message);
+    }
+}
+
+function updateDriverControls() {
+    const stateBadge = document.getElementById('driver-trip-state-badge');
+    const startBtn = document.getElementById('start-trip-btn');
+    const returnBtn = document.getElementById('start-return-trip-btn');
+    const delayBtn = document.getElementById('report-delay-btn');
+    const occupancyBtn = document.getElementById('occupancy-btn');
+    const endBtn = document.getElementById('end-trip-btn');
+    const statusPanel = document.getElementById('driver-trip-status-panel');
+    const active = isDriverTripActive();
+    const returnReady = driverTripState === 'RETURN_READY';
+    if (stateBadge) {
+        stateBadge.textContent = formatDriverStateLabel(driverTripState);
+        stateBadge.className = `badge ${active ? 'bg-success' : returnReady ? 'bg-info text-dark' : driverTripState === 'COMPLETED' ? 'bg-secondary' : 'bg-warning text-dark'}`;
+    }
+    if (startBtn) startBtn.classList.toggle('d-none', active || returnReady);
+    if (returnBtn) returnBtn.classList.toggle('d-none', !returnReady);
+    if (delayBtn) delayBtn.disabled = !active;
+    if (occupancyBtn) occupancyBtn.disabled = !active;
+    if (endBtn) endBtn.disabled = !active;
+    if (statusPanel && !active) {
+        const assignedBus = {{ (assigned_bus.bus_number if assigned_bus else '--')|tojson }};
+        const routeName = {{ (assigned_route.name if assigned_route else '--')|tojson }};
+        const directionText = returnReady ? 'Return' : 'Forward';
+        renderTripOperationsPanel(statusPanel, {
+            busNumber: assignedBus,
+            route: routeName,
+            direction: directionText,
+            busStatus: 'OFFLINE',
+            tripStatus: formatDriverStateLabel(driverTripState),
+            gpsStatus: 'OFFLINE',
+            currentStop: driverInitialContext.currentStop || '--',
+            nextStop: returnReady ? 'Return trip ready' : (driverInitialContext.nextStop || '--'),
+            tripProgress: returnReady ? '100%' : '0%'
+        });
+    }
+}
+
+function triggerEmergencySuccess() {
+    showDriverSuccess("Emergency Relayed", "The passenger emergency signal has been successfully forwarded to the control room and priority response lines.");
+}
+
+async function submitDelayTelemetry() {
+    const reasonVal = document.getElementById('delay-reason').value;
+    const durationVal = document.getElementById('delay-duration').value;
+    const submitBtn = document.getElementById('submit-delay-btn');
+
+    // Confirm before submission
+    if (!confirm(`Are you sure you want to report a ${durationVal}-minute delay due to ${reasonVal}?`)) {
+        return;
+    }
+
+    // Disable button to prevent duplicate submissions
+    submitBtn.disabled = true;
+    const originalText = submitBtn.innerText;
+    submitBtn.innerText = 'Submitting...';
+    
+    try {
+        const res = await fetch('/api/driver/report-delay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
+            body: JSON.stringify({ reason: reasonVal, duration: durationVal })
+        });
+        
+        if (res.ok) {
+            document.getElementById('delay-modal').style.display = 'none';
+            showDriverSuccess("Delay Broadcast Sent", `Factor: ${reasonVal}. Estimated Time Taken: ${durationVal} mins added to system ETAs and notifications pushed seamlessly.`);
+            updateTelemetry();
+        }
+    } catch(e) { 
+        console.error(e); 
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = originalText;
+    }
+}
+
+function driverTelemetryField(label, value) {
+    const displayValue = value === null || value === undefined || value === '' ? '--' : value;
+    return `<div class="telemetry-field"><span class="telemetry-label">${escapeDriverText(label)}</span><span class="telemetry-value">${escapeDriverText(displayValue)}</span></div>`;
+}
+
+function renderDriverRouteSequence(container, stops, completedStops = 0, activeStopIndex = 0, includeSchedule = false) {
+    if (!container) return;
+    if (!Array.isArray(stops) || !stops.length) {
+        container.innerHTML = '<div class="text-muted small">Route path sequence unavailable.</div>';
+        return;
+    }
+    const totalStops = stops.length;
+    container.innerHTML = `
+        <div class="route-timeline">
+            ${stops.map((stop, index) => {
+                const stateClass = index < completedStops
+                    ? 'stop-completed'
+                    : index === activeStopIndex
+                        ? 'stop-current'
+                        : 'stop-upcoming';
+                const scheduledTime = stop.scheduled_time || stop.arrival_time || stop.departure_time || '--';
+                const actualTime = stop.actual_time || '--';
+                const meta = includeSchedule ? `
+                    <div class="route-stop-meta">
+                        <span>Scheduled: <strong>${escapeDriverText(scheduledTime)}</strong></span>
+                        <span>Actual: <strong>${escapeDriverText(actualTime)}</strong></span>
+                    </div>` : '';
+                return `
+                    <div class="timeline-stop ${stateClass}${index === totalStops - 1 ? ' stop-final' : ''}">
+                        <span class="stop-name">${escapeDriverText(stop.name || stop.stop_name || '--')}</span>
+                        ${meta}
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function renderOfflineDriverDashboard() {
+    const telemetryContainer = document.getElementById('dvr-telemetry-container');
+    const tripSummaryContainer = document.getElementById('dvr-trip-summary-container');
+    const routeSequenceContainer = document.getElementById('dvr-route-sequence-container');
+    const tripStatusPanel = document.getElementById('driver-trip-status-panel');
+    const context = driverInitialContext || {};
+    const returnReady = driverTripState === 'RETURN_READY';
+    const currentStop = returnReady ? 'Return trip ready' : (context.currentStop || '--');
+    const nextStop = returnReady ? 'Start return trip' : (context.nextStop || '--');
+    const totalStops = Number(context.totalStops || driverInitialStops.length || 0);
+    const remainingStops = returnReady ? 0 : totalStops;
+
+    if (telemetryContainer) {
+        telemetryContainer.innerHTML = `
+            <div class="telemetry-layout">
+                <section class="telemetry-section">
+                    <div class="telemetry-section-title">Bus Information</div>
+                    ${driverTelemetryField('Bus Number', context.busNumber)}
+                    ${driverTelemetryField('Driver ID', context.driverCode)}
+                    ${driverTelemetryField('Route Number', context.routeCode)}
+                    ${driverTelemetryField('Trip ID', context.tripId)}
+                    ${driverTelemetryField('Direction', context.direction)}
+                    ${driverTelemetryField('Bus Status', 'OFFLINE')}
+                </section>
+                <section class="telemetry-section">
+                    <div class="telemetry-section-title">Route Information</div>
+                    ${driverTelemetryField('Origin', context.sourceStop)}
+                    ${driverTelemetryField('Destination', context.destinationStop)}
+                    ${driverTelemetryField('Current Stop', currentStop)}
+                    ${driverTelemetryField('Next Stop', nextStop)}
+                    ${driverTelemetryField('Total Stops', totalStops || '--')}
+                    ${driverTelemetryField('Completed Stops', returnReady ? totalStops : 0)}
+                    ${driverTelemetryField('Remaining Stops', remainingStops || 0)}
+                </section>
+                <section class="telemetry-section">
+                    <div class="telemetry-section-title">Journey Information</div>
+                    ${driverTelemetryField('Scheduled Departure', context.scheduledDeparture)}
+                    ${driverTelemetryField('Actual Departure', '--')}
+                    ${driverTelemetryField('Scheduled Arrival', context.scheduledArrival)}
+                    ${driverTelemetryField('Actual Arrival', '--')}
+                    ${driverTelemetryField('Current Delay', '0 min')}
+                </section>
+                <section class="telemetry-section">
+                    <div class="telemetry-section-title">Live Tracking</div>
+                    ${driverTelemetryField('Speed', '--')}
+                    ${driverTelemetryField('Covered Distance', '0 km')}
+                    ${driverTelemetryField('Remaining Distance', '0 km')}
+                    ${driverTelemetryField('GPS Status', 'OFFLINE')}
+                    ${driverTelemetryField('Occupancy', '--')}
+                    ${driverTelemetryField('ETA', '--')}
+                    ${driverTelemetryField('Progress', returnReady ? '100%' : '0%')}
+                </section>
+            </div>
+        `;
+    }
+
+    if (tripStatusPanel) {
+        renderTripOperationsPanel(tripStatusPanel, {
+            busNumber: context.busNumber,
+            route: context.routeName,
+            direction: context.direction,
+            busStatus: 'OFFLINE',
+            tripStatus: formatDriverStateLabel(driverTripState),
+            gpsStatus: 'OFFLINE',
+            currentStop,
+            nextStop,
+            tripProgress: returnReady ? '100%' : '0%'
+        });
+    }
+
+    if (tripSummaryContainer) {
+        tripSummaryContainer.innerHTML = `
+            <div class="trip-summary-panel">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted small fw-bold text-uppercase">Progress</span>
+                    <span class="text-info fw-bold">${returnReady ? '100%' : '0%'}</span>
+                </div>
+                <div class="trip-progress-track mb-3">
+                    <div class="trip-progress-fill" style="width:${returnReady ? 100 : 0}%;"></div>
+                </div>
+                <div class="trip-summary-metrics">
+                    <div class="trip-summary-metric">
+                        <small class="text-muted d-block">Completed Stops</small>
+                        <strong class="text-white">${returnReady ? totalStops : 0}</strong>
+                    </div>
+                    <div class="trip-summary-metric">
+                        <small class="text-muted d-block">Remaining Stops</small>
+                        <strong class="text-white">${remainingStops}</strong>
+                    </div>
+                    <div class="trip-summary-metric">
+                        <small class="text-muted d-block">ETA</small>
+                        <strong class="text-white">--</strong>
+                    </div>
+                    <div class="trip-summary-metric">
+                        <small class="text-muted d-block">Distance Remaining</small>
+                        <strong class="text-white">--</strong>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderDriverRouteSequence(routeSequenceContainer, driverInitialStops, returnReady ? totalStops : 0, returnReady ? Math.max(0, totalStops - 1) : 0, false);
+}
+
+updateTelemetry = async function() {
+    if (document.hidden) return; 
+    
+    const hasAssignedBus = {{ 'true' if has_assigned_bus else 'false' }};
+    if (!hasAssignedBus) return;
+
+    const telemetryContainer = document.getElementById('dvr-telemetry-container');
+    const tripSummaryContainer = document.getElementById('dvr-trip-summary-container');
+    const routeSequenceContainer = document.getElementById('dvr-route-sequence-container');
+    const tripStatusPanel = document.getElementById('driver-trip-status-panel');
+    if (!telemetryContainer || !tripSummaryContainer || !routeSequenceContainer) return;
+
+    const safe = (value) => String(value ?? '--').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+    const numberValue = (value, fallback = 0) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const valueOrDash = (value, suffix = '') => {
+        if (value === null || value === undefined || value === '') return '--';
+        return `${safe(value)}${suffix}`;
+    };
+    const etaText = (bus, value) => {
+        if (bus && (bus.service_status === 'completed' || bus.trip_status === 'COMPLETED')) return 'Offline';
+        if (bus && bus.eta_label) return bus.eta_label;
+        return value === null || value === undefined ? 'Calculating...' : `${value} min`;
+    };
+    const telemetryField = (label, value) => {
+        const displayValue = value === null || value === undefined || value === '' ? '--' : value;
+        return `<div class="telemetry-field"><span class="telemetry-label">${safe(label)}</span><span class="telemetry-value">${safe(displayValue)}</span></div>`;
+    };
+
+    try {
+        const res = await fetch('/api/buses/live');
+        if (!res.ok) throw new Error("Telemetry API unavailable");
+        const data = await res.json();
+        
+        const assignedBusId = {{ assigned_bus.id if assigned_bus else 'null' }};
+        const bus = (data.buses || []).find(b => Number(b.bus_id) === Number(assignedBusId));
+
+        if (!bus) {
+            renderOfflineDriverDashboard();
+            updateDriverControls();
+            return;
+        }
+
+        const stops = Array.isArray(bus.stops) ? bus.stops : [];
+        const totalStops = stops.length;
+        const progressNumber = Math.max(0, Math.min(100, numberValue(bus.trip_progress)));
+        const progressPct = progressNumber.toFixed(progressNumber >= 10 ? 1 : 2);
+        const completedStops = Math.min(totalStops, Math.max(0, Math.floor(numberValue(bus.completed_stops))));
+        const remainingStops = Math.max(0, totalStops - completedStops);
+        const tripCompleted = bus.service_status === 'completed' || bus.trip_status === 'COMPLETED';
+        const tripState = bus.trip_status || (tripCompleted ? 'COMPLETED' : 'ACTIVE');
+        const serviceStatus = bus.bus_status || (bus.is_live_gps ? 'LIVE' : 'OFFLINE');
+        const delayLabel = bus.current_delay_label || `${bus.current_delay_minutes || 0} min`;
+        const updatedEta = bus.updated_eta_minutes ?? bus.eta_minutes;
+        const firstStop = stops[0] || {};
+        const actualDeparture = bus.actual_departure_time || firstStop.actual_time || firstStop.expected_time || '--';
+        const actualArrival = bus.actual_arrival_time || bus.completed_at || '--';
+        const assignedDriver = bus.assigned_driver_id || bus.assigned_driver_code || bus.driver_id || '--';
+        const reverseTripActive = ['backward', 'reverse'].includes(String(bus.direction || '').toLowerCase());
+        const directionLabel = reverseTripActive ? 'Reverse' : 'Forward';
+        const occupancyText = bus.occupancy_pct === null || bus.occupancy_pct === undefined
+            ? '--'
+            : `${bus.occupancy_level ? String(bus.occupancy_level).replace(/^./, c => c.toUpperCase()) : 'Occupancy'} (${bus.occupancy_pct}%)`;
+        if (tripCompleted) {
+            stopDriverGpsBroadcast();
+            setTripState('RETURN_READY');
+        } else {
+            setTripState('ACTIVE');
+        }
+
+        telemetryContainer.innerHTML = `
+            <div class="telemetry-layout">
+                <section class="telemetry-section">
+                    <div class="telemetry-section-title">Bus Information</div>
+                    ${telemetryField('Bus Number', bus.bus_number)}
+                    ${telemetryField('Driver ID', assignedDriver)}
+                    ${telemetryField('Route Number', bus.route_code)}
+                    ${telemetryField('Trip ID', bus.trip_id)}
+                    ${telemetryField('Direction', directionLabel)}
+                    ${telemetryField('Bus Status', serviceStatus)}
+                </section>
+                <section class="telemetry-section">
+                    <div class="telemetry-section-title">Route Information</div>
+                    ${telemetryField('Origin', bus.source_stop)}
+                    ${telemetryField('Destination', bus.destination_stop)}
+                    ${telemetryField('Current Stop', bus.current_stop)}
+                    ${telemetryField('Next Stop', bus.next_stop)}
+                    ${telemetryField('Total Stops', totalStops || '--')}
+                    ${telemetryField('Completed Stops', totalStops ? completedStops : '--')}
+                    ${telemetryField('Remaining Stops', totalStops ? remainingStops : '--')}
+                </section>
+                <section class="telemetry-section">
+                    <div class="telemetry-section-title">Journey Information</div>
+                    ${telemetryField('Scheduled Departure', bus.departure_time)}
+                    ${telemetryField('Actual Departure', actualDeparture)}
+                    ${telemetryField('Scheduled Arrival', bus.arrival_time)}
+                    ${telemetryField('Actual Arrival', actualArrival)}
+                    ${telemetryField('Current Delay', delayLabel)}
+                </section>
+                <section class="telemetry-section">
+                    <div class="telemetry-section-title">Live Tracking</div>
+                    ${telemetryField('Speed', valueOrDash(bus.speed, ' km/h'))}
+                    ${telemetryField('Covered Distance', valueOrDash(bus.distance_covered_km, ' km'))}
+                    ${telemetryField('Remaining Distance', valueOrDash(bus.distance_remaining_km, ' km'))}
+                    ${telemetryField('GPS Status', bus.gps_status || (bus.is_live_gps ? 'LIVE GPS' : 'Offline'))}
+                    ${telemetryField('Occupancy', occupancyText)}
+                    ${telemetryField('ETA', etaText(bus, updatedEta))}
+                    ${telemetryField('Progress', `${progressPct}%`)}
+                </section>
+            </div>
+        `;
+        if (tripStatusPanel) {
+            tripStatusPanel.innerHTML = `
+                <div class="telemetry-layout">
+                    <section class="telemetry-section">
+                        <div class="telemetry-section-title">Trip Status</div>
+                        ${telemetryField('Bus Number', bus.bus_number)}
+                        ${telemetryField('Route', bus.route_name)}
+                        ${telemetryField('Direction', directionLabel)}
+                        ${telemetryField('Bus Status', serviceStatus)}
+                        ${telemetryField('Trip Status', tripCompleted ? 'Trip Completed' : tripState)}
+                        ${telemetryField('Current Stop', bus.current_stop)}
+                        ${telemetryField('Next Stop', bus.next_stop)}
+                        ${telemetryField('Trip Progress', `${progressPct}%`)}
+                        ${telemetryField('GPS Status', bus.gps_status || (bus.is_live_gps ? 'LIVE GPS' : 'Offline'))}
+                    </section>
+                </div>
+            `;
+        }
+
+        tripSummaryContainer.innerHTML = `
+            <div class="trip-summary-panel">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted small fw-bold text-uppercase">Trip Progress</span>
+                    <span class="text-info fw-bold">${progressPct}%</span>
+                </div>
+                <div class="trip-progress-track mb-3">
+                    <div class="trip-progress-fill" style="width:${progressNumber}%;"></div>
+                </div>
+                <div class="trip-summary-metrics">
+                    <div class="trip-summary-metric">
+                        <small class="text-muted d-block">Completed Stops</small>
+                        <strong class="text-white">${totalStops ? completedStops : '--'}</strong>
+                    </div>
+                    <div class="trip-summary-metric">
+                        <small class="text-muted d-block">Remaining Stops</small>
+                        <strong class="text-white">${totalStops ? remainingStops : '--'}</strong>
+                    </div>
+                    <div class="trip-summary-metric">
+                        <small class="text-muted d-block">Distance Remaining</small>
+                        <strong class="text-white">${valueOrDash(bus.distance_remaining_km, ' km')}</strong>
+                    </div>
+                    <div class="trip-summary-metric">
+                        <small class="text-muted d-block">ETA</small>
+                        <strong class="text-white">${safe(etaText(bus, updatedEta))}</strong>
+                    </div>
+                </div>
+            </div>
+        `;
+        renderDriverRouteSequence(routeSequenceContainer, stops, completedStops, Math.min(totalStops - 1, numberValue(bus.active_stop_index, completedStops)), true);
+    } catch (e) {
+        console.error(e);
+    }
+};
+
+async function loadDriverLostFound() {
+    if (document.hidden) return; 
+    if (!{{ 'true' if has_assigned_bus else 'false' }}) return;
+    
+    try {
+        const res = await fetch('/api/lost-and-found');
+        if (!res.ok) throw new Error("Lost and found API unavailable");
+        const items = await res.json();
+        const container = document.getElementById('driver-lnf-list');
+        if (!container) return;
+        if (!items.length) {
+            container.innerHTML = '<div class="col-12 text-muted small driver-lnf-empty-state">No lost item reports assigned.</div>';
+            return;
+        }
+        container.innerHTML = items.map(item => `
+            <div class="col-md-6">
+                <div class="p-3 border border-secondary rounded">
+                    <strong class="text-white">${item.item_name}</strong>
+                    <span class="badge bg-secondary ms-2">${item.status}</span>
+                    <p class="small text-muted mb-2">${item.description || ''}</p>
+                    <button class="btn btn-sm btn-info text-dark fw-bold" onclick='openDriverLnfReport(${JSON.stringify(item).replace(/'/g, "&apos;")})'>View Report</button>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) { console.error(e); }
+}
+
+function ensureDriverLnfModal() {
+    let modal = document.getElementById('driver-lnf-detail-modal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'driver-lnf-detail-modal';
+    modal.style.cssText = 'display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(4,11,24,0.88); z-index:200010; align-items:center; justify-content:center; backdrop-filter:blur(8px); padding:18px;';
+    modal.innerHTML = `
+        <div class="card glass-panel shadow-lg" style="width:100%; max-width:500px; border:1px solid rgba(245,179,66,0.6); border-radius:16px; background:linear-gradient(135deg, rgba(11,29,54,0.98), rgba(4,11,24,0.98));">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <h4 class="text-warning fw-bold mb-0">Lost Item Report</h4>
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="closeDriverLnfModal()">Close</button>
+                </div>
+                <div id="driver-lnf-detail-body" class="small" style="color:#d9e8ff;"></div>
+                <div class="mt-4">
+                    <label class="form-label text-muted small fw-bold">Reply Message</label>
+                    <textarea id="driver-lnf-reply-message" class="form-control bg-dark text-white border-secondary" rows="3"></textarea>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label text-muted small fw-bold">Status</label>
+                    <select id="driver-lnf-status" class="form-select bg-dark text-white border-warning">
+                        <option value="Open">Open</option>
+                        <option value="Found">Found</option>
+                        <option value="Not Found">Not Found</option>
+                        <option value="Returned">Returned</option>
+                    </select>
+                </div>
+                <div class="mt-4">
+                    <button id="driver-lnf-update-btn" class="btn btn-warning text-dark fw-bold">Update</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function closeDriverLnfModal() {
+    const modal = document.getElementById('driver-lnf-detail-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function openDriverLnfReport(item) {
+    const modal = ensureDriverLnfModal();
+    const body = modal.querySelector('#driver-lnf-detail-body');
+    const replyInput = modal.querySelector('#driver-lnf-reply-message');
+    const statusSelect = modal.querySelector('#driver-lnf-status');
+    const button = modal.querySelector('#driver-lnf-update-btn');
+    const safe = (value) => String(value ?? '--').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+    const dateValue = item.incident_date ? new Date(item.incident_date).toLocaleDateString() : '--';
+    body.innerHTML = `
+        <div class="mb-2"><span class="text-muted">Item Name:</span> <span class="text-white fw-bold">${safe(item.item_name)}</span></div>
+        <div class="mb-2"><span class="text-muted">Passenger Name:</span> <span class="text-white">${safe(item.passenger_name)}</span></div>
+        <div class="mb-2"><span class="text-muted">Bus ID:</span> <span class="text-white fw-bold">${safe(item.bus_number || item.bus_id)}</span></div>
+        <div class="mb-2"><span class="text-muted">Date:</span> <span class="text-white">${safe(dateValue)}</span></div>
+        <div><span class="text-muted">Current Status:</span> <span class="text-warning fw-bold">${safe(item.status)}</span></div>
+    `;
+    if (replyInput) replyInput.value = item.driver_reply || '';
+    if (statusSelect) {
+        const normalizedStatus = String(item.status || 'Open').toLowerCase();
+        const option = Array.from(statusSelect.options).find(opt => opt.value.toLowerCase() === normalizedStatus);
+        statusSelect.value = option ? option.value : 'Open';
+    }
+    button.onclick = () => updateDriverLnfItem(item.id);
+    modal.style.display = 'flex';
+}
+
+async function updateDriverLnfItem(id) {
+    const button = document.getElementById('driver-lnf-update-btn');
+    const replyInput = document.getElementById('driver-lnf-reply-message');
+    const statusSelect = document.getElementById('driver-lnf-status');
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Updating...';
+    }
+    try {
+        const res = await fetch(`/api/lost-and-found/${id}/reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+            body: JSON.stringify({
+                reply_message: replyInput ? replyInput.value.trim() : '',
+                status: statusSelect ? statusSelect.value : 'Open'
+            })
+        });
+        if (res.ok) {
+            closeDriverLnfModal();
+            loadDriverLostFound();
+        }
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Update';
+        }
+    }
+}
+
+// Initial loads
+updateTelemetry();
+loadDriverLostFound();
+
+const telemetryInterval = setInterval(updateTelemetry, 2000);
+const lnfInterval = setInterval(loadDriverLostFound, 30000);
+
+// Stop intervals when leaving the page
+window.addEventListener('beforeunload', () => {
+    if (telemetryInterval) clearInterval(telemetryInterval);
+    if (lnfInterval) clearInterval(lnfInterval);
+    stopDriverGpsBroadcast();
+});
+
+// --- LIVE GPS BROADCASTING ---
+function getGpsBadge() {
+    const badge = document.getElementById('gpsStatusBadge');
+    if (badge) badge.classList.remove('d-none');
+    return badge;
+}
+
+function updateGpsBadge(isSuccess, message) {
+    const badge = getGpsBadge();
+    if (!badge) return;
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if (isSuccess) {
+        badge.className = "badge bg-success p-2 shadow text-center";
+        badge.innerHTML = `<i class="fa-solid fa-satellite-dish me-1"></i> GPS Active<br><small class="text-light" style="font-size:0.7em;">Last Update: ${timeString}</small>`;
+    } else {
+        badge.className = "badge bg-secondary p-2 shadow text-center";
+        badge.innerHTML = `<i class="fa-solid fa-satellite-dish me-1"></i> ${message || 'GPS Off'}`;
+    }
+}
+
+function stopDriverGpsBroadcast() {
+    if (driverGpsWatchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(driverGpsWatchId);
+    }
+    if (driverGpsInterval) clearInterval(driverGpsInterval);
+    driverGpsWatchId = null;
+    driverGpsInterval = null;
+    driverLatestPosition = null;
+    updateGpsBadge(false, 'GPS Off');
+}
+
+async function sendDriverGpsPosition(position) {
+    if (!position || !isDriverTripActive()) return;
+    const coords = position.coords || {};
+    const body = {
+        lat: coords.latitude,
+        lng: coords.longitude,
+        timestamp: Date.now()
+    };
+    if (coords.speed !== null && coords.speed !== undefined && Number.isFinite(Number(coords.speed))) {
+        body.speed_kmh = Math.max(0, Number(coords.speed) * 3.6);
+    }
+    if (coords.heading !== null && coords.heading !== undefined && Number.isFinite(Number(coords.heading))) {
+        body.bearing = Number(coords.heading);
+    }
+    const res = await fetch('/api/driver/location', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+        },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error("GPS update rejected");
+    updateGpsBadge(true);
+}
+
+function startDriverGpsBroadcast(initialPosition = null) {
+    const hasAssignedBus = {{ 'true' if has_assigned_bus else 'false' }};
+    if (!hasAssignedBus || !isDriverTripActive()) return;
+    if (!("geolocation" in navigator)) {
+        document.getElementById('gps-error-modal').style.display = 'flex';
+        return;
+    }
+    if (driverGpsWatchId !== null || driverGpsInterval) return;
+    if (initialPosition) {
+        driverLatestPosition = initialPosition;
+        sendDriverGpsPosition(initialPosition).catch(err => {
+            console.warn("Initial GPS Broadcast failed:", err);
+            updateGpsBadge(false, 'Net Error');
+        });
+    }
+
+    driverGpsWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+            driverLatestPosition = position;
+            updateGpsBadge(true);
+            sendDriverGpsPosition(position).catch(err => {
+                console.warn("GPS Broadcast failed:", err);
+                updateGpsBadge(false, 'Net Error');
+            });
+        },
+        (error) => {
+            console.error("GPS Permission Error:", error.message);
+            updateGpsBadge(false, 'GPS Error');
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+    );
+
+    driverGpsInterval = setInterval(() => {
+        if (!isDriverTripActive()) {
+            stopDriverGpsBroadcast();
+            return;
+        }
+        if (!driverLatestPosition) return;
+        sendDriverGpsPosition(driverLatestPosition).catch(err => {
+            console.warn("GPS Broadcast failed:", err);
+            updateGpsBadge(false, 'Net Error');
+        });
+    }, 5000);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    updateDriverControls();
+    if (isDriverTripActive()) startDriverGpsBroadcast();
+});
+</script>
+{% endblock %}

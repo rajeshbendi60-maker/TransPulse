@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Operational Analytics{% endblock %}
+{% block head_extras %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .dark-glass-card {
+        background: linear-gradient(135deg, rgba(11, 29, 54, 0.6), rgba(4, 11, 24, 0.8));
+        border: 1px solid rgba(52, 210, 255, 0.15);
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(15px);
+    }
+    .chart-container {
+        position: relative;
+        height: 280px;
+        width: 100%;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container pb-5">
+    
+    <div class="d-flex align-items-center justify-content-between mb-4 mt-3 fade-up">
+        <div class="d-flex align-items-center">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-info me-3 px-4 rounded-pill fw-bold text-white" style="border-color: #34d2ff; background: rgba(52, 210, 255, 0.1);">← Back to Hub</a>
+            <div>
+                <h2 class="fw-bold mb-0 text-white">📊 System Performance Analytics</h2>
+                <p class="text-muted mb-0">Live operational matrix monitoring and automated fleet data visualization.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4 fade-up-1">
+        <div class="col-6 col-lg-3">
+            <div class="metric-card">
+                <h6><span class="icon">🏁</span>Total System Trips</h6>
+                <p>{{ totals.total_trips }}</p>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="metric-card border-success">
+                <h6><span class="icon text-success">🟢</span>Active Trips</h6>
+                <p class="text-success">{{ totals.active_trips }}</p>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="metric-card">
+                <h6><span class="icon">🚌</span>Registered Fleet</h6>
+                <p>{{ totals.bus_count }}</p>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="metric-card">
+                <h6><span class="icon">👥</span>Total Network Users</h6>
+                <p>{{ totals.user_count }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4 fade-up-2">
+        <div class="col-lg-8">
+            <div class="card dark-glass-card h-100">
+                <div class="card-body p-4">
+                    <h5 class="text-white fw-bold mb-3">⇆ Fleet Deployment Density per Corridor</h5>
+                    <div class="chart-container">
+                        <canvas id="routeTrafficChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card dark-glass-card h-100">
+                <div class="card-body p-4">
+                    <h5 class="text-white fw-bold mb-3">👥 Network Role Distribution</h5>
+                    <div class="chart-container">
+                        <canvas id="userRolesChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 fade-up-3">
+        <div class="col-md-12">
+            <div class="card dark-glass-card">
+                <div class="card-body p-4">
+                    <h5 class="text-white fw-bold mb-3">📋 Trip Execution Lifecycle Status Matrix</h5>
+                    <div class="row g-3 text-center text-light">
+                        <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
+                            <span class="text-muted d-block small mb-1">SCHEDULED</span>
+                            <strong class="fs-4">{{ trip_status_counts.scheduled }}</strong>
+                        </div>
+                        <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
+                            <span class="text-success d-block small mb-1">IN PROGRESS</span>
+                            <strong class="fs-4 text-success">{{ trip_status_counts.in_progress }}</strong>
+                        </div>
+                        <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
+                            <span class="text-info d-block small mb-1">COMPLETED</span>
+                            <strong class="fs-4 text-info">{{ trip_status_counts.completed }}</strong>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <span class="text-danger d-block small mb-1">CANCELLED</span>
+                            <strong class="fs-4 text-danger">{{ trip_status_counts.cancelled }}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // Styling constants matching existing dark theme configurations
+    const textColor = "#9ec0e6";
+    const gridColor = "rgba(255, 255, 255, 0.05)";
+
+    // Route Traffic Bar Chart Implementation
+    const ctxRoute = document.getElementById('routeTrafficChart').getContext('2d');
+    new Chart(ctxRoute, {
+        type: 'bar',
+        data: {
+            labels: {{ route_labels | tojson }},
+            datasets: [{
+                label: 'Trips Assigned',
+                data: {{ trips_per_route | tojson }},
+                backgroundColor: 'rgba(52, 210, 255, 0.6)',
+                borderColor: '#34d2ff',
+                borderWidth: 1.5,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: {
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, font: { family: 'Inter' } }
+                },
+                y: {
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, font: { family: 'Inter' }, stepSize: 1 },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // User Roles Donut Chart Implementation
+    const ctxRoles = document.getElementById('userRolesChart').getContext('2d');
+    new Chart(ctxRoles, {
+        type: 'doughnut',
+        data: {
+            labels: ['Passengers', 'Drivers', 'Admins'],
+            datasets: [{
+                data: [
+                    {{ role_counts.passengers }},
+                    {{ role_counts.drivers }},
+                    {{ role_counts.admins }}
+                ],
+                backgroundColor: [
+                    'rgba(147, 112, 219, 0.7)',  /* Purple */
+                    'rgba(34, 211, 154, 0.7)',   /* Green */
+                    'rgba(255, 93, 108, 0.7)'    /* Red */
+                ],
+                borderColor: '#040b18',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: textColor, font: { family: 'Inter', size: 11 } }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

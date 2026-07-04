@@ -1,0 +1,498 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Lost & Found{% endblock %}
+{% block head_extras %}
+<style>
+    .dark-glass-card {
+        background: linear-gradient(135deg, rgba(11,29,54,0.6), rgba(4,11,24,0.8));
+        border: 1px solid rgba(52,210,255,0.15);
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .item-card { 
+        background: rgba(255, 255, 255, 0.03); 
+        border: 1px solid rgba(52, 210, 255, 0.1); 
+        border-radius: 10px; 
+        padding: 15px; 
+        transition: transform 0.2s;
+    }
+    .item-card:hover { transform: translateY(-3px); border-color: rgba(52, 210, 255, 0.3); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container pb-5">
+    
+    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
+        {% if current_user.role == "admin" %}
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% elif current_user.role == "driver" %}
+            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% else %}
+            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% endif %}
+        <div>
+            <h2 class="fw-bold mb-0 text-white">🎒 Lost & Found</h2>
+            <p class="text-muted mb-0">Report and track missing items on the APSRTC network.</p>
+        </div>
+    </div>
+
+    {% if current_user.role == "passenger" %}
+    <div class="card dark-glass-card mb-5 fade-up">
+        <div class="card-body p-4">
+            <h5 class="card-title text-white fw-bold mb-4" id="form-action-title">📋 Report an Item</h5>
+            <form id="lost-found-form">
+                <input type="hidden" name="report_id" id="edit-report-id" value="">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Item Category *</label>
+                        <select name="item_category" id="item-category" class="form-select bg-dark text-white border-secondary shadow-sm" required>
+                            <option value="">Select Category...</option>
+                            <option value="Mobile Phone">Mobile Phone</option>
+                            <option value="Laptop">Laptop</option>
+                            <option value="Tablet">Tablet</option>
+                            <option value="Bag">Bag</option>
+                            <option value="Wallet">Wallet</option>
+                            <option value="Keys">Keys</option>
+                            <option value="Bottle">Bottle</option>
+                            <option value="Umbrella">Umbrella</option>
+                            <option value="Documents">Documents</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Color</label>
+                        <input type="text" name="color" id="item-color" class="form-control bg-dark text-white border-secondary" placeholder="e.g. Black, Blue">
+                    </div>
+
+                    <div class="col-md-12 d-none" id="brand-group">
+                        <label class="form-label text-info small fw-bold">Brand / Make *</label>
+                        <input type="text" name="brand" id="brand-input" class="form-control bg-dark text-white border-info" placeholder="e.g. Samsung, Apple, HP, Dell, Lenovo">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Date Lost *</label>
+                        <input type="date" name="lost_date" id="item-lost-date" class="form-control bg-dark text-white border-secondary" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Lost Location / Route *</label>
+                        <input type="text" name="lost_location" id="item-lost-location" class="form-control bg-dark text-white border-secondary" placeholder="e.g. Visakhapatnam to Rajamahendravaram" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Bus Number / ID</label>
+                        <input type="text" name="bus_id" id="item-bus-id" class="form-control bg-dark text-white border-secondary" placeholder="e.g. APSRTC-101 or registration plate">
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Driver ID (if known)</label>
+                        <input type="text" name="driver_id" id="item-driver-id" class="form-control bg-dark text-white border-secondary" placeholder="e.g. DVR-001">
+                    </div>
+
+                    <div class="col-12 d-none" id="other-desc-group">
+                        <label class="form-label text-warning small fw-bold">Describe Item *</label>
+                        <textarea name="other_description" id="other-desc-input" class="form-control bg-dark text-white border-warning" rows="3" placeholder="Provide a detailed description of the item..."></textarea>
+                    </div>
+
+                    <div class="col-12" id="standard-desc-group">
+                        <label class="form-label text-muted small fw-bold">Description</label>
+                        <textarea name="description" id="standard-desc-input" class="form-control bg-dark text-white border-secondary" rows="3" placeholder="Describe the item in detail..."></textarea>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label text-muted small fw-bold">Contact Number *</label>
+                        <input type="tel" name="contact_number" id="item-contact-number" class="form-control bg-dark text-white border-secondary" placeholder="Your phone number for recovery" required>
+                    </div>
+
+                    <div class="col-12 mt-2 d-flex gap-3">
+                        <button type="submit" id="submit-action-btn" class="btn btn-info text-dark fw-bold px-5 py-2" style="background: linear-gradient(135deg, #34d2ff, #4f8dff); border: none; border-radius: 8px;">Report Item</button>
+                        <button type="button" id="cancel-edit-btn" class="btn btn-outline-secondary text-white fw-bold d-none px-4 py-2" onclick="resetFormState()">Cancel Edit</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <h5 class="text-white fw-bold mb-4">Active Reports</h5>
+    <div id="items-container" class="row g-3">
+        <div class="col-12 text-center text-muted py-5">
+            <div class="spinner-border text-info mb-2" role="status"></div>
+            <p>Loading active reports...</p>
+        </div>
+    </div>
+
+    <h5 class="text-white fw-bold mb-4 mt-5">Returned Items</h5>
+    <div id="items-history-container" class="row g-3">
+        <div class="col-12 text-center text-muted py-4">Loading returned items...</div>
+    </div>
+</div>
+
+<!-- BEAUTIFUL SUCCESS MODAL -->
+<div id="successModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
+    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#22d39a; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
+        <div class="card-body p-5 text-center">
+            <div style="background: #22d39a; border-radius: 12px; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px auto; box-shadow: 0 10px 20px rgba(34,211,154,0.3);">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <h3 class="text-white fw-bold mb-3" id="modal-title-text">Report Submitted</h3>
+            <p class="text-muted mb-4" id="modal-desc-text">Your lost item report has been successfully recorded. Notifications have been dispatched to available driver teams immediately.</p>
+            <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" style="background: #22d39a; color: #040b18; border: none; font-size: 1.1rem; box-shadow: 0 8px 15px rgba(34,211,154,0.2);" onclick="document.getElementById('successModal').style.display='none'">Got It!</button>
+        </div>
+    </div>
+</div>
+
+<!-- BEAUTIFUL CUSTOM DELETE CONFIRMATION MODAL -->
+<div id="deleteConfirmModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
+    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#ff5d6c; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
+        <div class="card-body p-4 p-md-5 text-center">
+            <div style="background: rgba(255, 93, 108, 0.2); border-radius: 12px; width: 65px; height: 65px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; border: 1px solid #ff5d6c;">
+                <span style="font-size: 28px;">🗑️</span>
+            </div>
+            <h4 class="text-white fw-bold mb-3">Delete Report?</h4>
+            <p class="text-muted mb-4">Are you sure you want to permanently delete this record? This action cannot be undone and will drop it from the system entirely.</p>
+            <div class="d-flex gap-3">
+                <button type="button" class="btn btn-outline-secondary w-50 fw-bold rounded-pill" onclick="closeDeleteModal()">Cancel</button>
+                <button type="button" class="btn w-50 fw-bold rounded-pill" style="background: #ff5d6c; color: #fff; border: none; box-shadow: 0 8px 15px rgba(255, 93, 108, 0.2);" onclick="confirmDeleteAction()">Yes, Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const activeUserId = parseInt("{{ current_user.id }}");
+const activeUserRole = "{{ current_user.role }}";
+let activeFleetCache = [];
+let itemToDeleteId = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const categorySelect = document.getElementById('item-category');
+    const brandGroup = document.getElementById('brand-group');
+    const brandInput = document.getElementById('brand-input');
+    const otherDescGroup = document.getElementById('other-desc-group');
+    const otherDescInput = document.getElementById('other-desc-input');
+    const standardDescGroup = document.getElementById('standard-desc-group');
+    const standardDescInput = document.getElementById('standard-desc-input');
+
+    const brandRequiredCategories = ['Mobile Phone', 'Laptop', 'Tablet', 'Bag'];
+
+    if (categorySelect) {
+        categorySelect.addEventListener('change', (e) => {
+            handleCategoryVisibilityToggle(e.target.value);
+        });
+    }
+
+    function handleCategoryVisibilityToggle(val) {
+        if (brandRequiredCategories.includes(val)) {
+            brandGroup.classList.remove('d-none');
+            brandInput.required = true;
+        } else {
+            brandGroup.classList.add('d-none');
+            brandInput.required = false;
+        }
+
+        if (val === 'Other') {
+            otherDescGroup.classList.remove('d-none');
+            otherDescInput.required = true;
+            standardDescGroup.classList.add('d-none');
+            standardDescInput.required = false;
+        } else {
+            otherDescGroup.classList.add('d-none');
+            otherDescInput.required = false;
+            standardDescGroup.classList.remove('d-none');
+            standardDescInput.required = false;
+        }
+    }
+
+    function syncFleetThenLoadItems() {
+        fetch('/api/buses/live')
+            .then(res => res.json())
+            .then(data => {
+                activeFleetCache = data.buses || [];
+                loadItems();
+            })
+            .catch(() => loadItems());
+    }
+
+    function loadItems(view = 'active', targetId = 'items-container') {
+        fetch(`/api/lost-and-found?view=${encodeURIComponent(view)}`)
+            .then(r => r.json())
+            .then(items => {
+                const container = document.getElementById(targetId);
+                container.innerHTML = '';
+                if (!items.length) {
+                    const emptyText = view === 'history' ? 'No returned items found.' : 'No active reports found.';
+                    container.innerHTML = `<div class="col-12 text-center text-muted py-4">${emptyText}</div>`;
+                    return;
+                }
+
+                let filteredItems = items;
+                if (activeUserRole === 'driver') {
+                    filteredItems = items;
+                }
+
+                if (!filteredItems.length) {
+                    container.innerHTML = '<div class="col-12 text-center text-muted py-4">No active logs synchronized to your active route footprint registry.</div>';
+                    return;
+                }
+
+                filteredItems.forEach(item => {
+                    let actionControls = '';
+                    
+                    if (view === 'active' && (item.user_id === activeUserId || activeUserRole === 'admin')) {
+                        actionControls = `
+                            <div class="d-flex gap-2 mt-3 pt-2 border-top border-secondary border-opacity-25">
+                                <button class="btn btn-sm btn-outline-info text-info fw-bold" onclick='triggerReportEditInitialization(${JSON.stringify(item).replace(/'/g, "&apos;")})'>✏️ Edit</button>
+                                <button class="btn btn-sm btn-outline-danger text-danger fw-bold" onclick="executeReportDeletion(${item.id})">🗑️ Delete</button>
+                            </div>
+                        `;
+                    }
+                    
+                    if (view === 'active' && activeUserRole === 'driver') {
+                        actionControls = `
+                            <div class="mt-3 pt-2 border-top border-secondary border-opacity-25">
+                                <button class="btn btn-sm btn-accent text-dark fw-bold" onclick='openLostFoundDriverReport(${JSON.stringify(item).replace(/'/g, "&apos;")})'>View Report</button>
+                            </div>
+                        `;
+                    }
+
+                    container.innerHTML += `
+                        <div class="col-md-4" id="lost-found-card-${item.id}">
+                            <div class="item-card h-100 d-flex flex-column justify-content-between">
+                                <div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-info fw-bold">${item.item_name}</span>
+                                        <span class="badge bg-secondary text-uppercase" style="font-size: 0.65rem;">${item.status}</span>
+                                    </div>
+                                    <p class="text-light small mb-2">${item.description || 'No additional details provided.'}</p>
+                                    ${item.driver_reply ? `<p class="text-success small mb-2"><strong>Driver Reply:</strong> ${item.driver_reply}</p>` : ''}
+                                    <div class="d-flex justify-content-between text-muted" style="font-size: 0.75rem;">
+                                        <span>Bus: ${item.bus_number || item.bus_id}</span>
+                                        <span>${new Date(item.incident_date).toLocaleDateString()}</span>
+                                    </div>
+                                    <div class="text-muted mt-2" style="font-size: 0.72rem;">
+                                        <div>Driver: <span class="text-info">${item.driver_code || '--'}</span></div>
+                                        <div>Route: ${item.route_name || '--'} | Trip: ${item.trip_id || '--'}</div>
+                                        <div>Current Stop: ${item.current_stop || '--'}</div>
+                                    </div>
+                                </div>
+                                ${actionControls}
+                            </div>
+                        </div>
+                    `;
+                });
+            }).catch(e => console.error("Error loading items:", e));
+    }
+
+    window.openLostFoundDriverReport = function(item) {
+        let modal = document.getElementById('driver-lnf-detail-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'driver-lnf-detail-modal';
+            modal.style.cssText = 'display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(4,11,24,0.88); z-index:200010; align-items:center; justify-content:center; backdrop-filter:blur(8px); padding:18px;';
+            modal.innerHTML = `
+                <div class="card glass-panel shadow-lg" style="width:100%; max-width:500px; border:1px solid rgba(245,179,66,0.6); border-radius:16px; background:linear-gradient(135deg, rgba(11,29,54,0.98), rgba(4,11,24,0.98));">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                            <h4 class="text-warning fw-bold mb-0">Lost Item Report</h4>
+                            <button type="button" class="btn btn-sm btn-outline-light" onclick="document.getElementById('driver-lnf-detail-modal').style.display='none'">Close</button>
+                        </div>
+                        <div id="driver-lnf-detail-body" class="small" style="color:#d9e8ff;"></div>
+                        <div class="mt-4">
+                            <label class="form-label text-muted small fw-bold">Reply Message</label>
+                            <textarea id="driver-lnf-reply-message" class="form-control bg-dark text-white border-secondary" rows="3"></textarea>
+                        </div>
+                        <div class="mt-3">
+                            <label class="form-label text-muted small fw-bold">Status</label>
+                            <select id="driver-lnf-status" class="form-select bg-dark text-white border-warning">
+                                <option value="Open">Open</option>
+                                <option value="Found">Found</option>
+                                <option value="Not Found">Not Found</option>
+                                <option value="Returned">Returned</option>
+                            </select>
+                        </div>
+                        <div class="mt-4">
+                            <button id="driver-lnf-update-btn" class="btn btn-warning text-dark fw-bold">Update</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+        const safe = (value) => String(value ?? '--').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+        const dateValue = item.incident_date ? new Date(item.incident_date).toLocaleDateString() : '--';
+        modal.querySelector('#driver-lnf-detail-body').innerHTML = `
+            <div class="mb-2"><span class="text-muted">Item Name:</span> <span class="text-white fw-bold">${safe(item.item_name)}</span></div>
+            <div class="mb-2"><span class="text-muted">Passenger Name:</span> <span class="text-white">${safe(item.passenger_name)}</span></div>
+            <div class="mb-2"><span class="text-muted">Bus ID:</span> <span class="text-white fw-bold">${safe(item.bus_number || item.bus_id)}</span></div>
+            <div class="mb-2"><span class="text-muted">Date:</span> <span class="text-white">${safe(dateValue)}</span></div>
+            <div><span class="text-muted">Current Status:</span> <span class="text-warning fw-bold">${safe(item.status)}</span></div>
+        `;
+        const replyInput = modal.querySelector('#driver-lnf-reply-message');
+        const statusSelect = modal.querySelector('#driver-lnf-status');
+        if (replyInput) replyInput.value = item.driver_reply || '';
+        if (statusSelect) {
+            const normalizedStatus = String(item.status || 'Open').toLowerCase();
+            const option = Array.from(statusSelect.options).find(opt => opt.value.toLowerCase() === normalizedStatus);
+            statusSelect.value = option ? option.value : 'Open';
+        }
+        modal.querySelector('#driver-lnf-update-btn').onclick = () => updateLostFoundDriverItem(item.id);
+        modal.style.display = 'flex';
+    };
+
+    window.updateLostFoundDriverItem = async function(id) {
+        const button = document.getElementById('driver-lnf-update-btn');
+        const replyInput = document.getElementById('driver-lnf-reply-message');
+        const statusSelect = document.getElementById('driver-lnf-status');
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Updating...';
+        }
+        try {
+            const res = await fetch(`/api/lost-and-found/${id}/reply`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                body: JSON.stringify({
+                    reply_message: replyInput ? replyInput.value.trim() : '',
+                    status: statusSelect ? statusSelect.value : 'Open'
+                })
+            });
+            if (res.ok) {
+                const modal = document.getElementById('driver-lnf-detail-modal');
+                if (modal) modal.style.display = 'none';
+                const data = await res.json();
+                document.getElementById('modal-title-text').textContent = "Report Updated";
+                document.getElementById('modal-desc-text').textContent = data.status === 'Returned'
+                    ? "The passenger has been notified and the report was moved to returned history."
+                    : "The passenger has been notified and the report remains active.";
+                document.getElementById('successModal').style.display = 'flex';
+                syncFleetThenLoadItems();
+                loadItems('history', 'items-history-container');
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = 'Update';
+            }
+        }
+    };
+
+    window.triggerReportEditInitialization = function(item) {
+        document.getElementById('edit-report-id').value = item.id;
+        document.getElementById('form-action-title').textContent = "✏️ Modify Lost Item Report";
+        document.getElementById('submit-action-btn').textContent = "Save Modified Changes";
+        document.getElementById('cancel-edit-btn').classList.remove('d-none');
+
+        categorySelect.value = item.item_name;
+        handleCategoryVisibilityToggle(item.item_name);
+
+        document.getElementById('item-color').value = item.color || '';
+        document.getElementById('brand-input').value = item.brand || '';
+        
+        if (item.incident_date) {
+            document.getElementById('item-lost-date').value = item.incident_date.substring(0, 10);
+        }
+        
+        const matchingBusMeta = activeFleetCache.find(b => b.bus_id === item.bus_id);
+        document.getElementById('item-bus-id').value = matchingBusMeta ? matchingBusMeta.bus_number : (item.bus_id || '');
+        document.getElementById('item-lost-location').value = matchingBusMeta ? `${matchingBusMeta.source_stop} to ${matchingBusMeta.destination_stop}` : '';
+        document.getElementById('item-driver-id').value = matchingBusMeta && matchingBusMeta.driver_id ? matchingBusMeta.driver_id : '';
+        
+        if (item.item_name === 'Other') {
+            document.getElementById('other-desc-input').value = item.description || '';
+        } else {
+            document.getElementById('standard-desc-input').value = item.description || '';
+        }
+        
+        document.getElementById('item-contact-number').value = item.contact_phone || '';
+        document.getElementById('lost-found-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    window.resetFormState = function() {
+        document.getElementById('lost-found-form').reset();
+        document.getElementById('edit-report-id').value = '';
+        document.getElementById('form-action-title').textContent = "📋 Report an Item";
+        document.getElementById('submit-action-btn').textContent = "Report Item";
+        document.getElementById('cancel-edit-btn').classList.add('d-none');
+        
+        brandGroup.classList.add('d-none');
+        brandInput.required = false;
+        otherDescGroup.classList.add('d-none');
+        otherDescInput.required = false;
+        standardDescGroup.classList.remove('d-none');
+    };
+
+    window.executeReportDeletion = function(id) {
+        itemToDeleteId = id;
+        document.getElementById('deleteConfirmModal').style.display = 'flex';
+    };
+
+    window.closeDeleteModal = function() {
+        itemToDeleteId = null;
+        document.getElementById('deleteConfirmModal').style.display = 'none';
+    };
+
+    window.confirmDeleteAction = async function() {
+        if (!itemToDeleteId) return;
+        const id = itemToDeleteId;
+        closeDeleteModal(); 
+        
+        try {
+            const response = await fetch(`/api/lost-and-found`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                body: JSON.stringify({ action: 'delete', report_id: id })
+            });
+            if (response.ok) {
+                document.getElementById('modal-title-text').textContent = "Report Removed";
+                document.getElementById('modal-desc-text').textContent = "The item log matrix registration signature was dropped from systems successfully.";
+                document.getElementById('successModal').style.display = 'flex';
+                syncFleetThenLoadItems();
+                loadItems('history', 'items-history-container');
+            }
+        } catch (err) { console.error("Deletion request execution fault:", err); }
+    };
+
+    syncFleetThenLoadItems();
+    loadItems('history', 'items-history-container');
+
+    const form = document.getElementById('lost-found-form');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(e.target).entries());
+            
+            const isEditingMode = !!document.getElementById('edit-report-id').value;
+            if (isEditingMode) {
+                data.action = 'edit';
+            }
+
+            try {
+                const response = await fetch('/api/lost-and-found', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    document.getElementById('modal-title-text').textContent = isEditingMode ? "Report Modifications Saved" : "Report Submitted";
+                    document.getElementById('modal-desc-text').textContent = isEditingMode ? "Your log definitions were updated across operations matrix directories cleanly." : "Your lost item report has been successfully recorded. Notifications have been dispatched to available driver teams immediately.";
+                    
+                    document.getElementById('successModal').style.display = 'flex';
+                    resetFormState();
+                    syncFleetThenLoadItems();
+                    loadItems('history', 'items-history-container');
+                }
+            } catch (err) { console.error("Submit error:", err); }
+        });
+    }
+});
+</script>
+{% endblock %}

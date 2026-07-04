@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Transport Heatmap{% endblock %}
+
+{% block head_extras %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
+{% block content %}
+<div class="container pb-5">
+    
+    <div class="d-flex align-items-center justify-content-between mb-4 mt-3 fade-up">
+        <div class="d-flex align-items-center">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-info me-3 px-4 rounded-pill fw-bold text-white" style="border-color:#34d2ff; background:rgba(52,210,255,0.1);">← Back to Hub</a>
+            <div>
+                <h2 class="fw-bold mb-1 text-white">🔥 Transport Heatmap</h2>
+                <p class="text-muted mb-0">Real-time passenger density and peak usage insights across Andhra Pradesh.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card glass-card mb-4 fade-up" style="background: rgba(11,29,54,0.6); border: 1px solid var(--tp-border);">
+        <div class="card-body p-2 p-md-3">
+            <div id="real-heatmap-container" style="height: 550px; border-radius: 8px; z-index: 1;"></div>
+        </div>
+    </div>
+
+    <div class="card glass-card mb-4 fade-up" style="background: rgba(11,29,54,0.6); border: 1px solid var(--tp-border);">
+        <div class="card-body">
+            <h5 class="card-title mb-4 text-white fw-bold">📊 Top Transport Hubs (High Demand)</h5>
+            <div class="row g-3">
+                <div class="col-md-2 col-sm-4">
+                    <div style="background: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000; border-radius: 8px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.85rem; color: #ff9aa3; font-weight: 600; display: block;">#1 HUB</span>
+                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Vijayawada</strong>
+                    </div>
+                </div>
+                <div class="col-md-2 col-sm-4">
+                    <div style="background: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000; border-radius: 8px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.85rem; color: #ff9aa3; font-weight: 600; display: block;">#2 HUB</span>
+                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Hyderabad</strong>
+                    </div>
+                </div>
+                <div class="col-md-2 col-sm-4">
+                    <div style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800; border-radius: 8px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.85rem; color: #ffd58a; font-weight: 600; display: block;">#3 HUB</span>
+                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Benguluru</strong>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800; border-radius: 8px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.85rem; color: #ffd58a; font-weight: 600; display: block;">#4 HUB</span>
+                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Visakhapatnam</strong>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800; border-radius: 8px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.85rem; color: #ffd58a; font-weight: 600; display: block;">#5 HUB</span>
+                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Vizianagaram</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4 fade-up">
+        <div class="col-md-3 col-sm-6">
+            <div class="metric-card bg-dark border-info">
+                <h6><span class="icon">🚌</span>Total Routes</h6>
+                <p data-counter="{{ heatmap_stats.total_routes }}">{{ heatmap_stats.total_routes }}</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="metric-card bg-dark border-info">
+                <h6><span class="icon">📍</span>Total Stops</h6>
+                <p data-counter="{{ heatmap_stats.total_stops }}">{{ heatmap_stats.total_stops }}</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="metric-card bg-dark border-info">
+                <h6><span class="icon">🏙️</span>Total Cities</h6>
+                <p data-counter="{{ heatmap_stats.total_cities }}">{{ heatmap_stats.total_cities }}</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="metric-card bg-dark border-info">
+                <h6><span class="icon">🧭</span>Total Trips</h6>
+                <p data-counter="{{ heatmap_stats.total_trips }}">{{ heatmap_stats.total_trips }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="{{ url_for('static', filename='js/heatmap.js') }}"></script>
+{% endblock %}

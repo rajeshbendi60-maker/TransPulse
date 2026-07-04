@@ -1,0 +1,719 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Passenger Dashboard{% endblock %}
+{% block head_extras %}
+<style>
+    /* Prevent interaction behind overlays smoothly */
+    body.modal-open { overflow: hidden; }
+
+    /* Passenger dashboard action-card alignment */
+    #feature-hub .feature-card-lg {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    #feature-hub .feature-card-lg:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 18px 40px rgba(52, 210, 255, 0.25);
+    }
+
+    #feature-hub .feature-left {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        min-width: 0;
+    }
+
+    #feature-hub .feature-text {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    #feature-hub .feature-action {
+        flex-shrink: 0;
+    }
+
+    #feature-hub .fc-title {
+        margin-bottom: 0.35rem;
+    }
+
+    #feature-hub .fc-arrow {
+        white-space: nowrap;
+    }
+
+    /* Next-Level Route Card Hover Interactions */
+    .route-card-interactive {
+        cursor: pointer;
+        background: rgba(11,29,54,0.6); 
+        border: 1px solid rgba(52,210,255,0.2); 
+        border-radius: 12px;
+        transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .route-card-interactive:hover {
+        transform: translateY(-6px);
+        border-color: #34d2ff !important;
+        box-shadow: 0 15px 35px -5px rgba(52, 210, 255, 0.25) !important;
+        background: rgba(16,41,69,0.85);
+    }
+    
+    /* Premium Route Modal Scrollbar */
+    #routeDetailsModal .modal-scroll-area::-webkit-scrollbar {
+        width: 6px;
+    }
+    #routeDetailsModal .modal-scroll-area::-webkit-scrollbar-thumb {
+        background: rgba(52,210,255,0.3);
+        border-radius: 10px;
+    }
+
+    /* Modal Animations (Items 7 & 8) */
+    @keyframes modalFadeIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+    }
+    .modal-animate {
+        animation: modalFadeIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    /* Skeleton Loading Animation (Item 6) */
+    @keyframes pulse-skeleton {
+        0% { background-color: rgba(52,210,255,0.03); border-color: rgba(52,210,255,0.05); }
+        50% { background-color: rgba(52,210,255,0.1); border-color: rgba(52,210,255,0.2); }
+        100% { background-color: rgba(52,210,255,0.03); border-color: rgba(52,210,255,0.05); }
+    }
+    .skeleton-card {
+        height: 140px;
+        border-radius: 12px;
+        border: 1px solid rgba(52,210,255,0.1);
+        animation: pulse-skeleton 1.8s infinite ease-in-out;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container position-relative pb-5">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4 mt-3 fade-up">
+        <div>
+            <h3 class="fw-bold mb-1 text-white">Smart Mobility Hub</h3>
+            <p class="text-info mb-0" style="opacity: 0.85;">Welcome, {{ current_user.full_name }} | APSRTC</p>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <div id="nav-notification-badge" class="badge bg-danger fs-6 d-none" style="cursor:pointer; box-shadow: 0 0 10px rgba(220,53,69,0.5);" onclick="window.location.href='{{ url_for('notifications_center') }}'">Notifications (0)</div>
+            <span class="status-pill status-on-time shadow-sm">System Live</span>
+        </div>
+    </div>
+
+    <datalist id="hubStopSuggestions"></datalist>
+
+    <div id="feature-hub" class="feature-grid fade-up-1">
+        <div class="feature-card-lg fc-purple" onclick="Workflow.showScreen('screen-routes')" style="cursor: pointer;">
+            <div class="feature-left fc-content">
+                <div class="feature-icon fc-icon-wrapper"><div class="fc-icon">📍</div></div>
+                <div class="feature-text">
+                    <h4 class="fc-title">Major AP Routes & ETAs</h4>
+                    <p class="fc-desc">View key APSRTC routes with live estimated arrival times</p>
+                </div>
+            </div>
+            <div class="feature-action fc-arrow">Open &rarr;</div>
+        </div>
+
+        <div class="feature-card-lg fc-cyan" onclick="Workflow.showScreen('screen-search-bus')" style="cursor: pointer;">
+            <div class="feature-left fc-content">
+                <div class="feature-icon fc-icon-wrapper"><div class="fc-icon">🔍</div></div>
+                <div class="feature-text">
+                    <h4 class="fc-title">Search Bus</h4>
+                    <p class="fc-desc">Find available buses using source and destination stops</p>
+                </div>
+            </div>
+            <div class="feature-action fc-arrow">Open &rarr;</div>
+        </div>
+
+        <div class="feature-card-lg fc-blue" onclick="Workflow.showScreen('screen-live-fleet')" style="cursor: pointer;">
+            <div class="feature-left fc-content">
+                <div class="feature-icon fc-icon-wrapper"><div class="fc-icon">📡</div></div>
+                <div class="feature-text">
+                    <h4 class="fc-title">Live Fleet Status</h4>
+                    <p class="fc-desc">Check active fleet health, route status, and current bus movement</p>
+                </div>
+            </div>
+            <div class="feature-action fc-arrow">Open &rarr;</div>
+        </div>
+
+        <div class="feature-card-lg fc-indigo" onclick="Workflow.showScreen('screen-live-tracking')" style="cursor: pointer;">
+            <div class="feature-left fc-content">
+                <div class="feature-icon fc-icon-wrapper"><div class="fc-icon">🗺️</div></div>
+                <div class="feature-text">
+                    <h4 class="fc-title">Live Tracking</h4>
+                    <p class="fc-desc">Access full screen geographical bus lookup stream portal views</p>
+                </div>
+            </div>
+            <div class="feature-action fc-arrow">Open &rarr;</div>
+        </div>
+
+        <a href="{{ url_for('notifications_center') }}" class="text-decoration-none feature-card-lg fc-yellow">
+            <div class="feature-left fc-content">
+                <div class="feature-icon fc-icon-wrapper"><div class="fc-icon">🔔</div></div>
+                <div class="feature-text">
+                    <h4 class="fc-title">Notifications</h4>
+                    <p class="fc-desc">Read service alerts, delay updates, and passenger announcements</p>
+                </div>
+            </div>
+            <div class="feature-action fc-arrow">Open &rarr;</div>
+        </a>
+
+        <a href="{{ url_for('lost_and_found_page') }}" class="text-decoration-none feature-card-lg fc-green">
+            <div class="feature-left fc-content">
+                <div class="feature-icon fc-icon-wrapper"><div class="fc-icon">🎒</div></div>
+                <div class="feature-text">
+                    <h4 class="fc-title">Lost & Found</h4>
+                    <p class="fc-desc">Report missing items and review recovery updates from staff</p>
+                </div>
+            </div>
+            <div class="feature-action fc-arrow">Open &rarr;</div>
+        </a>
+
+        <a href="{{ url_for('complaints_page') }}" class="text-decoration-none feature-card-lg fc-orange">
+            <div class="feature-left fc-content">
+                <div class="feature-icon fc-icon-wrapper"><div class="fc-icon">📝</div></div>
+                <div class="feature-text">
+                    <h4 class="fc-title">Complaints</h4>
+                    <p class="fc-desc">Submit service issues, delays, or route concerns for review</p>
+                </div>
+            </div>
+            <div class="feature-action fc-arrow">Open &rarr;</div>
+        </a>
+
+        <div class="feature-card-lg fc-red" onclick="executePremiumSOSTrigger()" style="cursor: pointer;">
+            <div class="feature-left fc-content">
+                <div class="feature-icon fc-icon-wrapper"><div class="fc-icon">🚨</div></div>
+                <div class="feature-text">
+                    <h4 class="fc-title text-white">SOS Emergency</h4>
+                    <p class="fc-desc text-white-50">Trigger an immediate distress signal to operations support</p>
+                </div>
+            </div>
+            <div class="feature-action fc-arrow text-white">Open &rarr;</div>
+        </div>
+    </div>
+
+
+    <div id="screen-routes" class="feature-screen d-none fade-up">
+        <div class="d-flex align-items-center mb-4">
+            <button class="btn btn-outline-secondary me-3 px-4 rounded-pill" onclick="Workflow.goHome()">← Back to Hub</button>
+            <h4 class="m-0 fw-bold text-white">🗺️ Major AP Routes & ETAs</h4>
+            <span class="ms-3 badge bg-info text-dark rounded-pill fw-bold">Click a route to view Live Buses & Stops</span>
+        </div>
+        
+        <!-- Skeleton UI applied (Item 6) -->
+        <div class="row g-3 mb-4" id="dynamic-routes-container">
+            <div class="col-12 col-md-6"><div class="skeleton-card w-100"></div></div>
+            <div class="col-12 col-md-6"><div class="skeleton-card w-100"></div></div>
+            <div class="col-12 col-md-6"><div class="skeleton-card w-100"></div></div>
+            <div class="col-12 col-md-6"><div class="skeleton-card w-100"></div></div>
+        </div>
+    </div>
+
+
+    <div id="screen-search-bus" class="feature-screen d-none fade-up">
+        <div class="d-flex align-items-center mb-4">
+            <button class="btn btn-outline-secondary me-3 px-4 rounded-pill" onclick="Workflow.goHome()">← Back to Hub</button>
+            <h4 class="m-0 fw-bold text-white">🔍 Search Bus</h4>
+        </div>
+
+        <div class="card glass-card border-info mb-4">
+            <div class="card-body p-4">
+                <form id="searchBusForm" class="row g-3">
+                    <div class="col-md-5">
+                        <label class="form-label text-muted small fw-bold text-uppercase">Source Stop</label>
+                        <!-- Updated Placeholder (Item 3) -->
+                        <input type="text" id="searchSrc" list="hubStopSuggestions" class="form-control bg-dark text-white border-secondary" placeholder="Enter Source Stop">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label text-muted small fw-bold text-uppercase">Destination Stop</label>
+                        <!-- Updated Placeholder (Item 3) -->
+                        <input type="text" id="searchDst" list="hubStopSuggestions" class="form-control bg-dark text-white border-secondary" placeholder="Enter Destination Stop">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-info w-100 fw-bold text-dark">Search</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="text-white fw-bold m-0">🚌 Available Buses</h5>
+            <span id="total-buses-badge" class="badge bg-primary fs-6">Total Available Buses: 0</span>
+        </div>
+
+        <div id="searchResults" class="row g-3">
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-info" role="status"></div>
+                <p class="text-muted mt-2">Loading APSRTC live fleet...</p>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="screen-live-fleet" class="feature-screen d-none fade-up">
+        <div class="d-flex align-items-center mb-4">
+            <button class="btn btn-outline-secondary me-3 px-4 rounded-pill" onclick="Workflow.goHome()">← Back to Hub</button>
+            <h4 class="m-0 fw-bold text-white">📡 Live Fleet Status</h4>
+        </div>
+
+        <div class="row g-3 mb-4" id="fleet-summary-metrics">
+            </div>
+
+        <div class="card glass-card border-primary mb-4">
+            <div class="card-body p-4">
+                <form id="fleetStatusForm">
+                    <!-- Updated Label & Placeholder (Item 4) -->
+                    <label class="form-label text-muted small fw-bold text-uppercase">Enter Bus Number or Registration Number</label>
+                    <div class="input-group">
+                        <input type="text" id="fleetInputBus" class="form-control bg-dark text-white border-secondary" placeholder="Enter Bus Number or Registration Number">
+                        <button type="submit" class="btn btn-primary fw-bold px-4">Search Status</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div id="fleetStatusResults" class="row g-3">
+            <div class="col-12">
+                <div class="alert alert-info bg-dark border-secondary text-info text-center">
+                    Search a Bus ID or Bus Number
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="screen-live-tracking" class="feature-screen d-none fade-up">
+        <div class="d-flex align-items-center mb-4">
+            <button class="btn btn-outline-secondary me-3 px-4 rounded-pill" onclick="Workflow.goHome()">← Back to Hub</button>
+            <h4 class="m-0 fw-bold text-white">🗺️ Live GPS Tracking</h4>
+        </div>
+
+        <div class="card glass-card border-purple" style="margin-bottom: 36px;">
+            <div class="card-body p-5 text-center">
+                <h5 class="text-white mb-3">Enter Vehicle ID to Open Tracking Map</h5>
+                <p class="text-muted mb-4">You will be redirected to the dedicated fullscreen tracking portal.</p>
+                
+                <form id="trackingSearchForm" class="mx-auto" style="max-width: 400px;">
+                    <div class="input-group">
+                        <!-- Updated Placeholder (Item 5) -->
+                        <input type="text" id="trkSearchBusId" class="form-control bg-dark text-white border-secondary" placeholder="Enter Bus Number or Registration Number" required>
+                        <button type="submit" class="btn btn-info text-dark fw-bold px-4">Track Live</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="tracking-history-panel mb-4" data-tracking-history-panel>
+            <div class="tracking-history-header">
+                <h5 class="tracking-history-title">Live Tracking History</h5>
+                <p class="tracking-history-subtitle">Recently tracked vehicles from your live tracking activity.</p>
+            </div>
+            <div class="table-responsive" data-tracking-history-table>
+                <table class="table tracking-history-table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Bus ID</th>
+                            <th>Route</th>
+                            <th>Source &rarr; Destination</th>
+                            <th>Last Tracked</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody data-tracking-history-body>
+                        <tr>
+                            <td colspan="6" class="tracking-history-empty">No recently tracked vehicles.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Added .modal-animate for premium entry animation (Item 8) -->
+<div id="sos-premium-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 200000; align-items: center; justify-content: center; backdrop-filter: blur(8px);">
+    <div class="card glass-panel shadow-lg modal-animate" style="width: 90%; max-width: 400px; border-color: #ff5d6c; border-radius: 16px; text-align: center; background: linear-gradient(135deg, #18050a, #040b18);">
+        <div class="card-body text-center p-5">
+            <h2 class="text-danger mb-3 fw-bold">⚠️ SOS EMERGENCY</h2>
+            <div class="mb-3 text-start">
+                <label class="form-label text-muted small fw-bold">Bus ID *</label>
+                <input type="text" id="premium-sos-bus-id" class="form-control bg-dark text-white border-secondary shadow-sm" placeholder="e.g. APSRTC-101 or registration plate" required>
+            </div>
+            <div class="mb-4 text-start">
+                <label class="form-label text-muted small fw-bold">Emergency Type</label>
+            <select id="premium-sos-reason" class="form-select bg-dark text-white border-secondary shadow-sm">
+                <option value="Medical Emergency">Medical Emergency</option>
+                <option value="Women Safety">Women Safety</option>
+                <option value="Security Threat">Security Threat</option>
+                <option value="Accident">Accident</option>
+                <option value="Fire">Fire</option>
+                <option value="Other Emergency">Other Emergency</option>
+            </select>
+            </div>
+            <div class="d-flex gap-3">
+                <button class="btn btn-outline-light w-50 fw-bold rounded-pill" onclick="cancelPremiumSOS()">Cancel</button>
+                <button class="btn btn-danger w-50 fw-bold rounded-pill shadow" onclick="confirmPremiumSOS()">Send SOS</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="sosSuccessModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(24,5,10,0.78); z-index:200001; align-items:center; justify-content:center; backdrop-filter: blur(10px); padding:18px;">
+    <div class="card glass-panel shadow-lg modal-animate" style="width:90%; max-width:440px; border:1px solid rgba(255,93,108,0.72); border-radius:16px; background: linear-gradient(135deg, #1c0610, #040b18); box-shadow:0 0 44px rgba(255,93,108,0.34);">
+        <div class="card-body p-5 text-center">
+            <div style="background: #ff5d6c; border-radius: 12px; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px auto; box-shadow: 0 10px 20px rgba(255,93,108,0.3);">
+                <span style="font-size: 2.5rem;">🚨</span>
+            </div>
+            <h3 class="text-white fw-bold mb-3">&#128680; SOS ALERT SENT</h3>
+            <p class="text-muted mb-4">Your emergency alert has been successfully transmitted.</p>
+            <div class="text-start mb-4 p-3" style="background: rgba(255,93,108,0.08); border:1px solid rgba(255,93,108,0.28); border-radius:12px;">
+                <p class="fw-bold mb-2" style="color:#ff9f43;">Recipients:</p>
+                <p class="text-light mb-1">&#10003; Assigned Driver</p>
+                <p class="text-light mb-0">&#10003; Transport Administration Team</p>
+            </div>
+            <p class="text-muted small mb-1">Reference ID</p>
+            <p class="fw-bold fs-5 mb-3" style="color:#ff9f43;" id="sos-success-ref">SOS-PENDING</p>
+            <p class="text-muted small mb-4">Emergency response is being arranged.</p>
+            <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" style="background: linear-gradient(135deg, #ff5d6c, #ff9f43); color:#18050a; border:0; box-shadow: 0 0 24px rgba(255,93,108,0.38);" onclick="window.SOSHandler ? window.SOSHandler.closeSuccessModal() : (document.getElementById('sosSuccessModal').style.display='none')">Got It</button>
+        </div>
+    </div>
+</div>
+
+<!-- Added .modal-animate for premium entry animation (Item 7) -->
+<div id="routeDetailsModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:150000; align-items:center; justify-content:center; backdrop-filter: blur(8px);">
+    <div class="card glass-panel shadow-lg modal-animate" style="width:95%; max-width:650px; border-color:#34d2ff; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18); max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="card-body p-4 p-md-5 modal-scroll-area" style="overflow-y: auto;">
+            
+            <div class="d-flex justify-content-between align-items-center mb-4 border-bottom border-secondary border-opacity-50 pb-3">
+                <h4 class="text-white fw-bold mb-0" id="route-modal-title">Route Details</h4>
+                <button class="btn btn-outline-secondary btn-sm rounded-circle" style="width: 32px; height: 32px;" onclick="closeRouteModal()">✕</button>
+            </div>
+
+            <h6 class="text-info fw-bold mb-3 text-uppercase" style="letter-spacing: 1px;">🚌 Available Bus IDs</h6>
+            <div id="route-modal-buses" class="mb-4">
+                </div>
+
+            <h6 class="text-info fw-bold mb-3 text-uppercase" style="letter-spacing: 1px;">📍 Master Stop Sequence Path</h6>
+            <div id="route-modal-stops" class="p-4" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px;">
+                </div>
+            
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tracking-history.js') }}?v=tracking-history-compact"></script>
+<script src="{{ url_for('static', filename='js/passenger-flow.js') }}?v=track-live-redirect"></script>
+<script>
+    // ----------------------------------------------------
+    // ESC & Click-Outside Modal Handlers (Items 9 & 10)
+    // ----------------------------------------------------
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            closeRouteModal();
+            cancelPremiumSOS();
+        }
+    });
+
+    window.addEventListener("click", (e) => {
+        const routeModal = document.getElementById('routeDetailsModal');
+        const sosModal = document.getElementById('sos-premium-modal');
+        if (e.target === routeModal) closeRouteModal();
+        if (e.target === sosModal) cancelPremiumSOS();
+    });
+
+    // ----------------------------------------------------
+    // NEXT-LEVEL: Interactive Route Layout Modal Logic
+    // ----------------------------------------------------
+    async function showRouteDetails(routeCode, originName, destName) {
+        document.body.classList.add('modal-open');
+        document.getElementById('routeDetailsModal').style.display = 'flex';
+        
+        document.getElementById('route-modal-title').innerHTML = `${originName} <span class="text-muted fw-light mx-2">→</span> ${destName}`;
+        
+        const busesContainer = document.getElementById('route-modal-buses');
+        const stopsContainer = document.getElementById('route-modal-stops');
+        
+        busesContainer.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-info spinner-border-sm"></div><p class="text-muted small mt-2">Searching live telemetry grid...</p></div>';
+        stopsContainer.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-info spinner-border-sm"></div><p class="text-muted small mt-2">Loading route path configuration...</p></div>';
+        
+        try {
+            const [routesRes, busesRes] = await Promise.all([
+                fetch('/api/routes/live'),
+                fetch('/api/buses/live')
+            ]);
+            
+            const routesData = await routesRes.json();
+            const busesData = await busesRes.json();
+            
+            const targetRoute = routesData.routes.find(r => r.route_code === routeCode);
+            
+            let activeBuses = [];
+            if(targetRoute) {
+                activeBuses = busesData.buses.filter(b => b.route_id === targetRoute.route_id);
+            }
+            
+            if(activeBuses.length > 0) {
+                busesContainer.innerHTML = activeBuses.map(b => `
+                    <div class="d-flex justify-content-between align-items-center p-3 mb-2" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(52,210,255,0.15); border-radius: 12px;">
+                        <div>
+                            <h6 class="text-white fw-bold mb-0">${b.bus_number}</h6>
+                            <small class="text-muted">${b.current_stop || '--'} → ${b.next_stop || '--'}</small>
+                            <small class="text-muted d-block">Delay: <span class="text-warning">${b.current_delay_label || '0 min'}</span> | ETA: <span class="text-info">${b.updated_eta_minutes || b.eta_minutes || 0} min</span></small>
+                        </div>
+                        <a href="/tracking/${encodeURIComponent(b.bus_number)}?source=routes" class="btn btn-sm btn-info fw-bold text-dark">📍 Track</a>
+                    </div>
+                `).join('');
+            } else {
+                busesContainer.innerHTML = '<span class="text-muted small">No active buses currently transmitting telemetry.</span>';
+            }
+            
+            if(targetRoute && targetRoute.stops && targetRoute.stops.length > 0) {
+                let stopsHtml = `
+                    <div class="mb-3 p-3" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(52,210,255,0.12); border-radius: 12px;">
+                        <div class="d-flex flex-wrap gap-3 small">
+                            <span class="text-muted">Departure: <strong class="text-info">${targetRoute.departure_time || '--'}</strong></span>
+                            <span class="text-muted">Arrival: <strong class="text-info">${targetRoute.arrival_time || '--'}</strong></span>
+                            <span class="text-muted">Journey Duration: <strong class="text-warning">${targetRoute.journey_duration || '--'}</strong></span>
+                        </div>
+                    </div>
+                    <div class="route-vertical-timeline" style="position: relative; border-left: 2px solid rgba(52, 210, 255, 0.2); margin-left: 12px; padding-left: 25px; padding-top: 5px; padding-bottom: 5px;">`;
+
+                targetRoute.stops.forEach((s, i) => {
+                    let dotColor = "rgba(52, 210, 255, 0.6)"; 
+                    let textColor = "text-white";
+                    let subText = "Intermediate Stop";
+
+                    if (i === 0) {
+                        dotColor = "#22d39a"; 
+                        textColor = "text-success";
+                        subText = "Origin Point";
+                    } else if (i === targetRoute.stops.length - 1) {
+                        dotColor = "#ff5d6c"; 
+                        textColor = "text-danger";
+                        subText = "Final Destination";
+                    }
+
+                    stopsHtml += `
+                        <div style="position: relative; margin-bottom: ${i === targetRoute.stops.length - 1 ? '0' : '24px'};">
+                            <div style="position: absolute; left: -32px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 10px ${dotColor}; border: 2px solid #040b18;"></div>
+                            <h6 class="fw-bold mb-0 ${textColor}" style="letter-spacing: 0.5px;">${s.name}</h6>
+                            <small class="text-info d-block" style="font-size: 0.75rem;">${s.scheduled_time || '--'}</small>
+                            <small class="text-muted" style="font-size: 0.75rem;">${subText}</small>
+                        </div>
+                    `;
+                });
+                stopsHtml += '</div>';
+                stopsContainer.innerHTML = stopsHtml;
+            } else if (targetRoute) {
+                stopsContainer.innerHTML = `<div class="text-white text-center py-3"><strong>${targetRoute.source_stop || originName}</strong><br><span class="text-info fs-4">↓</span><br><strong>${targetRoute.destination_stop || destName}</strong></div>`;
+            } else {
+                stopsContainer.innerHTML = '<span class="text-muted small">Route structural trajectory map unavailable.</span>';
+            }
+            
+        } catch (err) {
+            console.error(err);
+            busesContainer.innerHTML = '<span class="text-danger small fw-bold">Connection structural error.</span>';
+            stopsContainer.innerHTML = '<span class="text-danger small fw-bold">Connection structural error.</span>';
+        }
+    }
+
+    function closeRouteModal() {
+        const modal = document.getElementById('routeDetailsModal');
+        if(modal) {
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+    }
+
+    // ----------------------------------------------------
+    // BULLETPROOF GLOBAL CAPTURE INTERCEPTOR 
+    // Forces source parameters onto Search results and Live Fleet items dynamically
+    // ----------------------------------------------------
+    window.addEventListener('click', function(event) {
+        const targetLink = event.target.closest('a, button');
+        if (!targetLink) return;
+        
+        let targetUrl = targetLink.getAttribute('href') || targetLink.getAttribute('onclick') || '';
+        
+        if (targetUrl.includes('/tracking/')) {
+            if (targetUrl.includes('source=')) return;
+            
+            event.preventDefault();
+            event.stopPropagation();
+            
+            let extractedBusId = '';
+            const pathSegments = targetUrl.match(/\/tracking\/([^?&#"'\s)]+)/);
+            if (pathSegments && pathSegments[1]) {
+                extractedBusId = decodeURIComponent(pathSegments[1]);
+            } else {
+                return;
+            }
+            
+            let currentActiveViewSource = 'live_tracking';
+            const visibleScreen = document.querySelector('.feature-screen:not(.d-none)');
+            
+            if (visibleScreen) {
+                if (visibleScreen.id === 'screen-search-bus') currentActiveViewSource = 'search';
+                else if (visibleScreen.id === 'screen-live-fleet') currentActiveViewSource = 'live_fleet';
+                else if (visibleScreen.id === 'screen-routes') currentActiveViewSource = 'routes';
+            }
+            
+            const routeOverlayModal = document.getElementById('routeDetailsModal');
+            if (routeOverlayModal && routeOverlayModal.style.display === 'flex') {
+                currentActiveViewSource = 'routes';
+            }
+            
+            if (currentActiveViewSource === 'search') {
+                sessionStorage.setItem('fromSearchBusPage', 'true');
+            } else {
+                sessionStorage.setItem('fromSearchBusPage', 'false');
+            }
+            
+            window.location.href = '/tracking/' + encodeURIComponent(extractedBusId) + '?source=' + currentActiveViewSource;
+        }
+    }, true);
+
+    // ----------------------------------------------------
+    // Custom Premium SOS Implementation
+    // ----------------------------------------------------
+    let customSosTimer;
+    let customSosCount = 10;
+    let premiumSosSubmitting = false;
+
+    function restorePremiumSOSDashboard() {
+        clearInterval(customSosTimer);
+        const sosModal = document.getElementById('sos-premium-modal');
+        if (sosModal) sosModal.style.display = 'none';
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+        document.documentElement.style.overflow = '';
+    }
+
+    async function resolvePremiumSOSBusNumber() {
+        const modalBus = document.getElementById('premium-sos-bus-id')?.value.trim();
+        if (modalBus) return modalBus;
+
+        const trackedBus = sessionStorage.getItem('tp-active-tracking-bus') || localStorage.getItem('tp-active-tracking-bus') || '';
+        if (trackedBus.trim()) return trackedBus.trim();
+
+        const typedBus = document.getElementById('trkSearchBusId')?.value.trim();
+        if (typedBus) return typedBus;
+
+        const workflowBus = window.Workflow?.apiData?.buses?.find(bus => bus && bus.bus_number);
+        if (workflowBus && workflowBus.bus_number) return workflowBus.bus_number;
+
+        try {
+            const res = await fetch('/api/buses/live');
+            if (!res.ok) return '';
+            const data = await res.json();
+            const bus = (data.buses || []).find(item => item && item.bus_number);
+            return bus ? bus.bus_number : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function executePremiumSOSTrigger() {
+        if (premiumSosSubmitting) return;
+        document.body.classList.add('modal-open');
+        document.getElementById('sos-premium-modal').style.display = 'flex';
+        clearInterval(customSosTimer);
+        resolvePremiumSOSBusNumber().then(busNumber => {
+            const busInput = document.getElementById('premium-sos-bus-id');
+            if (busInput && busNumber) busInput.value = busNumber;
+        });
+    }
+
+    function cancelPremiumSOS() {
+        restorePremiumSOSDashboard();
+    }
+
+    async function confirmPremiumSOS() {
+        if (premiumSosSubmitting) return;
+        premiumSosSubmitting = true;
+        clearInterval(customSosTimer);
+        const reason = document.getElementById('premium-sos-reason').value;
+        const busNumber = await resolvePremiumSOSBusNumber();
+        const sendButton = document.querySelector('#sos-premium-modal .btn-danger');
+        if (sendButton) {
+            sendButton.disabled = true;
+            sendButton.textContent = 'Sending...';
+        }
+        
+        try {
+            if (!busNumber) throw new Error('No active bus available for SOS.');
+            const gps = await new Promise(resolve => {
+                if (!navigator.geolocation) {
+                    resolve({});
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                    pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+                    () => resolve({}),
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+                );
+            });
+            const res = await fetch('/api/sos/trigger', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                body: JSON.stringify({ emergency_type: reason, bus_number: busNumber, ...gps })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'SOS could not be sent.');
+            restorePremiumSOSDashboard();
+            if (window.SOSHandler && typeof window.SOSHandler.showSuccessModal === 'function') {
+                window.SOSHandler.showSuccessModal(data);
+            } else {
+                const ref = document.getElementById('sos-success-ref');
+                if (ref && data.id) ref.innerText = `SOS-${String(data.id).padStart(5, '0')}`;
+                document.getElementById('sosSuccessModal').style.display = 'flex';
+            }
+        } catch(e) {
+            console.error(e);
+            restorePremiumSOSDashboard();
+            if (window.TransPulseUtils && typeof window.TransPulseUtils.showPremiumModal === 'function') {
+                window.TransPulseUtils.showPremiumModal({
+                    type: 'danger',
+                    title: 'SOS Not Sent',
+                    message: e.message || 'Unable to send SOS right now. Please try again.',
+                    icon: '&#9888;'
+                });
+            }
+        } finally {
+            premiumSosSubmitting = false;
+            if (sendButton) {
+                sendButton.disabled = false;
+                sendButton.textContent = 'Send SOS';
+            }
+        }
+    }
+
+    // ----------------------------------------------------
+    // Hash Navigator System
+    // ----------------------------------------------------
+    document.addEventListener('DOMContentLoaded', () => {
+        const hash = window.location.hash;
+        const tryShowScreen = () => {
+            if(window.Workflow && typeof window.Workflow.showScreen === 'function') {
+                if(hash === '#search') window.Workflow.showScreen('screen-search-bus');
+                else if (hash === '#live-tracking') window.Workflow.showScreen('screen-live-tracking');
+                else if (hash === '#live-fleet') window.Workflow.showScreen('screen-live-fleet');
+                else if (hash === '#routes') window.Workflow.showScreen('screen-routes');
+            } else {
+                setTimeout(tryShowScreen, 50);
+            }
+        };
+        if(hash) tryShowScreen();
+    });
+</script>
+{% endblock %}

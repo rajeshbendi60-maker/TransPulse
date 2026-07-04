@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Identity Authorization{% endblock %}
+{% block content %}
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<style>
+    @keyframes pulseBgFloat {
+        0% { transform: translate(0, 0) scale(1); }
+        100% { transform: translate(30px, 30px) scale(1.1); }
+    }
+    
+    .floating-bus-animation {
+        width: min(235px, 78%);
+        height: auto;
+        display: block;
+        animation: floatBus 4s ease-in-out infinite;
+        margin: 0 auto 0.35rem;
+        filter: drop-shadow(0 15px 20px rgba(52,210,255,0.4));
+    }
+    
+    @keyframes floatBus {
+        0%, 100% { 
+            transform: translateY(0) scale(1); 
+            filter: drop-shadow(0 10px 15px rgba(52,210,255,0.3));
+        }
+        50% { 
+            transform: translateY(-15px) scale(1.05); 
+            filter: drop-shadow(0 25px 25px rgba(52,210,255,0.6));
+        }
+    }
+    
+    .divider {
+        display: flex;
+        align-items: center;
+        text-align: center;
+        color: #6c757d;
+        margin: 1.5rem 0;
+    }
+    .divider::before, .divider::after {
+        content: '';
+        flex: 1;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .divider:not(:empty)::before { margin-right: .5em; }
+    .divider:not(:empty)::after { margin-left: .5em; }
+
+    .dynamic-field-wrapper {
+        max-height: 0;
+        opacity: 0;
+        margin-bottom: 0 !important;
+        overflow: hidden;
+        transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+    }
+    .dynamic-field-wrapper.reveal {
+        max-height: 120px;
+        opacity: 1;
+        margin-bottom: 1rem !important;
+    }
+</style>
+
+<section class="auth-page-shell">
+<div class="container py-4 fade-in-content position-relative auth-shell-container">
+    <div class="auth-home-row">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-light auth-home-link">&larr; Back To Home</a>
+    </div>
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card glass-login-card auth-card p-4 p-md-5 shadow-lg border-info border-opacity-25" style="backdrop-filter: blur(15px); border-radius: 20px;">
+                
+                <div class="text-center mb-4 pb-2">
+                    <img src="{{ url_for('static', filename='images/auth-bus.png') }}?v=tp-route" alt="APSRTC bus" class="floating-bus-animation">
+                    <h2 class="text-white fw-bold mb-1" style="letter-spacing: -0.5px;">Welcome to TransPulse</h2>
+                    <p class="text-info small mb-0 fw-semibold">APSRTC Smart Transport Management System</p>
+                </div>
+                
+                <form method="post" action="{{ url_for('login_page') }}" id="unifiedLoginForm">
+                    <input type="hidden" name="login_type" id="form-login-type" value="passenger">
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-info fw-bold small">Email Address</label>
+                        <input type="email" name="email" id="input-email" class="form-control bg-dark text-white border-info shadow-none" placeholder="name@domain.com" required oninput="evaluateEmailDomainSignature()">
+                    </div>
+
+                    <div class="mb-3 dynamic-field-wrapper" id="wrapper-driver-id">
+                        <label class="form-label text-info fw-bold small">Pilot Operational Code (DRV-XXX)</label>
+                        <input type="text" name="driver_id" id="input-driver-id" class="form-control bg-dark text-white border-info shadow-none" placeholder="e.g. DRV-001">
+                    </div>
+
+                    <div class="mb-3 dynamic-field-wrapper" id="wrapper-admin-id">
+                        <label class="form-label text-info fw-bold small">Security Admin ID Token (ADM-XXX)</label>
+                        <input type="text" name="admin_id" id="input-admin-id" class="form-control bg-dark text-white border-info shadow-none" placeholder="e.g. ADM-TP01">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-info fw-bold small">Password</label>
+                        <input type="password" name="password" id="input-password" class="form-control bg-dark text-white border-info shadow-none" placeholder="••••••••" required>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-4 px-1">
+                        <div class="form-check m-0">
+                            <input class="form-check-input border-info" type="checkbox" id="toggle-password-visibility" onclick="document.getElementById('input-password').type = this.checked ? 'text' : 'password';">
+                            <label class="form-check-label small text-muted ms-1 fw-semibold" for="toggle-password-visibility">Show Password</label>
+                        </div>
+                        <a href="{{ url_for('forgot_password') }}" id="passenger-forgot-link" class="text-info small text-decoration-none fw-bold">Forgot Password?</a>
+                    </div>
+
+                    <button type="submit" id="submit-auth-btn" class="btn btn-info w-100 fw-bold shadow-sm text-dark rounded-pill py-2 mb-2" style="font-size: 1.05rem;">Sign In securely</button>
+                </form>
+
+                <div class="divider small text-uppercase fw-bold text-muted">Or continue with</div>
+
+                <div class="position-relative w-100 mb-2" style="height: 44px; border-radius: 50px; overflow: hidden; cursor: pointer;">
+                    <button type="button" class="btn btn-info w-100 h-100 fw-bold shadow-sm text-dark d-flex align-items-center justify-content-center gap-2 position-absolute top-0 start-0" style="z-index: 1; font-size: 1.05rem;">
+                        <svg width="20" height="20" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" style="background: #fff; border-radius: 50%; padding: 3px;">
+                            <path d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.47h4.84c-.21.12-1.04 1.92-1.84 2.47v2.05h2.98c1.74-1.6 2.74-3.96 2.74-6.75z" fill="#4285F4"/>
+                            <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.98-2.05c-.83.56-1.9.9-2.98.9-2.34 0-4.33-1.58-5.03-3.71H.88v2.12C2.37 16 5.46 18 9 18z" fill="#34A853"/>
+                            <path d="M3.97 10.96A5.4 5.4 0 0 1 3.6 9c0-.68.1-1.34.27-1.96V4.92H.88A8.99 8.99 0 0 0 0 9c0 1.41.32 2.74.88 4.08l3.09-2.12z" fill="#FBBC05"/>
+                            <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35L15 2.38C13.46.95 11.43 0 9 0 5.46 0 2.37 2 1 4.92l3.09 2.12C4.77 5.16 6.76 3.58 9 3.58z" fill="#EA4335"/>
+                        </svg>
+                        Sign in with Google
+                    </button>
+                    <div id="google_button_div" class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style="opacity: 0.01; z-index: 2; transform: scale(1.5);"></div>
+                </div>
+                
+                <div class="mt-4 text-center border-top border-secondary pt-3">
+                    <small class="text-muted fw-semibold">Need passenger tracking access? <a href="{{ url_for('register_page') }}" class="text-info fw-bold text-decoration-none">Register profile</a></small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</section>
+
+<script>
+    window.onload = function () {
+        google.accounts.id.initialize({
+            client_id: "971176989462-890jcmmhu12sohs9u7tjkpb0uktodavu.apps.googleusercontent.com", 
+            callback: handleRealGoogleLogin
+        });
+        google.accounts.id.renderButton(
+            document.getElementById("google_button_div"),
+            { theme: "filled_blue", size: "large", width: 350 }
+        );
+    };
+
+    function decodeJwtResponse(token) {
+        var base64Url = token.split('.')[1];
+        var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        return JSON.parse(jsonPayload);
+    }
+
+    function handleRealGoogleLogin(response) {
+        const responsePayload = decodeJwtResponse(response.credential);
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = "{{ url_for('google_login') }}";
+        
+        const emailInput = document.createElement('input');
+        emailInput.type = 'hidden';
+        emailInput.name = 'email';
+        emailInput.value = responsePayload.email;
+        
+        const typeInput = document.createElement('input');
+        typeInput.type = 'hidden';
+        typeInput.name = 'login_type';
+        typeInput.value = document.getElementById('form-login-type').value;
+
+        form.appendChild(emailInput);
+        form.appendChild(typeInput);
+        document.body.appendChild(form);
+        form.submit();
+    }
+
+    function evaluateEmailDomainSignature() {
+        const emailValue = document.getElementById('input-email').value.trim().toLowerCase();
+        const driverWrapper = document.getElementById('wrapper-driver-id');
+        const adminWrapper = document.getElementById('wrapper-admin-id');
+        const driverInput = document.getElementById('input-driver-id');
+        const adminInput = document.getElementById('input-admin-id');
+        const loginTypeHidden = document.getElementById('form-login-type');
+        const submitBtn = document.getElementById('submit-auth-btn');
+        const forgotLink = document.getElementById('passenger-forgot-link');
+
+        if (emailValue === 'driver@transpulse.com') {
+            adminWrapper.classList.remove('reveal');
+            adminInput.required = false;
+            driverWrapper.classList.add('reveal');
+            driverInput.required = true;
+            loginTypeHidden.value = 'driver';
+            submitBtn.innerText = 'Authorize Driver Profile';
+            forgotLink.classList.add('d-none');
+        } 
+        else if (emailValue === 'admin@transpulse.com' || emailValue.includes('admin')) {
+            driverWrapper.classList.remove('reveal');
+            driverInput.required = false;
+            adminWrapper.classList.add('reveal');
+            adminInput.required = true;
+            loginTypeHidden.value = 'admin';
+            submitBtn.innerText = 'Authorize Command Suite';
+            forgotLink.classList.add('d-none');
+        } 
+        else {
+            driverWrapper.classList.remove('reveal');
+            adminWrapper.classList.remove('reveal');
+            driverInput.required = false;
+            adminInput.required = false;
+            loginTypeHidden.value = 'passenger';
+            submitBtn.innerText = 'Sign In securely';
+            forgotLink.classList.remove('d-none');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', evaluateEmailDomainSignature);
+</script>
+{% endblock %}

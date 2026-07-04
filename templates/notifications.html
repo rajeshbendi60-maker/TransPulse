@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Notifications{% endblock %}
+{% block head_extras %}
+<style>
+    .dark-glass-card {
+        background: linear-gradient(135deg, rgba(11,29,54,0.6), rgba(4,11,24,0.8));
+        border: 1px solid rgba(52,210,255,0.15);
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .notif-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(52, 210, 255, 0.1);
+        border-radius: 12px;
+        padding: 1.25rem;
+        transition: transform 0.2s;
+    }
+    .notif-card:hover { transform: translateY(-2px); border-color: rgba(52, 210, 255, 0.3); }
+    .priority-high { color: #ff5d6c; }
+    .priority-medium { color: #f5b342; }
+    .priority-low { color: #22d39a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container pb-5">
+    
+    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
+        {% if current_user.role == "admin" %}
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% elif current_user.role == "driver" %}
+            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% else %}
+            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% endif %}
+        <div>
+            <h2 class="fw-bold mb-1 text-white">🔔 Notifications Center</h2>
+            <p class="text-muted mb-0">System alerts and passenger updates.</p>
+        </div>
+    </div>
+
+    {% if current_user.role == "admin" %}
+    <div class="card dark-glass-card mb-5 fade-up">
+        <div class="card-body p-4">
+            <h5 class="text-white fw-bold mb-3">📢 Broadcast New System Announcement Alert</h5>
+            <form method="POST" action="{{ url_for('notifications_center') }}" id="announcement-form">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label text-muted small fw-bold">Announcement Title</label>
+                        <input type="text" name="title" class="form-control bg-dark text-white border-secondary" placeholder="e.g. Weather Interruption, Maintenance Shift" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-muted small fw-bold">Target Recipient Scope Classification</label>
+                        <select name="target" class="form-select bg-dark text-white border-secondary" required>
+                            <option value="all">All Connected Network Profiles</option>
+                            <option value="passengers">Passengers Subscribed Scope Only</option>
+                            <option value="drivers">Drivers Duty Shift Group Only</option>
+                        </select>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label text-muted small fw-bold">Broadcast Message Text</label>
+                        <textarea name="message" class="form-control bg-dark text-white border-secondary" rows="3" placeholder="Provide full announcement text parameter details here..." required></textarea>
+                    </div>
+                    <div class="col-12 text-end">
+                        <button type="submit" id="announcement-submit-btn" class="btn btn-primary text-dark fw-bold px-4">
+                            <span id="announcement-submit-label">Transmit Broadcast Alert</span>
+                            <span id="announcement-submit-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="text-white fw-bold m-0">Unread Notifications</h5>
+                    <span id="unread-count-badge" class="badge bg-danger d-none">0</span>
+                </div>
+                <div id="unread-list" class="d-flex flex-column gap-3">
+                    <div class="text-center py-4 text-muted">Checking for new alerts...</div>
+                </div>
+            </div>
+
+            <div>
+                <h5 class="text-muted fw-bold mb-3">Read Notifications</h5>
+                <div id="read-list" class="d-flex flex-column gap-3 opacity-75">
+                    <div class="text-center py-4 text-muted">No read notifications.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            {% if current_user.role != 'admin' %}
+            <div class="card dark-glass-card mb-4" id="system-alerts-card">
+                <div class="card-body">
+                    <h6 class="text-warning fw-bold mb-3">System Alerts</h6>
+                    <div id="system-alerts-list" class="d-flex flex-column gap-2">
+                        <small class="text-muted">All systems operational.</small>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if current_user.role in ('admin', 'driver') %}
+            <div class="card dark-glass-card mb-4" id="passenger-alerts-card">
+                <div class="card-body">
+                    <h6 class="text-info fw-bold mb-3">Passenger Alerts</h6>
+                    <div id="passenger-alerts-list" class="d-flex flex-column gap-2">
+                        <small class="text-muted">No passenger specific alerts.</small>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if current_user.role == 'admin' %}
+            <div class="card dark-glass-card mb-4" id="driver-alerts-card">
+                <div class="card-body">
+                    <h6 class="text-primary fw-bold mb-3">Driver Alerts</h6>
+                    <div id="driver-alerts-list" class="d-flex flex-column gap-2">
+                        <small class="text-muted">No driver alerts.</small>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+const userRole = "{{ current_user.role }}";
+
+function showAnnouncementModal(type, title, message, reference) {
+    const isError = type === 'danger';
+    const body = isError ? message : `
+        <span class="d-block mb-3">Your announcement has been delivered successfully.</span>
+        <span class="d-block text-start fw-bold mb-2 text-light">Recipients:</span>
+        <span class="d-block text-start text-light mb-1">&#10003; Passengers</span>
+        <span class="d-block text-start text-light mb-1">&#10003; Drivers</span>
+        <span class="d-block text-start text-light mb-3">&#10003; Administrators</span>
+        <span class="d-block small text-muted mb-1">Reference:</span>
+        <span class="d-block fw-bold text-info">${reference || 'ANN-PENDING'}</span>
+    `;
+
+    if (window.TransPulseUtils && typeof window.TransPulseUtils.showPremiumModal === 'function') {
+        window.TransPulseUtils.showPremiumModal({
+            type,
+            title,
+            message: body,
+            icon: isError ? '&#9888;' : '&#10003;',
+            buttonText: 'Got It'
+        });
+        return;
+    }
+    let modal = document.getElementById('announcement-feedback-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'announcement-feedback-modal';
+        modal.style.cssText = 'display:none; position:fixed; inset:0; z-index:250000; background:rgba(0,0,0,0.84); align-items:center; justify-content:center; padding:18px;';
+        document.body.appendChild(modal);
+    }
+    const accent = isError ? '#ff5d6c' : '#34d2ff';
+    modal.innerHTML = `
+        <div class="card glass-panel shadow-lg" style="width:100%; max-width:430px; border-color:${accent}; border-radius:16px; background:#071d34;">
+            <div class="card-body p-4 text-center">
+                <h3 class="text-white fw-bold mb-3">${title}</h3>
+                <p class="text-muted mb-4">${body}</p>
+                <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" style="background:${accent}; color:#03101d; border:0;">Got It</button>
+            </div>
+        </div>`;
+    modal.querySelector('button').addEventListener('click', () => { modal.style.display = 'none'; }, { once: true });
+    modal.style.display = 'flex';
+}
+
+function initAnnouncementForm() {
+    const form = document.getElementById('announcement-form');
+    const button = document.getElementById('announcement-submit-btn');
+    const label = document.getElementById('announcement-submit-label');
+    const spinner = document.getElementById('announcement-submit-spinner');
+    if (!form || !button) return;
+
+    let isSubmitting = false;
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (isSubmitting) return;
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        isSubmitting = true;
+        button.disabled = true;
+        label.textContent = 'Sending...';
+        spinner.classList.remove('d-none');
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                body: new FormData(form)
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Announcement could not be delivered right now.');
+            }
+            form.reset();
+            showAnnouncementModal('success', 'Announcement Sent', data.message, data.reference);
+            loadNotifications();
+        } catch (error) {
+            showAnnouncementModal('danger', 'Announcement Failed', error.message || 'Announcement could not be delivered right now.');
+        } finally {
+            isSubmitting = false;
+            button.disabled = false;
+            label.textContent = 'Transmit Broadcast Alert';
+            spinner.classList.add('d-none');
+        }
+    });
+}
+
+async function loadNotifications() {
+    try {
+        const response = await fetch('/api/notifications'); 
+        const data = await response.json();
+        
+        const unreadList = document.getElementById('unread-list');
+        const readList = document.getElementById('read-list');
+        const systemList = document.getElementById('system-alerts-list');
+        const passengerList = document.getElementById('passenger-alerts-list');
+        const driverList = document.getElementById('driver-alerts-list');
+        const badge = document.getElementById('unread-count-badge');
+
+        unreadList.innerHTML = '';
+        readList.innerHTML = '';
+        if (systemList) systemList.innerHTML = '';
+        if (passengerList) passengerList.innerHTML = '';
+        if (driverList) driverList.innerHTML = '';
+
+        let unreadCount = 0;
+
+        if (data.notifications && data.notifications.length > 0) {
+            data.notifications.forEach(n => {
+                const safeMsg = n.message.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const card = `
+                    <div class="notif-card">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-info fw-bold">${n.title || 'Notification'}</span>
+                            <small class="text-muted">${n.timestamp || new Date().toLocaleTimeString()}</small>
+                        </div>
+                        <p class="text-light my-2">${safeMsg}</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="priority-${(n.priority || 'low').toLowerCase()} fw-bold">${n.category || 'Alert'}</small>
+                            ${!n.is_read ? `<button onclick="markAsRead(${n.id})" class="btn btn-sm btn-outline-secondary">Mark Read</button>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                if (!n.is_read) {
+                    unreadList.innerHTML += card;
+                    unreadCount++;
+                } else {
+                    readList.innerHTML += card;
+                }
+
+                const cat = n.category || 'Passenger';
+                if (cat === 'System' && systemList) systemList.innerHTML += `<div class="small text-light border-bottom border-secondary pb-1">${safeMsg}</div>`;
+                if (cat === 'Passenger' && passengerList) passengerList.innerHTML += `<div class="small text-info border-bottom border-secondary pb-1">${safeMsg}</div>`;
+                if (cat === 'Driver' && driverList) driverList.innerHTML += `<div class="small text-primary border-bottom border-secondary pb-1">${safeMsg}</div>`;
+            });
+        } else {
+            unreadList.innerHTML = '<div class="text-center py-4 text-muted">No notifications for your role.</div>';
+            if (systemList) systemList.innerHTML = '<small class="text-muted">All systems operational.</small>';
+            if (passengerList) passengerList.innerHTML = '<small class="text-muted">No passenger specific alerts.</small>';
+            if (driverList) driverList.innerHTML = '<small class="text-muted">No driver alerts.</small>';
+        }
+
+        if (unreadCount > 0) {
+            badge.textContent = unreadCount;
+            badge.classList.remove('d-none');
+        } else {
+            badge.classList.add('d-none');
+        }
+    } catch(e) { console.error(e); }
+}
+
+async function markAsRead(id) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    await fetch(`/api/notifications/${id}/read`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken }
+    });
+    loadNotifications();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initAnnouncementForm();
+    loadNotifications();
+    setInterval(loadNotifications, 30000); 
+});
+</script>
+{% endblock %}

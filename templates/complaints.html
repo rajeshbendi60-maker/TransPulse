@@ -1,0 +1,599 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Complaints Management{% endblock %}
+{% block head_extras %}
+<style>
+.complaint-row { cursor: pointer; transition: background 0.2s; }
+.complaint-row:hover { background: rgba(52,210,255,0.05); }
+.severity-low { color: #22d39a; font-weight: 600; }
+.severity-medium { color: #f5b342; font-weight: 600; }
+.severity-high { color: #ff5d6c; font-weight: 600; }
+.status-open { background: rgba(52,210,255,0.2); color: #34d2ff; border: 1px solid rgba(52,210,255,0.4); padding: 4px 10px; font-weight: 600;}
+.status-in-progress { background: rgba(245,179,66,0.2); color: #f5b342; border: 1px solid rgba(245,179,66,0.4); padding: 4px 10px; font-weight: 600;}
+.status-resolved { background: rgba(34,211,154,0.2); color: #22d39a; border: 1px solid rgba(34,211,154,0.4); padding: 4px 10px; font-weight: 600;}
+.status-closed { background: rgba(125,146,179,0.2); color: #aebed8; border: 1px solid rgba(125,146,179,0.4); padding: 4px 10px; font-weight: 600;}
+
+.dark-glass-card {
+    background: linear-gradient(135deg, rgba(11,29,54,0.6), rgba(4,11,24,0.8));
+    border: 1px solid rgba(52,210,255,0.15);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.neon-blue-border {
+    border: 1px solid #34d2ff !important;
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="container pb-5">
+    
+    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
+        {% if current_user.role == "admin" %}
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% elif current_user.role == "driver" %}
+            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% else %}
+            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+        {% endif %}
+        <div>
+            <h2 class="fw-bold mb-1 text-white">Complaints Management</h2>
+            <p class="text-muted mb-0">
+                {% if current_user.role == "admin" %}
+                    View complaints, reply, update status, resolve, and close records.
+                {% else %}
+                    Submit and track service complaints across the TransPulse network.
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    {% if current_user.role in ["passenger", "driver"] %}
+    <div class="card dark-glass-card mb-5 fade-up">
+        <div class="card-body p-4">
+            <h5 class="card-title text-white fw-bold mb-4 d-flex align-items-center gap-2" id="form-action-title">
+                📝 File an Operational Dispute Form Profile
+            </h5>
+            <form id="complaint-form">
+                <input type="hidden" name="complaint_id" id="edit-complaint-id" value="">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Complaint Classification Category Type</label>
+                        <select name="complaint_type" id="complaint-category" class="form-select bg-dark text-white border-secondary shadow-sm" required>
+                            <option value="">Select Issue...</option>
+                            {% if current_user.role == "driver" %}
+                                <option value="Route Issue">🗺️ Route Issue</option>
+                                <option value="Passenger Issue">👥 Passenger Issue</option>
+                                <option value="Vehicle Issue">🚌 Vehicle Issue</option>
+                                <option value="Delay Issue">🕐 Delay Issue</option>
+                            {% else %}
+                                <option value="Delay">🕐 Bus Delay</option>
+                                <option value="Driver Behavior">👨‍💼 Driver Behavior</option>
+                                <option value="Overcrowding">👥 Overcrowding</option>
+                                <option value="Cleanliness">🧹 Cleanliness</option>
+                                <option value="Safety">🛡️ Safety</option>
+                                <option value="Route Issue">🗺️ Route Issue</option>
+                                <option value="Fare Issue">💰 Fare Issue</option>
+                            {% endif %}
+                            <option value="Other">❓ Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Severity</label>
+                        <select name="severity" id="complaint-severity" class="form-select bg-dark text-white border-secondary shadow-sm">
+                            <option value="low">🟢 Low</option>
+                            <option value="medium" selected>🟡 Medium</option>
+                            <option value="high">🔴 High</option>
+                        </select>
+                    </div>
+
+                    {% if current_user.role != "driver" %}
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Bus Number {% if current_user.role == "passenger" %}*{% endif %}</label>
+                        <select name="bus_id" id="complaint-bus-id" class="form-select bg-dark text-white border-secondary shadow-sm" {% if current_user.role == "passenger" %}required{% endif %}>
+                            <option value="">Select Bus...</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small fw-bold">Route {% if current_user.role == "passenger" %}*{% endif %}</label>
+                        <select name="route_id" id="complaint-route-id" class="form-select bg-dark text-white border-secondary shadow-sm" {% if current_user.role == "passenger" %}required{% endif %}>
+                            <option value="">Select Route...</option>
+                        </select>
+                    </div>
+                    {% endif %}
+
+                    <div class="col-md-12 d-none" id="custom-type-group">
+                        <label class="form-label text-info small fw-bold text-uppercase">Enter Complaint Type *</label>
+                        <input type="text" name="custom_complaint_type" id="custom-type-input" class="form-control bg-dark text-white neon-blue-border" placeholder="Specify your exact issue profiles description...">
+                    </div>
+                    
+                    <div class="col-md-12 d-none" id="detailed-desc-group">
+                        <label class="form-label text-info small fw-bold text-uppercase">Detailed Description *</label>
+                        <textarea name="detailed_description" id="detailed-desc-input" class="form-control bg-dark text-white neon-blue-border" rows="4" placeholder="Please provide full details of the incident..."></textarea>
+                    </div>
+
+                    <div class="col-12" id="normal-desc-group">
+                        <label class="form-label text-muted small fw-bold">Description *</label>
+                        <textarea name="description" id="normal-desc-input" class="form-control bg-dark text-white border-secondary" rows="4" placeholder="Describe the issue in detail..." required></textarea>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label text-muted small fw-bold">Photo Evidence</label>
+                        <input type="file" id="complaint-image-input" class="form-control bg-dark text-white border-secondary" accept="image/*" capture="environment">
+                        <input type="hidden" name="evidence_image" id="complaint-image-data" value="">
+                        <img id="complaint-image-preview" alt="Complaint photo preview" class="img-fluid rounded border border-secondary mt-2 d-none" style="max-height:180px;object-fit:contain;">
+                    </div>
+
+                    <div class="col-12 mt-2 text-start d-flex gap-3">
+                        <button type="submit" id="submit-action-btn" class="btn btn-info text-dark fw-bold px-4 py-2 rounded-3 shadow-sm" style="background: linear-gradient(135deg, #34d2ff, #4f8dff); border: none;">Submit Complaint</button>
+                        <button type="button" id="cancel-edit-btn" class="btn btn-outline-secondary text-white fw-bold d-none px-4 py-2" onclick="resetFormState()">Cancel Edit</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card dark-glass-card fade-up-1">
+        <div class="card-body p-4">
+            <h5 class="card-title text-white fw-bold mb-4">
+                {% if current_user.role == "admin" %}
+                    Global System Operations Complaints Listing
+                {% else %}
+                    Your Logs & Admin Notes Responses
+                {% endif %}
+            </h5>
+            
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle mb-0" style="background: transparent; border-color: rgba(255,255,255,0.05);">
+                    <thead style="background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(52,210,255,0.2);">
+                        <tr>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">ID</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Type</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Severity</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Status</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Assignment Context</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Issue Details</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Actions / Admin Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="complaints-list" style="border-top: none;">
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-5">
+                                <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                                <span class="ms-2">Loading complaints data matrix...</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card dark-glass-card fade-up-1 mt-4">
+        <div class="card-body p-4">
+            <h5 class="card-title text-white fw-bold mb-4">Complaint History</h5>
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle mb-0" style="background: transparent; border-color: rgba(255,255,255,0.05);">
+                    <thead style="background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(52,210,255,0.2);">
+                        <tr>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">ID</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Type</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Severity</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Status</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Assignment Context</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Issue Details</th>
+                            <th class="text-muted small fw-bold text-uppercase pb-3">Admin Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="complaints-history-list" style="border-top: none;">
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-5">Loading complaint history...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- BEAUTIFUL SUCCESS MODAL -->
+<div id="successModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
+    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#22d39a; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
+        <div class="card-body p-5 text-center">
+            <div style="background: #22d39a; border-radius: 12px; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px auto; box-shadow: 0 10px 20px rgba(34,211,154,0.3);">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <h3 class="text-white fw-bold mb-3" id="modal-title-text">Complaint Logged</h3>
+            <p class="text-muted mb-4" id="modal-desc-text">Your operational dispute has been successfully recorded. Notifications have been dispatched to the administration seamlessly.</p>
+            <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" style="background: #22d39a; color: #040b18; border: none; font-size: 1.1rem; box-shadow: 0 8px 15px rgba(34,211,154,0.2);" onclick="document.getElementById('successModal').style.display='none'">Got It!</button>
+        </div>
+    </div>
+</div>
+
+<!-- BEAUTIFUL CUSTOM DELETE CONFIRMATION MODAL -->
+<div id="deleteConfirmModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
+    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#ff5d6c; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
+        <div class="card-body p-4 p-md-5 text-center">
+            <div style="background: rgba(255, 93, 108, 0.2); border-radius: 12px; width: 65px; height: 65px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; border: 1px solid #ff5d6c;">
+                <span style="font-size: 28px;">🗑️</span>
+            </div>
+            <h4 class="text-white fw-bold mb-3">Delete Complaint?</h4>
+            <p class="text-muted mb-4">Are you sure you want to permanently delete this record? This action cannot be undone and will drop it from the system entirely.</p>
+            <div class="d-flex gap-3">
+                <button type="button" class="btn btn-outline-secondary w-50 fw-bold rounded-pill" onclick="closeDeleteModal()">Cancel</button>
+                <button type="button" class="btn w-50 fw-bold rounded-pill" style="background: #ff5d6c; color: #fff; border: none; box-shadow: 0 8px 15px rgba(255, 93, 108, 0.2);" onclick="confirmDeleteAction()">Yes, Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const currentRole = "{{ current_user.role }}";
+const currentUserId = parseInt("{{ current_user.id }}");
+let itemToDeleteId = null;
+let complaintBuses = [];
+let complaintRoutes = [];
+
+function complaintRouteOptionLabel(route) {
+    const code = route.route_code || 'Route';
+    const name = route.route_name || route.name || '';
+    return `${code}${name ? ' - ' + name : ''}`;
+}
+
+async function loadComplaintSelectors() {
+    if (currentRole === "driver") return;
+    const busSelect = document.getElementById('complaint-bus-id');
+    const routeSelect = document.getElementById('complaint-route-id');
+    if (!busSelect || !routeSelect) return;
+
+    try {
+        const [busRes, routeRes] = await Promise.all([
+            fetch('/api/buses/live'),
+            fetch('/api/routes/live')
+        ]);
+        const busData = busRes.ok ? await busRes.json() : {};
+        const routeData = routeRes.ok ? await routeRes.json() : {};
+        complaintBuses = busData.buses || [];
+        const routeMap = new Map();
+        (routeData.routes || []).forEach(r => routeMap.set(String(r.route_id), r));
+        complaintBuses.forEach(b => {
+            if (b.route_id && !routeMap.has(String(b.route_id))) {
+                routeMap.set(String(b.route_id), {
+                    route_id: b.route_id,
+                    route_code: b.route_code,
+                    route_name: b.route_name
+                });
+            }
+        });
+        complaintRoutes = Array.from(routeMap.values());
+
+        busSelect.innerHTML = '<option value="">Select Bus...</option>' + complaintBuses
+            .map(b => `<option value="${b.bus_number}" data-route-id="${b.route_id || ''}">${b.bus_number}</option>`)
+            .join('');
+        routeSelect.innerHTML = '<option value="">Select Route...</option>' + complaintRoutes
+            .map(r => `<option value="${r.route_id}">${complaintRouteOptionLabel(r)}</option>`)
+            .join('');
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+function syncComplaintRouteToBus() {
+    const busSelect = document.getElementById('complaint-bus-id');
+    const routeSelect = document.getElementById('complaint-route-id');
+    if (!busSelect || !routeSelect) return;
+    const selected = busSelect.options[busSelect.selectedIndex];
+    const routeId = selected ? selected.dataset.routeId : '';
+    if (routeId) routeSelect.value = routeId;
+}
+
+function loadComplaints(view = 'active', targetId = 'complaints-list') {
+    fetch(`/api/complaints?view=${encodeURIComponent(view)}`)
+        .then(r => r.json())
+        .then(complaints => {
+            const tbody = document.getElementById(targetId);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            
+            if (!complaints.length) {
+                const emptyText = view === 'history' ? 'No resolved complaints in history.' : 'No active complaints registered in system profile logs.';
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-5">${emptyText}</td></tr>`;
+                return;
+            }
+            
+            complaints.forEach(c => {
+                let statusNormalized = (c.status || 'open').toLowerCase();
+                let statusClass = 'status-open';
+                if (statusNormalized === 'in progress' || statusNormalized === 'investigating') {
+                    statusClass = 'status-in-progress';
+                } else if (statusNormalized === 'resolved') {
+                    statusClass = 'status-resolved';
+                } else if (statusNormalized === 'closed') {
+                    statusClass = 'status-closed';
+                }
+
+                let operationalButtons = '';
+                
+                // FIXED: Removed the condition that allowed Admins to see the Edit/Delete buttons.
+                // Now, only the user who created the complaint sees these options.
+                if (view === 'active' && c.passenger_id === currentUserId && currentRole !== 'admin') {
+                    operationalButtons = `
+                        <div class="mt-2 d-flex gap-2">
+                            <button class="btn btn-xs btn-outline-info text-info py-0 px-2 small" style="font-size:0.75rem;" onclick='triggerComplaintFormPrepopulation(${JSON.stringify(c).replace(/'/g, "&apos;")})'>✏️ Edit</button>
+                            <button class="btn btn-xs btn-outline-danger text-danger py-0 px-2 small" style="font-size:0.75rem;" onclick="executeComplaintDeletion(${c.id})">🗑️ Delete</button>
+                        </div>
+                    `;
+                }
+
+                let replySection = c.admin_notes ? `<span class="text-info fw-bold">${c.admin_notes}</span>` : `<span class="text-muted fst-italic">Awaiting Admin notes resolution update...</span>`;
+                replySection += operationalButtons;
+                
+                if(currentRole === "admin" && view === 'active') {
+                    replySection = `
+                        <div class="input-group input-group-sm mt-2">
+                            <input type="text" id="reply-input-${c.id}" class="form-control bg-dark text-white border-secondary" placeholder="Type reply note..." value="${c.admin_notes || ''}">
+                            <select id="status-select-${c.id}" class="form-select bg-dark text-white border-secondary" style="max-width:120px;">
+                                <option value="open" ${statusNormalized === 'open' ? 'selected' : ''}>Open</option>
+                                <option value="in progress" ${statusNormalized === 'in progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="resolved" ${statusNormalized === 'resolved' ? 'selected' : ''}>Resolved</option>
+                                <option value="closed" ${statusNormalized === 'closed' ? 'selected' : ''}>Closed</option>
+                            </select>
+                            <button class="btn btn-sm btn-accent text-dark fw-bold" onclick="submitAdminReply(${c.id})">Send</button>
+                        </div>
+                        ${operationalButtons}
+                    `;
+                }
+
+                const assignmentCtx = `
+                    <small class="text-muted d-block">Bus: <span class="text-white">${c.bus_number || c.bus_id || '--'}</span></small>
+                    <small class="text-muted d-block">Driver: <span class="text-info">${c.driver_code || '--'}</span></small>
+                    <small class="text-muted d-block">Route: <span class="text-info">${c.route_code || c.route_name || c.route_id || '--'}</span></small>
+                    <small class="text-muted d-block">Trip: <span class="text-white">${c.trip_id || '--'}</span> | Stop: <span class="text-warning">${c.current_stop || '--'}</span></small>
+                `;
+                const evidenceLink = c.evidence_image && String(c.evidence_image).startsWith('data:image/')
+                    ? `<a href="${c.evidence_image}" target="_blank" class="text-info d-block mt-2">View Image</a>`
+                    : '';
+
+                const row = document.createElement('tr');
+                row.className = 'complaint-row';
+                row.innerHTML = `
+                    <td class="text-white fw-bold">#${c.id}</td>
+                    <td class="text-white">📝 ${c.complaint_type} <br><small class="text-muted">By: ${c.author_name || 'User'} (${c.author_role || 'Role'})</small></td>
+                    <td><span class="severity-${c.severity}">${c.severity.toUpperCase()}</span></td>
+                    <td><span class="badge rounded-pill ${statusClass} shadow-sm">${statusNormalized.toUpperCase()}</span></td>
+                    <td class="text-light">${assignmentCtx}</td>
+                    <td class="text-light"><small>${c.description}</small>${evidenceLink}</td>
+                    <td>${replySection}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }).catch(e => console.error(e));
+}
+
+window.triggerComplaintFormPrepopulation = function(c) {
+    document.getElementById('edit-complaint-id').value = c.id;
+    document.getElementById('form-action-title').textContent = "✏️ Modify Operational Dispute Form Profile";
+    document.getElementById('submit-action-btn').textContent = "Save Changes";
+    document.getElementById('cancel-edit-btn').classList.remove('d-none');
+
+    const categorySelect = document.getElementById('complaint-category');
+    const customTypeGroup = document.getElementById('custom-type-group');
+    const customTypeInput = document.getElementById('custom-type-input');
+    const detailedDescGroup = document.getElementById('detailed-desc-group');
+    const detailedDescInput = document.getElementById('detailed-desc-input');
+    const normalDescGroup = document.getElementById('normal-desc-group');
+    const normalDescInput = document.getElementById('normal-desc-input');
+
+    const standardOptions = Array.from(categorySelect.options).map(o => o.value);
+    if (standardOptions.includes(c.complaint_type)) {
+        categorySelect.value = c.complaint_type;
+        customTypeGroup.classList.add('d-none');
+        detailedDescGroup.classList.add('d-none');
+        normalDescGroup.classList.remove('d-none');
+        normalDescInput.value = c.description;
+    } else {
+        categorySelect.value = "Other";
+        customTypeGroup.classList.remove('d-none');
+        customTypeInput.value = c.complaint_type;
+        detailedDescGroup.classList.remove('d-none');
+        detailedDescInput.value = c.description;
+        normalDescGroup.classList.add('d-none');
+    }
+    document.getElementById('complaint-severity').value = c.severity || 'medium';
+    if (currentRole !== "driver") {
+        const busSelect = document.getElementById('complaint-bus-id');
+        const routeSelect = document.getElementById('complaint-route-id');
+        if (busSelect) busSelect.value = c.bus_number || '';
+        if (routeSelect) routeSelect.value = c.route_id || '';
+    }
+    const imageData = document.getElementById('complaint-image-data');
+    const imagePreview = document.getElementById('complaint-image-preview');
+    if (imageData && imagePreview) {
+        imageData.value = c.evidence_image || '';
+        if (c.evidence_image) {
+            imagePreview.src = c.evidence_image;
+            imagePreview.classList.remove('d-none');
+        } else {
+            imagePreview.removeAttribute('src');
+            imagePreview.classList.add('d-none');
+        }
+    }
+    document.getElementById('complaint-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+window.resetFormState = function() {
+    document.getElementById('complaint-form').reset();
+    document.getElementById('edit-complaint-id').value = '';
+    document.getElementById('form-action-title').textContent = "📝 File an Operational Dispute Form Profile";
+    document.getElementById('submit-action-btn').textContent = "Submit Complaint";
+    document.getElementById('cancel-edit-btn').classList.add('d-none');
+    
+    document.getElementById('custom-type-group').classList.add('d-none');
+    document.getElementById('detailed-desc-group').classList.add('d-none');
+    document.getElementById('normal-desc-group').classList.remove('d-none');
+    const imageData = document.getElementById('complaint-image-data');
+    const imagePreview = document.getElementById('complaint-image-preview');
+    if (imageData) imageData.value = '';
+    if (imagePreview) {
+        imagePreview.removeAttribute('src');
+        imagePreview.classList.add('d-none');
+    }
+};
+
+// NEW: Opens custom modal instead of native confirm()
+window.executeComplaintDeletion = function(id) {
+    itemToDeleteId = id;
+    document.getElementById('deleteConfirmModal').style.display = 'flex';
+};
+
+window.closeDeleteModal = function() {
+    itemToDeleteId = null;
+    document.getElementById('deleteConfirmModal').style.display = 'none';
+};
+
+// Execution logic tied to the red modal button
+window.confirmDeleteAction = async function() {
+    if (!itemToDeleteId) return;
+    const id = itemToDeleteId;
+    closeDeleteModal(); // Hide modal right away
+
+    try {
+        const response = await fetch(`/api/complaints`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
+            body: JSON.stringify({ action: 'delete', complaint_id: id })
+        });
+        if (response.ok) {
+            document.getElementById('modal-title-text').textContent = "Record Removed";
+            document.getElementById('modal-desc-text').textContent = "The complaint operational ticket signature was cleanly dropped from registries.";
+            document.getElementById('successModal').style.display = 'flex';
+            loadComplaints();
+            loadComplaints('history', 'complaints-history-list');
+        }
+    } catch (err) { console.error(err); }
+};
+
+async function submitAdminReply(id) {
+    const msg = document.getElementById(`reply-input-${id}`).value.trim();
+    const statusVal = document.getElementById(`status-select-${id}`).value;
+    if(!msg) {
+        alert("Reply note text cannot be left empty.");
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/complaints/${id}/reply`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
+            body: JSON.stringify({ reply_message: msg, status: statusVal })
+        });
+        if(res.ok) {
+            document.getElementById('modal-title-text').textContent = "Response Saved";
+            document.getElementById('modal-desc-text').textContent = "Your administrative note and status changes have been correctly updated onto the log profile.";
+            document.getElementById('successModal').style.display = 'flex';
+            loadComplaints();
+            loadComplaints('history', 'complaints-history-list');
+        }
+    } catch(e) { console.error(e); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadComplaints();
+    loadComplaints('history', 'complaints-history-list');
+    loadComplaintSelectors();
+
+    const catSelect = document.getElementById('complaint-category');
+    const customTypeGroup = document.getElementById('custom-type-group');
+    const customTypeInput = document.getElementById('custom-type-input');
+    const detailedDescGroup = document.getElementById('detailed-desc-group');
+    const detailedDescInput = document.getElementById('detailed-desc-input');
+    const normalDescGroup = document.getElementById('normal-desc-group');
+    const normalDescInput = document.getElementById('normal-desc-input');
+
+    if(catSelect) {
+        catSelect.addEventListener('change', (e) => {
+            if (e.target.value === 'Other') {
+                customTypeGroup.classList.remove('d-none');
+                customTypeInput.required = true;
+                detailedDescGroup.classList.remove('d-none');
+                detailedDescInput.required = true;
+                normalDescGroup.classList.add('d-none');
+                normalDescInput.required = false;
+            } else {
+                customTypeGroup.classList.add('d-none');
+                customTypeInput.required = false;
+                customTypeInput.value = '';
+                detailedDescGroup.classList.add('d-none');
+                detailedDescInput.required = false;
+                detailedDescInput.value = '';
+                normalDescGroup.classList.remove('d-none');
+                normalDescInput.required = true;
+            }
+        });
+    }
+
+    const complaintBusSelect = document.getElementById('complaint-bus-id');
+    if (complaintBusSelect) {
+        complaintBusSelect.addEventListener('change', syncComplaintRouteToBus);
+    }
+
+    const imageInput = document.getElementById('complaint-image-input');
+    const imageData = document.getElementById('complaint-image-data');
+    const imagePreview = document.getElementById('complaint-image-preview');
+    if (imageInput && imageData && imagePreview) {
+        imageInput.addEventListener('change', () => {
+            const file = imageInput.files && imageInput.files[0];
+            if (!file) {
+                imageData.value = '';
+                imagePreview.removeAttribute('src');
+                imagePreview.classList.add('d-none');
+                return;
+            }
+            if (!file.type.startsWith('image/')) {
+                imageInput.value = '';
+                imageData.value = '';
+                imagePreview.classList.add('d-none');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                imageData.value = reader.result || '';
+                imagePreview.src = reader.result;
+                imagePreview.classList.remove('d-none');
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    const form = document.getElementById('complaint-form');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(form).entries());
+            
+            const isEditingMode = !!document.getElementById('edit-complaint-id').value;
+            if (isEditingMode) {
+                data.action = 'edit';
+            }
+
+            try {
+                const response = await fetch("/api/complaints", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    document.getElementById('modal-title-text').textContent = isEditingMode ? "Changes Saved" : "Complaint Logged";
+                    document.getElementById('modal-desc-text').textContent = isEditingMode ? "Your dispute ticket specifications were modified across system paths cleanly." : "Your operational dispute has been successfully recorded. Notifications have been dispatched to the administration seamlessly.";
+                    
+                    document.getElementById('successModal').style.display = 'flex';
+                    resetFormState();
+                    loadComplaints();
+                    loadComplaints('history', 'complaints-history-list');
+                }
+            } catch (err) { console.error(err); }
+        });
+    }
+});
+</script>
+{% endblock %}

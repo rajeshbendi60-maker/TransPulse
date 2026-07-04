@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TransPulse | Offline</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(180deg, #050d1d 0%, #03070f 100%);
+            color: #e6f1ff;
+            font-family: "Inter", system-ui, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .offline-container {
+            max-width: 500px;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(16,41,69,0.55), rgba(11,29,54,0.4));
+            border: 1px solid rgba(91, 188, 255, 0.28);
+            border-radius: 1.5rem;
+            padding: 3rem 2rem;
+            backdrop-filter: blur(14px);
+            box-shadow: 0 32px 70px -24px rgba(0, 8, 22, 0.85);
+        }
+
+        .offline-icon {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            display: block;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        h1 {
+            font-family: "Poppins", sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            background: linear-gradient(180deg, #ffffff, #a9d8ff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        p {
+            color: #aebed8;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            border-radius: 999px;
+            background: rgba(255, 93, 108, 0.15);
+            border: 1px solid rgba(255, 93, 108, 0.3);
+            color: #ff5d6c;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+        }
+
+        .status::before {
+            content: "●";
+            display: inline-block;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.7rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all .2s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #34d2ff 0%, #4f8dff 100%);
+            color: #001225;
+            box-shadow: 0 10px 28px -10px rgba(52,210,255,0.7);
+        }
+
+        .btn-primary:hover {
+            filter: brightness(1.08);
+            transform: translateY(-2px);
+            box-shadow: 0 14px 34px -10px rgba(52,210,255,0.85);
+        }
+
+        .suggestions {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(91, 188, 255, 0.14);
+            text-align: left;
+        }
+
+        .suggestions h3 {
+            font-family: "Poppins", sans-serif;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #7d92b3;
+            margin-bottom: 1rem;
+        }
+
+        .suggestions ul {
+            list-style: none;
+            display: grid;
+            gap: 0.5rem;
+        }
+
+        .suggestions li {
+            font-size: 0.85rem;
+            color: #aebed8;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .suggestions li::before {
+            content: "▸";
+            color: #34d2ff;
+            font-weight: 700;
+        }
+
+        .info {
+            font-size: 0.75rem;
+            color: #7d92b3;
+            margin-top: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <span class="offline-icon">📡</span>
+        <h1>You're Offline</h1>
+        <p>TransPulse requires an internet connection to track buses and access live routes.</p>
+        <div class="status">No internet connection</div>
+
+        <button class="btn btn-primary" onclick="window.location.reload()">Try Again</button>
+
+        <div class="suggestions">
+            <h3>What to try:</h3>
+            <ul>
+                <li>Check your internet connection</li>
+                <li>Turn off airplane mode</li>
+                <li>Move closer to your WiFi router</li>
+                <li>Restart your device</li>
+            </ul>
+        </div>
+
+        <p class="info">When you regain connection, cached data will sync automatically.</p>
+    </div>
+</body>
+</html>

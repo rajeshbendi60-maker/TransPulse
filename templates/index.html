@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}TransPulse{% endblock %}
+{% block content %}
+
+<section class="hero-section py-5">
+    <div class="container py-4 position-relative">
+        <div class="row align-items-center g-5">
+            <div class="col-lg-6 fade-up">
+                <span class="hero-eyebrow mb-3"><span class="dot"></span>Andhra Pradesh Smart Mobility Platform</span>
+                <div class="tp-hero-logo">
+                    {% include "_logo_icon.html" %}
+                    <span class="tp-logo-text">TransPulse</span>
+                </div>
+                <p class="hero-tagline">The Pulse of Public Transportation</p>
+                <p class="hero-sub mb-4">Enterprise-grade fleet tracking across Andhra Pradesh. Real-time GPS monitoring, ETA intelligence, and operations control for Andhra Pradesh transport networks.</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('login_page') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                    <a href="#" id="pwa-install-link" class="btn btn-outline-light btn-lg d-none" onclick="if(window.TransPulseUtils && window.TransPulseUtils.triggerManualInstall) { window.TransPulseUtils.triggerManualInstall(); }; return false;">Install App</a>
+                </div>
+            </div>
+            <div class="col-lg-6 fade-up-2">
+                <div class="glass-card p-4 rounded-4" style="border: 1px solid var(--tp-border-strong); background: linear-gradient(135deg, rgba(52,210,255,0.08), rgba(79,141,255,0.04));">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-semibold mb-0">Fleet Intelligence Hub</h5>
+                        <span class="badge" style="background: rgba(34,211,154,0.25); color: #22d39a; border: 1px solid rgba(34,211,154,0.5);">Live</span>
+                    </div>
+                    <ul class="list-unstyled mb-0" style="display:grid;gap:.65rem">
+                        <li class="d-flex align-items-start gap-2"><span style="color:#34d2ff;font-weight:700;font-size:1.2rem">◆</span><span><strong>Live Fleet Tracking</strong><br><small style="color:#9ebcdf">Real-time GPS with 5-second refresh</small></span></li>
+                        <li class="d-flex align-items-start gap-2"><span style="color:#4f8dff;font-weight:700;font-size:1.2rem">◆</span><span><strong>Route Intelligence</strong><br><small style="color:#9ebcdf">ETA prediction and stop sequencing</small></span></li>
+                        <li class="d-flex align-items-start gap-2"><span style="color:#6a5cff;font-weight:700;font-size:1.2rem">◆</span><span><strong>Operations Dashboard</strong><br><small style="color:#9ebcdf">Admin control center & analytics</small></span></li>
+                        <li class="d-flex align-items-start gap-2"><span style="color:#34d2ff;font-weight:700;font-size:1.2rem">◆</span><span><strong>Driver Telemetry</strong><br><small style="color:#9ebcdf">Real-time trip management & alerts</small></span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-5">
+    <div class="container">
+        <div class="row g-3 mb-5">
+            <div class="col-sm-6 col-lg-3 fade-up-1">
+                <div class="metric-card">
+                    <h6><span class="icon">◎</span>DISTRICTS COVERED</h6>
+                    <p data-counter="26">0</p>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3 fade-up-2">
+                <div class="metric-card">
+                    <h6><span class="icon">⌖</span>MAJOR CITIES</h6>
+                    <p><span data-counter="100+">0</span><span style="font-size:1rem;color:#9ec0e6;margin-left:4px">+</span></p>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3 fade-up-3">
+                <div class="metric-card">
+                    <h6><span class="icon">⇆</span>Active Routes</h6>
+                    <p data-counter="3080+">0</p>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3 fade-up-4">
+                <div class="metric-card">
+                    <h6><span class="icon">↻</span>ETA Refresh</h6>
+                    <p><span data-counter="5">0</span><span style="font-size:1rem;color:#9ec0e6;margin-left:4px">s</span></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-head text-center" style="justify-content:center;flex-direction:column;align-items:center">
+            <h2>Andhra Pradesh Smart Mobility Platform</h2>
+            <p class="lead-muted">Enterprise-grade platform for commercial transport operators, drivers, and passengers across Andhra Pradesh.</p>
+        </div>
+
+        <div class="row g-4 mt-2">
+            <div class="col-md-4 fade-up-1">
+                <div class="feature-card">
+                    <div class="f-icon">🗺</div>
+                    <h5>APSRTC Live Tracking</h5>
+                    <p>Live Leaflet maps covering Andhra Pradesh with real-time bus markers, route overlays, and automated stop positioning.</p>
+                </div>
+            </div>
+            <div class="col-md-4 fade-up-2">
+                <div class="feature-card">
+                    <div class="f-icon">⏱</div>
+                    <h5>Advanced ETA Engine</h5>
+                    <p>Intelligent distance remaining, stop-by-stop ETA predictions, and live route progress with 5-second updates on every tracked vehicle.</p>
+                </div>
+            </div>
+            <div class="col-md-4 fade-up-3">
+                <div class="feature-card">
+                    <div class="f-icon">📊</div>
+                    <h5>Operations Intelligence</h5>
+                    <p>Real-time fleet monitoring, route analytics, performance dashboards, and admin control center with comprehensive reporting tools.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-5 glass-card fade-up">
+            <div class="card-body p-4 d-flex flex-wrap align-items-center justify-content-between gap-3">
+               <div class="coverage-card">
+
+    <h2>APSRTC Network Coverage</h2>
+
+    <p class="coverage-subtitle">
+        Real-time monitoring and ETA intelligence across Andhra Pradesh.
+    </p>
+
+    <div class="coverage-regions">
+
+         <h4>North Andhra</h4>
+         <p>
+            Palasa • Sompeta • Ichapuram • Tekkali • Srikakulam
+         </p>
+
+         <h4>Coastal Andhra</h4>
+         <p>
+            Vizianagaram • Visakhapatnam • Kakinada • Rajamahendravaram • Eluru
+         </p>
+
+         <h4>Central Andhra</h4>
+         <p>
+            Vijayawada • Guntur • Ongole
+         </p>
+
+         <h4>South Andhra</h4>
+         <p>
+            Nellore • Kadapa • Kurnool • Anantapur • Tirupati
+         </p>
+     </div>
+         </div>
+            </div>
+                <a href="{{ url_for('login_page') }}" class="btn btn-accent">Explore APSRTC Network →</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
