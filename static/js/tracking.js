@@ -581,14 +581,17 @@ window.TransPulseTracking = {
                 return;
             }
 
-            const bus = busesData.buses.find(b =>
-                b.bus_id.toString() === this.currentBusIdentifier.toString() ||
-                (b.bus_number && b.bus_number.toLowerCase() === this.currentBusIdentifier.toString().toLowerCase()) ||
-                (b.bus_number && b.bus_number.toLowerCase().includes(this.currentBusIdentifier.toString().toLowerCase()))
-            );
+            const trackingId = String(this.currentBusIdentifier).trim().toUpperCase();
+
+            const bus = busesData.buses.find(b => {
+                const busId = String(b.bus_id || "").trim().toUpperCase();
+                const busNo = String(b.bus_number || "").trim().toUpperCase();
+
+                return busId === trackingId || busNo === trackingId;  
+            });
 
             if (!bus) {
-                this._showNoGeometry('Bus not found in live fleet. Check the bus number and try again.');
+                console.warn("Bus missing in current poll. Keeping previous marker.");
                 return;
             }
 

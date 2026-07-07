@@ -1952,7 +1952,7 @@ def create_app() -> Flask:
     limiter = Limiter(
         get_remote_address,
         app=app,
-        default_limits=["200 per day", "50 per hour"],
+        default_limits=["100000 per day", "10000 per hour"],
         storage_uri=app.config.get("RATELIMIT_STORAGE_URI", "memory://")
     )
     app.csrf = csrf
@@ -2226,93 +2226,139 @@ def _road_geometry_failure_is_recent(cache_entry: RoadGeometryCache) -> bool:
 
 def _display_geometry_for_map(route: Route, trip, points: list, shape_path: list) -> dict:
     """Return a rendering-only geometry, never changing GTFS or tracking paths."""
-    default = {
-        "path": shape_path,
-        "leg_end_indexes": _path_indexes_for_stops(points, shape_path),
-        "source": "gtfs",
-        "generated_point_count": 0,
-    }
-    if len(points) < 2:
-        return default
+    gtfs_points = len(shape_path) if shape_path else 0
+    stop_points = len(points) if points else 0
 
-    cache_key, stop_signature = _road_geometry_cache_identity(route, trip, points)
-    cache_entry = RoadGeometryCache.query.filter_by(cache_key=cache_key).first()
-    if cache_entry and cache_entry.status == "ready":
-        cached_path, cached_leg_indexes = _decode_cached_road_geometry(cache_entry)
-        if len(cached_path) >= 2 and len(cached_leg_indexes) == len(points):
-            return {
-                "path": cached_path,
-                "leg_end_indexes": cached_leg_indexes,
-                "source": "osrm",
-                "generated_point_count": len(cached_path),
-            }
-
-    if cache_entry and cache_entry.status == "failed" and _road_geometry_failure_is_recent(cache_entry):
-        default["source"] = "gtfs_fallback"
-        return default
-
-    try:
-        generated_path = _osrm_route_for_stop_sequence(points)
-        leg_end_indexes = _path_indexes_for_stops(points, generated_path)
-        if len(leg_end_indexes) != len(points):
-            raise ValueError("OSRM geometry could not be aligned to GTFS stops")
-
-        if not cache_entry:
-            existing = RoadGeometryCache.query.filter_by(cache_key=cache_key).first()
-            if existing:
-                cached_path, cached_leg_indexes = _decode_cached_road_geometry(existing)
-                if existing.status == "ready" and len(cached_path) >= 2 and len(cached_leg_indexes) == len(points):
-                    return {
-                        "path": cached_path,
-                        "leg_end_indexes": cached_leg_indexes,
-                        "source": "osrm",
-                        "generated_point_count": len(cached_path),
-                    }
-                default["source"] = "gtfs_fallback"
-                return default
-            cache_entry = RoadGeometryCache(
-                cache_key=cache_key,
-                route_id=route.id,
-                shape_id=getattr(trip, "shape_id", None),
-                stop_signature=stop_signature,
-            )
-            db.session.add(cache_entry)
-        cache_entry.status = "ready"
-        cache_entry.geometry_json = json.dumps(generated_path, separators=(",", ":"))
-        cache_entry.leg_end_indexes_json = json.dumps(leg_end_indexes, separators=(",", ":"))
-        cache_entry.last_error = None
-        try:
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-            existing = RoadGeometryCache.query.filter_by(cache_key=cache_key).first()
-            if existing:
-                cached_path, cached_leg_indexes = _decode_cached_road_geometry(existing)
-                if existing.status == "ready" and len(cached_path) >= 2 and len(cached_leg_indexes) == len(points):
-                    return {
-                        "path": cached_path,
-                        "leg_end_indexes": cached_leg_indexes,
-                        "source": "osrm",
-                        "generated_point_count": len(cached_path),
-                    }
-            default["source"] = "gtfs_fallback"
-            return default
+    # 1. Check if GTFS shapes exist and are sufficiently detailed
+    if shape_path and _gtfs_shape_has_sufficient_detail(points, shape_path):
+        source = "gtfs"
+        display_path = shape_path
+        display_points_cnt = len(display_path)
         logger.info(
-            "[ROAD_GEOMETRY] cached route_id=%s shape_id=%s gtfs_points=%s generated_points=%s",
-            route.id, getattr(trip, "shape_id", None), len(shape_path), len(generated_path),
+            "[GEOMETRY] source=%s gtfs_points=%s display_points=%s stop_points=%s",
+            source, gtfs_points, display_points_cnt, stop_points
         )
         return {
-            "path": generated_path,
-            "leg_end_indexes": leg_end_indexes,
-            "source": "osrm",
-            "generated_point_count": len(generated_path),
+            "path": display_path,
+            "leg_end_indexes": _path_indexes_for_stops(points, display_path),
+            "source": source,
+            "generated_point_count": 0,
         }
-    except (URLError, TimeoutError, ValueError, OSError, json.JSONDecodeError) as error:
-        _cache_road_geometry_failure(
-            cache_entry, cache_key, stop_signature, route, trip, error
-        )
-        default["source"] = "gtfs_fallback"
-        return default
+
+    # If GTFS shapes are unavailable or simplified (stop-to-stop straight lines), 
+    # check cache or generate using OSRM.
+    if len(points) >= 2:
+        cache_key, stop_signature = _road_geometry_cache_identity(route, trip, points)
+        cache_entry = RoadGeometryCache.query.filter_by(cache_key=cache_key).first()
+
+        # 2. Try Cached road geometry
+        if cache_entry and cache_entry.status == "ready":
+            cached_path, cached_leg_indexes = _decode_cached_road_geometry(cache_entry)
+            if len(cached_path) >= 2 and len(cached_leg_indexes) == len(points):
+                source = "road_cache"
+                display_points_cnt = len(cached_path)
+                logger.info(
+                    "[GEOMETRY] source=%s gtfs_points=%s display_points=%s stop_points=%s",
+                    source, gtfs_points, display_points_cnt, stop_points
+                )
+                return {
+                    "path": cached_path,
+                    "leg_end_indexes": cached_leg_indexes,
+                    "source": source,
+                    "generated_point_count": len(cached_path),
+                }
+
+        # 3. If cache entry is not failed recently, try generating via OSRM
+        if not (cache_entry and cache_entry.status == "failed" and _road_geometry_failure_is_recent(cache_entry)):
+            try:
+                generated_path = _osrm_route_for_stop_sequence(points)
+                leg_end_indexes = _path_indexes_for_stops(points, generated_path)
+                if len(leg_end_indexes) != len(points):
+                    raise ValueError("OSRM geometry could not be aligned to GTFS stops")
+
+                if not cache_entry:
+                    existing = RoadGeometryCache.query.filter_by(cache_key=cache_key).first()
+                    if existing:
+                        cached_path, cached_leg_indexes = _decode_cached_road_geometry(existing)
+                        if existing.status == "ready" and len(cached_path) >= 2 and len(cached_leg_indexes) == len(points):
+                            source = "road_cache"
+                            display_points_cnt = len(cached_path)
+                            logger.info(
+                                "[GEOMETRY] source=%s gtfs_points=%s display_points=%s stop_points=%s",
+                                source, gtfs_points, display_points_cnt, stop_points
+                            )
+                            return {
+                                "path": cached_path,
+                                "leg_end_indexes": cached_leg_indexes,
+                                "source": source,
+                                "generated_point_count": len(cached_path),
+                            }
+                        cache_entry = existing
+                    else:
+                        cache_entry = RoadGeometryCache(
+                            cache_key=cache_key,
+                            route_id=route.id,
+                            shape_id=getattr(trip, "shape_id", None),
+                            stop_signature=stop_signature,
+                        )
+                        db.session.add(cache_entry)
+
+                cache_entry.status = "ready"
+                cache_entry.geometry_json = json.dumps(generated_path, separators=(",", ":"))
+                cache_entry.leg_end_indexes_json = json.dumps(leg_end_indexes, separators=(",", ":"))
+                cache_entry.last_error = None
+                try:
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    existing = RoadGeometryCache.query.filter_by(cache_key=cache_key).first()
+                    if existing:
+                        cached_path, cached_leg_indexes = _decode_cached_road_geometry(existing)
+                        if existing.status == "ready" and len(cached_path) >= 2 and len(cached_leg_indexes) == len(points):
+                            source = "road_cache"
+                            display_points_cnt = len(cached_path)
+                            logger.info(
+                                "[GEOMETRY] source=%s gtfs_points=%s display_points=%s stop_points=%s",
+                                source, gtfs_points, display_points_cnt, stop_points
+                            )
+                            return {
+                                "path": cached_path,
+                                "leg_end_indexes": cached_leg_indexes,
+                                "source": source,
+                                "generated_point_count": len(cached_path),
+                            }
+
+                source = "generated"
+                display_points_cnt = len(generated_path)
+                logger.info(
+                    "[GEOMETRY] source=%s gtfs_points=%s display_points=%s stop_points=%s",
+                    source, gtfs_points, display_points_cnt, stop_points
+                )
+                return {
+                    "path": generated_path,
+                    "leg_end_indexes": leg_end_indexes,
+                    "source": source,
+                    "generated_point_count": len(generated_path),
+                }
+            except (URLError, TimeoutError, ValueError, OSError, json.JSONDecodeError) as error:
+                _cache_road_geometry_failure(
+                    cache_entry, cache_key, stop_signature, route, trip, error
+                )
+
+    # 4. Fallback to stop coordinates (stops)
+    fallback_path = shape_path if len(shape_path) >= 2 else [{"lat": p["lat"], "lng": p["lng"]} for p in points]
+    source = "stops"
+    display_points_cnt = len(fallback_path)
+    logger.info(
+        "[GEOMETRY] source=%s gtfs_points=%s display_points=%s stop_points=%s",
+        source, gtfs_points, display_points_cnt, stop_points
+    )
+    return {
+        "path": fallback_path,
+        "leg_end_indexes": _path_indexes_for_stops(points, fallback_path),
+        "source": source,
+        "generated_point_count": 0,
+    }
 
 def _shape_path_for_trip(trip) -> list:
     if not trip or not getattr(trip, "shape_id", None):
@@ -2916,11 +2962,14 @@ def _route_geometry_path(route, trip=None) -> list:
     return [{"lat": p["lat"], "lng": p["lng"]} for p in points]
 
 
-def _complete_active_trips(bus_id: int) -> None:
-    Trip.query.filter(
+def _complete_active_trips(bus_id: int, exclude_trip_id: Optional[int] = None) -> None:
+    query = Trip.query.filter(
         Trip.bus_id == bus_id,
         Trip.status.in_(ACTIVE_TRIP_STATUSES)
-    ).update(
+    )
+    if exclude_trip_id is not None:
+        query = query.filter(Trip.id != exclude_trip_id)
+    query.update(
         {"status": "completed", "end_time": datetime.now(UTC)},
         synchronize_session=False
     )
@@ -2987,17 +3036,40 @@ def _create_trip_for_bus(bus: Bus, route_id: int) -> Trip:
 
 
 def _active_trip_for_bus(bus: Bus) -> Optional[Trip]:
-    if not bus or not bus.route_id:
+    if not bus:
         return None
-    return (
-        Trip.query.filter(Trip.bus_id == bus.id, Trip.route_id == bus.route_id, Trip.status.in_(ACTIVE_TRIP_STATUSES))
-        .order_by(Trip.start_time.desc())
+
+    order_by = []
+    if bus.route_id:
+        order_by.append(case((Trip.route_id == bus.route_id, 0), else_=1))
+    order_by.extend([Trip.start_time.desc(), Trip.created_at.desc(), Trip.id.desc()])
+
+    trip = (
+        Trip.query.filter(
+            Trip.bus_id == bus.id,
+            Trip.status.in_(ACTIVE_TRIP_STATUSES)
+        )
+        .order_by(*order_by)
         .first()
     )
 
+    logger.info(
+        "[ACTIVE_TRIP] bus=%s route=%s trip=%s status=%s",
+        bus.id,
+        bus.route_id,
+        trip.id if trip else None,
+        trip.status if trip else None,
+    )
+
+    return trip
 
 def _driver_dashboard_trip_for_bus(bus: Optional[Bus]) -> Optional[Trip]:
-    if not bus or not bus.route_id:
+    if not bus:
+        return None
+    active_trip = _active_trip_for_bus(bus)
+    if active_trip:
+        return active_trip
+    if not bus.route_id:
         return None
     trip = (
         Trip.query.filter(
@@ -3432,7 +3504,7 @@ def _start_driver_trip(bus: Bus, requested_return: bool = False) -> Trip:
         logger.debug("Reason for Selection: %s", selection_reason)
         logger.debug("=========================================")
 
-    _complete_active_trips(bus.id)
+    _complete_active_trips(bus.id, exclude_trip_id=trip.id)
     trip.status = "active"
     trip.start_time = datetime.now(UTC)
     trip.end_time = None
@@ -3833,6 +3905,10 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
         "shape_point_index": None,
         "movement_state": "validation_error",
         "path": [],
+        "display_path": [],
+        "display_geometry_source": "unavailable",
+        "geometry_source": "unavailable",
+        "generated_road_geometry_points": 0,
         "stops": [],
         "geometry_available": False,
         "geometry_message": message,
@@ -3871,14 +3947,22 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
 
     default_lat = points[0]["lat"] if points else 0.0
     default_lon = points[0]["lng"] if points else 0.0
+    lat_raw = gps.get("lat")
+    lon_raw = gps.get("lon")
     try:
-        lat = float(gps.get("lat") if gps.get("lat") is not None else default_lat)
+        lat = float(lat_raw) if lat_raw is not None else default_lat
     except (TypeError, ValueError):
         lat = default_lat
     try:
-        lon = float(gps.get("lon") if gps.get("lon") is not None else default_lon)
+        lon = float(lon_raw) if lon_raw is not None else default_lon
     except (TypeError, ValueError):
         lon = default_lon
+    has_gps_coordinates = (
+        lat_raw is not None
+        and lon_raw is not None
+        and -90 <= lat <= 90
+        and -180 <= lon <= 180
+    )
 
     now_seconds = time.time()
     gps_timestamp = now_seconds
@@ -3890,7 +3974,7 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
         except (TypeError, ValueError):
             pass
     gps_age = now_seconds - gps_timestamp
-    is_gps_lost = (gps_age >= 60.0) if gps else True
+    is_gps_lost = (gps_age >= 60.0) if has_gps_coordinates else True
 
     if points and route_path:
         dist_start = _haversine_km(points[0]["lat"], points[0]["lng"], route_path[0]["lat"], route_path[0]["lng"])
@@ -3904,10 +3988,10 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
         covered_km = 0.0
     covered_km = max(0.0, covered_km)
     
-    movement_begun = covered_km > 0.001
+    movement_begun = covered_km > 0.001 or has_gps_coordinates
 
     if not movement_begun:
-        if points:
+        if points and not has_gps_coordinates:
             lat = points[0]["lat"]
             lon = points[0]["lng"]
         path_index = 0
@@ -4102,8 +4186,9 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
         "shape_point_index": path_index if route_path else None,
         "movement_state": "live_gps",
         "path": route_path,
-        "display_path": route_path,
+        "display_path": display_geometry.get("path") or route_path,
         "display_geometry_source": display_geometry.get("source"),
+        "geometry_source": display_geometry.get("source"),
         "generated_road_geometry_points": display_geometry.get("generated_point_count", 0),
         "stops": stop_payload,
         "geometry_available": True,
@@ -4251,6 +4336,7 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
         "path": route_path,
         "display_path": route_path,
         "display_geometry_source": display_geometry.get("source"),
+        "geometry_source": display_geometry.get("source"),
         "generated_road_geometry_points": display_geometry.get("generated_point_count", 0),
         "stops": stop_payload,
         "geometry_available": True,
@@ -4390,6 +4476,7 @@ def _planned_assignment_snapshot(bus: Bus, trip, route: Route, now_seconds: Opti
         "path": display_path,
         "display_path": display_path,
         "display_geometry_source": display_geometry.get("source"),
+        "geometry_source": display_geometry.get("source"),
         "generated_road_geometry_points": display_geometry.get("generated_point_count", 0),
         "travelled_path": [],
         "stops": stops_payload,
@@ -4399,6 +4486,47 @@ def _planned_assignment_snapshot(bus: Bus, trip, route: Route, now_seconds: Opti
         "assigned": True,
         **schedule_payload,
     }
+
+
+def _log_fleet_exclusion(bus: Optional[Bus], reason: str, trip=None, route: Optional[Route] = None) -> None:
+    logger.warning(
+        "[FLEET] excluded bus_id=%s bus_number=%s trip_id=%s trip_status=%s route_id=%s reason=%s",
+        getattr(bus, "id", None),
+        getattr(bus, "bus_number", None),
+        getattr(trip, "id", None),
+        getattr(trip, "status", None),
+        getattr(route, "id", None) if route else getattr(trip, "route_id", None),
+        reason,
+    )
+
+
+def _log_fleet_snapshot_exception(stage: str, bus: Bus, trip, route: Optional[Route], exc: Exception) -> None:
+    logger.exception(
+        "[FLEET] %s snapshot failed bus_id=%s bus_number=%s trip_id=%s trip_status=%s route_id=%s error=%s",
+        stage,
+        getattr(bus, "id", None),
+        getattr(bus, "bus_number", None),
+        getattr(trip, "id", None),
+        getattr(trip, "status", None),
+        getattr(route, "id", None) if route else getattr(trip, "route_id", None),
+        exc,
+    )
+
+
+def _log_fleet_snapshot_selection(bus: Bus, trip, selected_snapshot: str, reason: str,
+                                  route: Optional[Route] = None) -> None:
+    logger.info(
+        "[FLEET_SNAPSHOT_SELECTION] bus_id=%s bus_number=%s trip_id=%s trip_status=%s "
+        "bus_is_active=%s route_id=%s selected_snapshot=%s reason=%s",
+        getattr(bus, "id", None),
+        getattr(bus, "bus_number", None),
+        getattr(trip, "id", None),
+        getattr(trip, "status", None),
+        bool(getattr(bus, "is_active", False)),
+        getattr(route, "id", None) if route else getattr(trip, "route_id", None),
+        selected_snapshot,
+        reason,
+    )
 
 
 def _live_fleet_snapshot() -> list:
@@ -4419,7 +4547,7 @@ def _live_fleet_snapshot() -> list:
 
     active_buses = Bus.query.filter(
         Bus.assigned_driver_code.isnot(None),
-        Bus.route_id.isnot(None)
+        or_(Bus.route_id.isnot(None), Bus.is_active.is_(True))
     ).order_by(Bus.bus_number.asc()).all()
 
     for bus in active_buses:
@@ -4429,37 +4557,50 @@ def _live_fleet_snapshot() -> list:
             stale_gps = LIVE_GPS_DATA.get(bus.id)
             if stale_gps:
                 gps_to_use = stale_gps
-        trip = _driver_dashboard_trip_for_bus(bus)
+        active_trip = _active_trip_for_bus(bus)
+        trip_selection_reason = "active trip selected for live polling" if active_trip else "dashboard/planned assignment selected"
+        trip = active_trip or _driver_dashboard_trip_for_bus(bus)
         if not trip:
+            _log_fleet_exclusion(bus, "no dashboard trip found for assigned bus")
             continue
 
         route = db.session.get(Route, trip.route_id)
         if route is None:
+            _log_fleet_exclusion(bus, "trip route not found", trip=trip)
             continue
 
         if trip.status in ("completed", "return_completed"):
             try:
                 bus_data = _completed_trip_snapshot(bus, trip, route)
+                _log_fleet_snapshot_selection(bus, trip, "COMPLETED", "completed trip status", route)
             except Exception as exc:
-                logger.exception("[FLEET] completed trip snapshot failed for bus %s: %s", bus.bus_number, exc)
+                _log_fleet_snapshot_exception("completed", bus, trip, route, exc)
                 continue
         elif trip.status in ("active", "in_progress"):
             try:
                 bus_data = _real_gps_bus_snapshot(bus, trip, route, gps_to_use)
                 bus_data["travelled_path"] = LIVE_GPS_BREADCRUMBS.get(bus.id, [])
-            except Exception:
-                logger.exception(
-                    "REAL GPS SNAPSHOT FAILED\n"
-                    "Bus=%s\n"
-                    "Trip=%s\n"
-                    "Status=%s",
-                    bus.bus_number,
-                    getattr(trip, "id", None),
-                    getattr(trip, "status", None),
+                gps_reason = "fresh GPS" if real_gps else ("last known GPS" if gps_to_use else "active trip without GPS packet")
+                _log_fleet_snapshot_selection(
+                    bus,
+                    trip,
+                    "ACTIVE",
+                    f"{trip_selection_reason}; {gps_reason}",
+                    route,
                 )
+            except Exception as exc:
+                _log_fleet_snapshot_exception("active-real-gps", bus, trip, route, exc)
                 raise
         else:
             try:
+                if bus.is_active:
+                    logger.warning(
+                        "[FLEET_SNAPSHOT_ANOMALY] active bus selected planned snapshot bus_id=%s trip_id=%s "
+                        "trip_status=%s reason=no active trip found",
+                        bus.id,
+                        getattr(trip, "id", None),
+                        getattr(trip, "status", None),
+                    )
                 bus_data = _planned_assignment_snapshot(
                     bus,
                     trip,
@@ -4467,11 +4608,13 @@ def _live_fleet_snapshot() -> list:
                     now_seconds,
                     active_without_gps=bool(bus.is_active),
                 )
+                _log_fleet_snapshot_selection(bus, trip, "PLANNED", trip_selection_reason, route)
             except Exception as exc:
-                logger.exception("[FLEET] planned assignment snapshot failed for bus %s: %s", bus.bus_number, exc)
+                _log_fleet_snapshot_exception("planned-assignment", bus, trip, route, exc)
                 continue
 
         if bus_data:
+            bus_data["bus_is_active"] = bool(bus.is_active)
             bus_data["sos_active"] = bus.id in active_sos_bus_ids
             if bus_data.get("is_live_gps"):
                 try:
@@ -4479,6 +4622,8 @@ def _live_fleet_snapshot() -> list:
                 except Exception as exc:
                     logger.warning("[DELAY_NOTIFY] skipped for bus %s: %s", bus.bus_number, exc)
             snapshot.append(bus_data)
+        else:
+            _log_fleet_exclusion(bus, "snapshot builder returned no bus data", trip=trip, route=route)
 
     if queued_delay_notifications:
         try:
@@ -5479,10 +5624,11 @@ def register_routes(app: Flask) -> None:
         if not assigned_bus:
             return jsonify({"error": "No assigned bus"}), 404
 
-        active_trip = _driver_dashboard_trip_for_bus(assigned_bus)
+        active_trip = _active_trip_for_bus(assigned_bus)
         if not active_trip or not assigned_bus.is_active:
-            LIVE_GPS_DATA.pop(assigned_bus.id, None)
-            LIVE_GPS_BREADCRUMBS.pop(assigned_bus.id, None)
+            if not assigned_bus.is_active:
+                LIVE_GPS_DATA.pop(assigned_bus.id, None)
+                LIVE_GPS_BREADCRUMBS.pop(assigned_bus.id, None)
             _mark_driver_runtime_gps_state(assigned_bus.id, "OFF")
             return jsonify({"error": "Trip is not active or ready"}), 409
 
@@ -5651,6 +5797,16 @@ def register_routes(app: Flask) -> None:
         assigned_bus = _get_session_driver_bus()
         if not assigned_bus:
             return jsonify({"success": False, "error": "No assigned bus"}), 404
+        active_trip = _active_trip_for_bus(assigned_bus)
+        if active_trip and assigned_bus.is_active:
+            _mark_driver_runtime_gps_state(assigned_bus.id, "OFF")
+            _invalidate_fleet_snapshot_cache()
+            return jsonify({
+                "success": True,
+                "bus_id": assigned_bus.id,
+                "gps_enabled": False,
+                "last_known_gps_preserved": True,
+            }), 200
         LIVE_GPS_DATA.pop(assigned_bus.id, None)
         LIVE_GPS_BREADCRUMBS.pop(assigned_bus.id, None)
         _mark_driver_runtime_gps_state(assigned_bus.id, "OFF")
@@ -6595,7 +6751,20 @@ def register_routes(app: Flask) -> None:
             except (TypeError, ValueError):
                 pass
 
-        active_route_ids = set(route_bus_count.keys())
+        assigned_route_counts = {
+            route_id: count
+            for route_id, count in (
+                db.session.query(Bus.route_id, func.count(Bus.id))
+                .filter(
+                    Bus.route_id.isnot(None),
+                    Bus.assigned_driver_code.isnot(None),
+                )
+                .group_by(Bus.route_id)
+                .all()
+            )
+        }
+
+        active_route_ids = set(route_bus_count.keys()) | set(assigned_route_counts.keys())
         for bus in Bus.query.filter(Bus.route_id.isnot(None)).all():
             active_route_ids.add(bus.route_id)
 
@@ -6621,23 +6790,59 @@ def register_routes(app: Flask) -> None:
                 .order_by(case((Bus.is_active.is_(True), 0), else_=1), Bus.id.asc())
                 .first()
             )
+            logger.info(
+                "[ROUTE_LIVE] "
+                "route_id=%s "
+                "route_code=%s "
+                "active_bus_id=%s "
+                "bus_active=%s "
+                "fleet_count=%s "
+                "assigned_count=%s",
+                route.id,
+                route.route_code,
+                getattr(active_bus, "id", None),
+                getattr(active_bus, "is_active", None),
+                route_bus_count.get(route.id, 0),
+                assigned_route_counts.get(route.id, 0),
+            )
+            
+            
+            
             trip = _driver_dashboard_trip_for_bus(active_bus) if active_bus else None
             if not trip:
                 trip = _resolve_trip_for_route(route)
-            points = (
-                _route_points_for_assigned_trip(route, trip)
-                if active_bus and trip
-                else _route_points_for(route, trip)
-            )
+            points_from_active_trip = bool(active_bus and trip)
+            points = _route_points_for_assigned_trip(route, trip) if points_from_active_trip else _route_points_for(route, trip)
+            if not points and active_bus:
+                fallback_trip = _resolve_trip_for_route(route)
+                fallback_points = _route_points_for(route, fallback_trip)
+                if fallback_points:
+                    logger.warning(
+                        "[ROUTES_LIVE] using route fallback geometry route_id=%s route_code=%s active_bus_id=%s active_trip_id=%s",
+                        route.id,
+                        route.route_code,
+                        active_bus.id,
+                        getattr(trip, "id", None),
+                    )
+                    trip = fallback_trip or trip
+                    points = fallback_points
+                    points_from_active_trip = False
             if not points:
+                logger.warning(
+                    "[ROUTES_LIVE] excluded route_id=%s route_code=%s active_bus_id=%s trip_id=%s reason=no usable stops",
+                    route.id,
+                    route.route_code,
+                    getattr(active_bus, "id", None),
+                    getattr(trip, "id", None),
+                )
                 continue
             gtfs_path = (
                 _route_geometry_path_for_assigned_trip(trip)
-                if active_bus and trip
+                if points_from_active_trip and trip
                 else _route_geometry_path(route, trip)
             )
             direction = "backward" if getattr(trip, "direction_id", 0) == 1 else "forward"
-            if active_bus and direction == "backward":
+            if points_from_active_trip and direction == "backward":
                 gtfs_path = list(reversed(gtfs_path))
             display_geometry = _display_geometry_for_map(route, trip, points, gtfs_path)
             geom_path = display_geometry["path"] or gtfs_path
@@ -6645,7 +6850,7 @@ def register_routes(app: Flask) -> None:
             avg_eta = int(sum(etas) / len(etas)) if etas else None
             schedule = (
                 _route_schedule_for_assigned_trip(route, trip)
-                if active_bus and trip
+                if points_from_active_trip and trip
                 else _route_schedule_for(route, trip)
             )
             schedule_stops = schedule.get("stops") or []
@@ -6666,9 +6871,11 @@ def register_routes(app: Flask) -> None:
                 "destination_stop": route.destination or (points[-1]["name"] if points else ""),
                 "stops": stops_payload,
                 "path": [{"lat": p["lat"], "lng": p["lng"], "name": p.get("name")} for p in (geom_path if geom_path else points)],
+                "display_path": [{"lat": p["lat"], "lng": p["lng"]} for p in (geom_path if geom_path else points)],
                 "display_geometry_source": display_geometry["source"],
+                "geometry_source": display_geometry["source"],
                 "generated_road_geometry_points": display_geometry["generated_point_count"],
-                "active_bus_count": route_bus_count.get(route.id, 0),
+                "active_bus_count": max(route_bus_count.get(route.id, 0), assigned_route_counts.get(route.id, 0)),
                 "eta_minutes": avg_eta,
                 "eta_label": f"{avg_eta} min" if avg_eta is not None else "Calculating...",
                 "departure_time": schedule.get("departure_time", "--"),

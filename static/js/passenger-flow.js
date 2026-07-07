@@ -72,6 +72,16 @@ function etaDisplay(bus) {
     return eta === null || eta === undefined ? '--' : `${eta} min`;
 }
 
+function preserveNonEmptyTelemetry(currentItems, nextItems, label) {
+    const current = Array.isArray(currentItems) ? currentItems : [];
+    const next = Array.isArray(nextItems) ? nextItems : [];
+    if (next.length === 0 && current.length > 0) {
+        console.warn(`Preserving last ${label} snapshot after an empty refresh.`);
+        return current;
+    }
+    return next;
+}
+
 async function loadAssignedRoutes() {
     const container = document.getElementById('dynamic-routes-container');
     if (!container) return;
@@ -79,13 +89,19 @@ async function loadAssignedRoutes() {
     try {
         const res = await fetch('/api/routes/live');
         if (!res.ok) {
-            container.innerHTML = '<div class="col-12"><div class="alert alert-warning text-center">Unable to load routes. Please refresh.</div></div>';
+            if (!container.querySelector('.route-card-interactive')) {
+                container.innerHTML = '<div class="col-12"><div class="alert alert-warning text-center">Unable to load routes. Please refresh.</div></div>';
+            }
             return;
         }
         const data = await res.json();
         container.innerHTML = '';
 
-        const routes = data.routes || [];
+        const previousRoutes = (window.Workflow && window.Workflow.apiData && window.Workflow.apiData.routes) || [];
+        const routes = preserveNonEmptyTelemetry(previousRoutes, data.routes || [], 'route');
+        if (window.Workflow && window.Workflow.apiData) {
+            window.Workflow.apiData.routes = routes;
+        }
         if (routes.length === 0) {
             container.innerHTML = '<div class="col-12"><div class="alert alert-info text-center">No routes available yet.</div></div>';
             return;
@@ -126,7 +142,9 @@ async function loadAssignedRoutes() {
         });
     } catch (err) {
         console.error(err);
-        container.innerHTML = '<div class="col-12"><div class="alert alert-danger text-center">Failed to load routes.</div></div>';
+        if (!container.querySelector('.route-card-interactive')) {
+            container.innerHTML = '<div class="col-12"><div class="alert alert-danger text-center">Failed to load routes.</div></div>';
+        }
     }
 }
 
@@ -208,11 +226,13 @@ window.Workflow = {
             clearTimeout(timeout);
 
             if (rRes.ok) {
-                this.apiData.routes = (await rRes.json()).routes || [];
+                const routesPayload = await rRes.json();
+                this.apiData.routes = preserveNonEmptyTelemetry(this.apiData.routes, routesPayload.routes || [], 'route');
                 routesOk = true;
             }
             if (bRes.ok) {
-                this.apiData.buses = (await bRes.json()).buses || [];
+                const busesPayload = await bRes.json();
+                this.apiData.buses = preserveNonEmptyTelemetry(this.apiData.buses, busesPayload.buses || [], 'bus');
                 busesOk = true;
             }
             if (oRes.ok) this.apiData.occupancy = await oRes.json() || {};

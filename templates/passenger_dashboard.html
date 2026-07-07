@@ -453,14 +453,36 @@
                 fetch('/api/buses/live')
             ]);
             
-            const routesData = await routesRes.json();
-            const busesData = await busesRes.json();
+            const routesData = routesRes.ok ? await routesRes.json() : { routes: [] };
+            const busesData = busesRes.ok ? await busesRes.json() : { buses: [] };
+            const cachedRoutes = window.Workflow?.apiData?.routes || [];
+            const cachedBuses = window.Workflow?.apiData?.buses || [];
+            const routes = (routesData.routes && routesData.routes.length) ? routesData.routes : cachedRoutes;
+            const buses = (busesData.buses && busesData.buses.length) ? busesData.buses : cachedBuses;
+            const normalizeRouteValue = value => String(value ?? '').trim().toLowerCase();
+            const selectedRouteCode = normalizeRouteValue(routeCode);
             
-            const targetRoute = routesData.routes.find(r => r.route_code === routeCode);
+            const targetRoute = routes.find(r => normalizeRouteValue(r.route_code) === selectedRouteCode);
             
             let activeBuses = [];
             if(targetRoute) {
-                activeBuses = busesData.buses.filter(b => b.route_id === targetRoute.route_id);
+                const targetRouteId = normalizeRouteValue(targetRoute.route_id);
+                const targetRouteCode = normalizeRouteValue(targetRoute.route_code);
+                activeBuses = buses.filter(b => {
+                    const busRouteId = normalizeRouteValue(b.route_id);
+                    const busRouteCode = normalizeRouteValue(b.route_code);
+                    return (
+                        (targetRouteId && busRouteId && busRouteId === targetRouteId) ||
+                        (targetRouteCode && busRouteCode && busRouteCode === targetRouteCode)
+                    );
+                });
+                if (activeBuses.length === 0 && Number(targetRoute.active_bus_count || 0) > 0) {
+                    console.warn('Route has assigned bus count but no bus matched modal filter.', {
+                        route_id: targetRoute.route_id,
+                        route_code: targetRoute.route_code,
+                        bus_routes: buses.map(b => ({ bus_number: b.bus_number, route_id: b.route_id, route_code: b.route_code }))
+                    });
+                }
             }
             
             if(activeBuses.length > 0) {
@@ -483,7 +505,7 @@
                     `;
                 }).join('');
             } else {
-                busesContainer.innerHTML = '<span class="text-muted small">No active buses currently transmitting telemetry.</span>';
+                busesContainer.innerHTML = '<span class="text-muted small">No assigned buses are currently available for this route.</span>';
             }
             
             if(targetRoute && targetRoute.stops && targetRoute.stops.length > 0) {
