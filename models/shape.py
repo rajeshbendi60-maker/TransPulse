@@ -31,6 +31,11 @@ class Shape(db.Model):
     )
 
     __table_args__ = (
+        db.UniqueConstraint(
+            "shape_id",
+            "shape_pt_sequence",
+            name="uq_shape_id_sequence"
+        ),
         db.Index(
             "idx_shape_sequence",
             "shape_id",

@@ -37,8 +37,8 @@
                                 <input type="number" name="capacity" class="form-control bg-dark text-white border-secondary" value="{{ bus.capacity }}" required>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label text-light small mb-1">Assigned Driver ID</label>
-                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" value="{{ bus.assigned_driver_code or '' }}" placeholder="e.g. DRV-001">
+                                <label class="form-label text-light small mb-1">Assigned Driver ID (DTP-XXXXX)</label>
+                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" value="{{ bus.assigned_driver_code or '' }}" placeholder="e.g. DTP-001">
                             </div>
                         </div>
 
@@ -50,7 +50,7 @@
                                 <select name="existing_route_id" class="form-select bg-dark text-white border-secondary">
                                     <option value="">— Select Existing Route OR Create New Below —</option>
                                     {% for r in routes %}
-                                        <option value="{{ r.id }}" {% if assigned_route and assigned_route.id == r.id %}selected{% endif %}>{{ r.route_code }} — {{ r.origin }} → {{ r.destination }}</option>
+                                        <option value="{{ r.id }}" {% if assigned_route and assigned_route.id == r.id %}selected{% endif %}>{{ r.route_code }} — {{ r.origin }} ➜ {{ r.destination }}</option>
                                     {% endfor %}
                                 </select>
                             </div>

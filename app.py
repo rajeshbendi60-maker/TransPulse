@@ -21,8 +21,18 @@ from flask import Flask, current_app, flash, jsonify, redirect, render_template,
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import or_, func, case
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 from flask_migrate import Migrate
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from flask_wtf.csrf import CSRFError, CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+try:
+    import google.auth.transport.requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+except ImportError:  # pragma: no cover - exercised only when optional dependency is absent
+    google_requests = None
+    google_id_token = None
 
 from config import Config
 from models import db, login_manager
@@ -42,7 +52,7 @@ from models.shape import Shape
 from models.road_geometry_cache import RoadGeometryCache
 
 VALID_ROLES = {"admin", "driver", "passenger"}
-TRIP_STATUS_OPTIONS = {"ready", "active", "completed", "return_ready", "offline", "scheduled", "in_progress", "cancelled"}
+TRIP_STATUS_OPTIONS = {"assigned", "ready", "active", "completed", "return_ready", "offline", "scheduled", "in_progress", "cancelled"}
 ACTIVE_TRIP_STATUSES = ("active", "in_progress")
 ACTIVE_SOS_STATUSES = ("NEW", "ACKNOWLEDGED", "active", "acknowledged")
 SOS_EMERGENCY_TYPES = {
@@ -55,10 +65,21 @@ SOS_EMERGENCY_TYPES = {
 }
 
 LIVE_GPS_DATA = {}
+LIVE_GPS_BREADCRUMBS = {}
+DRIVER_RUNTIME_SESSIONS = {}
 BUS_DELAY_DATA = {}
 BUS_SIMULATION_STATE = {}
 PASSENGER_TRACKING_SESSIONS = {}
 _MAP_DEFAULT_CENTER = None
+
+_FLEET_SNAPSHOT_CACHE = None
+_FLEET_SNAPSHOT_CACHE_TIME = 0.0
+
+def _invalidate_fleet_snapshot_cache():
+    global _FLEET_SNAPSHOT_CACHE, _FLEET_SNAPSHOT_CACHE_TIME
+    _FLEET_SNAPSHOT_CACHE = None
+    _FLEET_SNAPSHOT_CACHE_TIME = 0.0
+
 
 ALLOWED_DELAY_REASONS = {
     "Traffic",
@@ -100,22 +121,27 @@ OSRM_MAX_WAYPOINTS = 90
 ROAD_GEOMETRY_FAILURE_RETRY_SECONDS = 60 * 60
 
 logger = logging.getLogger(__name__)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO"),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
 
 migrate = Migrate()
 
 
 def _normalize_driver_code(raw: str) -> str:
-    """Normalize driver codes DRV-1 through DRV-10000."""
+    """Normalize driver codes DTP-1 through DTP-99999."""
     if not raw:
         return ""
-    clean = re.sub(r"^(DRV|DVR)-", "", str(raw).upper().strip())
+    clean = re.sub(r"^(DTP|DRV|DVR)-", "", str(raw).upper().strip())
     try:
         num = int(clean)
-        if 1 <= num <= 10000:
-            return f"DRV-{num:03d}" if num < 1000 else f"DRV-{num}"
+        if 1 <= num <= 99999:
+            return f"DTP-{num:03d}" if num < 1000 else f"DTP-{num}"
     except ValueError:
         pass
-    return f"DRV-{clean}" if clean else ""
+    return f"DTP-{clean}" if clean else ""
 
 
 def _normalize_admin_transpulse_id(raw: str) -> str:
@@ -145,6 +171,11 @@ def _resolve_transpulse_id(raw: str, role: str) -> str:
 
 
 SHARED_DRIVER_EMAIL = "driver@transpulse.com"
+DEFAULT_ADMIN_EMAIL = "admin@transpulse.com"
+DEFAULT_ADMIN_PASSWORD = os.getenv("TRANSPULSE_DEFAULT_ADMIN_PASSWORD", "admin@tp")
+DEFAULT_PASSENGER_EMAIL = os.getenv("TRANSPULSE_DEFAULT_PASSENGER_EMAIL", "passenger@transpulse.com")
+DEFAULT_PASSENGER_PASSWORD = os.getenv("TRANSPULSE_DEFAULT_PASSENGER_PASSWORD") or secrets.token_urlsafe(24)
+DEFAULT_DRIVER_PASSWORD = os.getenv("TRANSPULSE_DEFAULT_DRIVER_PASSWORD", "driver@tp")
 
 
 def _shared_driver_user() -> Optional[User]:
@@ -181,15 +212,39 @@ def _cleanup_legacy_driver_accounts() -> None:
 
 def _ensure_shared_driver_account() -> None:
     _cleanup_legacy_driver_accounts()
-    if not _shared_driver_user():
+    driver = _shared_driver_user()
+    if not driver:
         driver = User(
             full_name="TransPulse Driver",
             email=SHARED_DRIVER_EMAIL,
             role="driver",
             auth_provider="local",
         )
-        driver.set_password("Driver@123")
+        driver.set_password("driver@tp")
         db.session.add(driver)
+        db.session.commit()
+    else:
+        driver.email = SHARED_DRIVER_EMAIL
+        driver.set_password("driver@tp")
+        db.session.commit()
+
+
+def _ensure_default_admin() -> None:
+    admin = User.query.filter_by(role="admin").first()
+    if not admin:
+        admin = User(
+            full_name="TransPulse Admin",
+            email="admin@transpulse.com",
+            role="admin",
+            transpulse_id="ATP-01"
+        )
+        admin.set_password("admin@tp")
+        db.session.add(admin)
+        db.session.commit()
+    else:
+        admin.email = "admin@transpulse.com"
+        admin.transpulse_id = "ATP-01"
+        admin.set_password("admin@tp")
         db.session.commit()
 
 
@@ -294,9 +349,9 @@ def _validate_driver_code_input(raw: str) -> tuple:
     if not code:
         return "", "Invalid Driver ID format."
     try:
-        num = int(code.replace("DRV-", ""))
-        if num < 1 or num > 10000:
-            return "", "Driver ID must be between DRV-001 and DRV-10000."
+        num = int(code.replace("DTP-", ""))
+        if num < 1 or num > 99999:
+            return "", "Driver ID must be between DTP-001 and DTP-99999."
     except ValueError:
         return "", "Invalid Driver ID format."
     return code, ""
@@ -305,6 +360,77 @@ def _validate_driver_code_input(raw: str) -> tuple:
 PASSWORD_RESET_MAX_AGE_SECONDS = 15 * 60
 PASSWORD_RESET_SALT = "transpulse-passenger-password-reset"
 PASSWORD_MIN_LENGTH = 8
+EMAIL_RE = re.compile(r"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$", re.IGNORECASE)
+GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
+
+
+def _is_valid_email(email: str) -> bool:
+    return bool(email and EMAIL_RE.match(email))
+
+
+def _validate_password_strength(password: str) -> Optional[str]:
+    min_length = current_app.config.get("PASSWORD_MIN_LENGTH", PASSWORD_MIN_LENGTH)
+    if len(password or "") < min_length:
+        return f"Password must be at least {min_length} characters."
+    return None
+
+
+def _google_client_id() -> str:
+    return (current_app.config.get("GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_CLIENT_ID") or "").strip()
+
+
+def _verified_google_profile(credential: str) -> dict:
+    if not credential:
+        raise ValueError("Google credential is missing.")
+
+    client_id = _google_client_id()
+    if not client_id:
+        raise ValueError("Google authentication is not configured.")
+
+    if google_id_token is not None and google_requests is not None:
+        try:
+            payload = google_id_token.verify_oauth2_token(
+                credential,
+                google_requests.Request(),
+                client_id,
+            )
+        except Exception as exc:
+            logger.warning("[GOOGLE_AUTH] ID token verification failed: %s", exc)
+            raise ValueError("Google credential could not be verified.") from exc
+    else:
+        try:
+            req = Request(
+                f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}",
+                headers={"Accept": "application/json"},
+            )
+            with urlopen(req, timeout=8) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            logger.warning("[GOOGLE_AUTH] tokeninfo verification failed: %s", exc)
+            raise ValueError("Google credential could not be verified.") from exc
+
+    if payload.get("iss") not in GOOGLE_ISSUERS:
+        raise ValueError("Google credential issuer is invalid.")
+    if payload.get("aud") != client_id:
+        raise ValueError("Google credential audience is invalid.")
+    if not payload.get("sub"):
+        raise ValueError("Google credential subject is missing.")
+    email_verified = payload.get("email_verified")
+    if str(email_verified).lower() not in {"true", "1"}:
+        raise ValueError("Google account email is not verified.")
+
+    email = (payload.get("email") or "").strip().lower()
+    full_name = (payload.get("name") or payload.get("given_name") or email.split("@")[0]).strip()
+    if not _is_valid_email(email):
+        raise ValueError("Google account email is invalid.")
+    if not full_name:
+        raise ValueError("Google account profile name is invalid.")
+
+    return {
+        "email": email,
+        "full_name": full_name[:120],
+        "subject": payload["sub"],
+    }
 
 
 def _categorize_notification(message: str) -> str:
@@ -469,22 +595,28 @@ def _load_password_reset_user(token: str) -> tuple[Optional[User], Optional[str]
 
 
 def _mail_config_value(name: str, default=None):
-    value = current_app.config.get(name)
-    if value:
-        return value
+    if name in current_app.config and current_app.config.get(name) not in (None, ""):
+        return current_app.config.get(name)
     return globals().get(name, default)
 
 
+def _truthy_config(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
 def _send_password_reset_email(recipient_email: str, reset_link: str) -> None:
-    username = _mail_config_value("MAIL_USERNAME", "transpulse.official@gmail.com")
+    username = _mail_config_value("MAIL_USERNAME") or os.getenv("MAIL_USERNAME")
     password = (
-        current_app.config.get("MAIL_PASSWORD")
+        _mail_config_value("MAIL_PASSWORD")
         or os.getenv("TRANSPULSE_GMAIL_APP_PASSWORD")
         or os.getenv("MAIL_PASSWORD")
-        or globals().get("MAIL_PASSWORD")
     )
     if not password:
         raise RuntimeError("Gmail SMTP password is not configured.")
+    if not username:
+        raise RuntimeError("SMTP username is not configured.")
 
     message = EmailMessage()
     message["Subject"] = "TransPulse Password Reset"
@@ -498,7 +630,7 @@ def _send_password_reset_email(recipient_email: str, reset_link: str) -> None:
 
     server = _mail_config_value("MAIL_SERVER", "smtp.gmail.com")
     port = int(_mail_config_value("MAIL_PORT", 587))
-    use_tls = bool(_mail_config_value("MAIL_USE_TLS", True))
+    use_tls = _truthy_config(_mail_config_value("MAIL_USE_TLS", True))
     with smtplib.SMTP(server, port, timeout=20) as smtp:
         if use_tls:
             smtp.starttls()
@@ -527,6 +659,15 @@ def _ensure_lost_found_columns() -> None:
                     conn.execute(text("ALTER TABLE complaint ADD COLUMN route_id INTEGER"))
                 if "evidence_image" not in cols:
                     conn.execute(text("ALTER TABLE complaint ADD COLUMN evidence_image TEXT"))
+                if "created_at" not in cols:
+                    conn.execute(text("ALTER TABLE complaint ADD COLUMN created_at DATETIME"))
+                    conn.execute(text("UPDATE complaint SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
+                if "resolved_at" not in cols:
+                    conn.execute(text("ALTER TABLE complaint ADD COLUMN resolved_at DATETIME"))
+                if "admin_notes" not in cols:
+                    conn.execute(text("ALTER TABLE complaint ADD COLUMN admin_notes TEXT"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_complaint_status ON complaint (status)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_complaint_created_at ON complaint (created_at)"))
 
             if "users" in inspector.get_table_names():
                 cols = {c["name"] for c in inspector.get_columns("users")}
@@ -559,6 +700,42 @@ def _ensure_lost_found_columns() -> None:
                     conn.execute(text("ALTER TABLE stops ADD COLUMN scheduled_arrival_time VARCHAR(20)"))
                 if "scheduled_departure_time" not in cols:
                     conn.execute(text("ALTER TABLE stops ADD COLUMN scheduled_departure_time VARCHAR(20)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_stops_code_location ON stops (stop_code, stop_lat, stop_lon)"))
+
+            if "stop_times" in inspector.get_table_names():
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_stop_time_trip_sequence ON stop_times (trip_id, stop_sequence)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_stop_time_stop_trip ON stop_times (stop_id, trip_id)"))
+
+            if "trips" in inspector.get_table_names():
+                cols = {c["name"] for c in inspector.get_columns("trips")}
+                if "gtfs_trip_id" not in cols:
+                    conn.execute(text("ALTER TABLE trips ADD COLUMN gtfs_trip_id VARCHAR(120)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_trip_route_status ON trips (route_id, status)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_trip_shape_route ON trips (shape_id, route_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_trip_bus_status ON trips (bus_id, status)"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_trips_gtfs_trip_id ON trips (gtfs_trip_id) WHERE gtfs_trip_id IS NOT NULL"))
+
+            if "bus_occupancy" in inspector.get_table_names():
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_bus_occupancy_bus_recorded ON bus_occupancy (bus_id, recorded_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_bus_occupancy_trip_recorded ON bus_occupancy (trip_id, recorded_at)"))
+
+            if "subscriptions" in inspector.get_table_names():
+                conn.execute(text(
+                    "DELETE FROM subscriptions WHERE id NOT IN ("
+                    "SELECT MIN(id) FROM subscriptions GROUP BY user_id, stop_id)"
+                ))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_user_stop ON subscriptions (user_id, stop_id)"))
+
+            if "notifications" in inspector.get_table_names():
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_notification_recipient_read_created ON notifications (recipient_id, is_read, created_at)"))
+
+            if "sos_alert" in inspector.get_table_names():
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sos_status_triggered ON sos_alert (status, triggered_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sos_bus_status ON sos_alert (bus_id, status)"))
+
+            if "road_geometry_cache" in inspector.get_table_names():
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_road_geometry_route_shape ON road_geometry_cache (route_id, shape_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_road_geometry_status_updated ON road_geometry_cache (status, updated_at)"))
 
             conn.commit()
     except Exception as exc:
@@ -611,7 +788,7 @@ def _compute_map_default_center() -> dict:
         "lat": 15.9129,
         "lng": 79.7400
     }
-    
+
 def _get_map_default_center() -> dict:
     global _MAP_DEFAULT_CENTER
     if _MAP_DEFAULT_CENTER is None:
@@ -622,65 +799,7 @@ def _get_map_default_center() -> dict:
 def _resolve_trip_for_route(route: Route, trip=None):
     if trip and getattr(trip, "route_id", None) == route.id:
         return trip
-    return (
-        Trip.query
-        .filter_by(route_id=route.id)
-        .filter(Trip.shape_id.isnot(None))
-        .order_by(Trip.id.asc())
-        .first()
-        or Trip.query.filter_by(route_id=route.id).order_by(Trip.id.asc()).first()
-    )
-
-
-def _route_stop_template_trip(route_id: int, shape_id: Optional[str] = None):
-    query = (
-        Trip.query
-        .join(StopTime, StopTime.trip_id == Trip.id)
-        .filter(Trip.route_id == route_id)
-    )
-    if shape_id:
-        query = query.filter(Trip.shape_id == shape_id)
-    return (
-        query
-        .group_by(Trip.id)
-        .order_by(func.count(StopTime.id).desc(), Trip.id.asc())
-        .first()
-    )
-
-
-def _stop_name_key(value: Optional[str]) -> str:
-    return re.sub(r"[^A-Z0-9]+", "", (value or "").upper())
-
-
-def _route_endpoint_validation_error(route: Optional[Route], trip, points: list) -> Optional[str]:
-    if not route or not trip or len(points) < 2:
-        return None
-
-    direction = "backward" if getattr(trip, "direction_id", 0) == 1 else "forward"
-    expected_first = route.destination if direction == "backward" else route.origin
-    expected_last = route.origin if direction == "backward" else route.destination
-    actual_first = points[0].get("name")
-    actual_last = points[-1].get("name")
-
-    if (
-        _stop_name_key(expected_first)
-        and _stop_name_key(actual_first)
-        and _stop_name_key(expected_first) != _stop_name_key(actual_first)
-    ):
-        return (
-            f"Validation error: assigned trip {trip.id} starts at {actual_first}, "
-            f"but route {route.id} expects {expected_first}."
-        )
-    if (
-        _stop_name_key(expected_last)
-        and _stop_name_key(actual_last)
-        and _stop_name_key(expected_last) != _stop_name_key(actual_last)
-    ):
-        return (
-            f"Validation error: assigned trip {trip.id} ends at {actual_last}, "
-            f"but route {route.id} expects {expected_last}."
-        )
-    return None
+    return _gtfs_backed_trip_for_route(route.id)
 
 
 def _copy_stop_times_from_template(target_trip: Trip, template_trip: Optional[Trip]) -> None:
@@ -793,6 +912,81 @@ def _duration_label(minutes: Optional[int]) -> str:
     return f"{mins}m"
 
 
+def _service_day_minutes() -> int:
+    now = datetime.now()
+    return now.hour * 60 + now.minute
+
+
+def _upcoming_schedule_delta(departure_minutes: Optional[int],
+                             target_minutes: Optional[int] = None) -> int:
+    if departure_minutes is None:
+        return 24 * 60
+    target = _service_day_minutes() if target_minutes is None else int(target_minutes)
+    return (int(departure_minutes) - target) % (24 * 60)
+
+
+def _ordered_stop_times_for_trip(trip_id: int) -> list:
+    return (
+        StopTime.query
+        .options(joinedload(StopTime.stop))
+        .filter_by(trip_id=trip_id)
+        .order_by(StopTime.stop_sequence.asc())
+        .all()
+    )
+
+
+def _trip_stop_signature(stop_times: list) -> list:
+    signature = []
+    for stop_time in stop_times:
+        stop = stop_time.stop
+        if not stop:
+            continue
+        signature.append({
+            "stop_id": stop.id,
+            "stop_code": stop.stop_code,
+            "name": stop.stop_name,
+            "sequence": stop_time.stop_sequence,
+            "departure_minutes": _parse_time_to_minutes(stop_time.departure_time or stop_time.arrival_time),
+        })
+    return signature
+
+
+def _gtfs_trip_candidates_for_route(route_id: int) -> list:
+    return (
+        Trip.query
+        .filter(
+            Trip.route_id == route_id,
+            Trip.bus_id.is_(None),
+        )
+        .order_by(Trip.route_id.asc(), Trip.service_id.asc(), Trip.direction_id.asc(), Trip.id.asc())
+        .all()
+    )
+
+
+def _score_gtfs_trip_candidate(trip: Trip,
+                               target_departure_minutes: Optional[int] = None,
+                               shape_point_count: Optional[int] = None) -> Optional[dict]:
+    stop_times = _ordered_stop_times_for_trip(trip.id)
+    signature = _trip_stop_signature(stop_times)
+    if len(signature) < 2:
+        return None
+
+    first_stop = signature[0]
+    departure_minutes = first_stop.get("departure_minutes")
+    departure_delta = _upcoming_schedule_delta(departure_minutes, target_departure_minutes)
+    shape_points = int(shape_point_count or 0)
+    readiness_score = (20.0 if shape_points >= 2 else 0.0) + min(len(signature), 20)
+
+    return {
+        "trip": trip,
+        "score": readiness_score,
+        "departure_delta": departure_delta,
+        "departure_minutes": departure_minutes,
+        "shape_points": shape_points,
+        "stop_count": len(signature),
+    }
+
+
 def _route_has_gtfs_stop_times(route_id: Optional[int]) -> bool:
     if not route_id:
         return False
@@ -800,8 +994,13 @@ def _route_has_gtfs_stop_times(route_id: Optional[int]) -> bool:
         db.session.query(StopTime.id)
         .join(Trip, StopTime.trip_id == Trip.id)
         .join(Stop, StopTime.stop_id == Stop.id)
-        .filter(Trip.route_id == route_id, Stop.stop_code.isnot(None))
-        .first()
+        .filter(
+            Trip.route_id == route_id,
+            Trip.bus_id.is_(None),
+            Stop.stop_code.isnot(None),
+        )
+        .limit(1)
+        .scalar()
         is not None
     )
 
@@ -1437,25 +1636,74 @@ def _bus_schedule_payload(route: Optional[Route], trip=None, bus_id: Optional[in
     }
 
 
-def _gtfs_backed_trip_for_route(route_id: Optional[int]) -> Optional[Trip]:
+def _gtfs_backed_trip_for_route(route_id: Optional[int], reverse: bool = False) -> Optional[Trip]:
     if not route_id:
         return None
-    candidates = (
-        Trip.query
-        .filter(
-            Trip.route_id == route_id,
-            Trip.bus_id.is_(None),
-            Trip.shape_id.isnot(None),
+    route = db.session.get(Route, route_id)
+    if not route:
+        return None
+
+    target_departure = _parse_time_to_minutes(route.departure_time)
+    candidates = _gtfs_trip_candidates_for_route(route_id)
+    expected_direction = 1 if reverse else 0
+    direction_candidates = [
+        candidate for candidate in candidates
+        if getattr(candidate, "direction_id", None) is not None
+        and int(candidate.direction_id) == expected_direction
+    ]
+    if direction_candidates:
+        candidates = direction_candidates
+    shape_ids = {candidate.shape_id for candidate in candidates if candidate.shape_id}
+    shape_counts = {}
+    if shape_ids:
+        shape_counts = {
+            shape_id: count
+            for shape_id, count in (
+                db.session.query(Shape.shape_id, func.count(Shape.id))
+                .filter(Shape.shape_id.in_(shape_ids))
+                .group_by(Shape.shape_id)
+                .all()
+            )
+        }
+    scored = []
+    for candidate in candidates:
+        score = _score_gtfs_trip_candidate(
+            candidate,
+            target_departure,
+            shape_counts.get(candidate.shape_id, 0),
         )
-        .order_by(Trip.id.asc())
-        .all()
+        if score:
+            scored.append(score)
+
+    if not scored:
+        logger.warning(
+            "[GTFS_ASSIGNMENT] no schedulable trip route_id=%s route_code=%s reverse=%s",
+            route.id, route.route_code, reverse,
+        )
+        return None
+
+    best = sorted(
+        scored,
+        key=lambda item: (
+            item["departure_delta"],
+            -item["shape_points"],
+            -item["stop_count"],
+            -item["score"],
+            item["trip"].id,
+        ),
+    )[0]
+    logger.info(
+        "[GTFS_ASSIGNMENT] route_id=%s route_code=%s selected_trip=%s reverse=%s score=%.2f departure_delta=%s shape_points=%s stop_count=%s",
+        route.id,
+        route.route_code,
+        best["trip"].id,
+        reverse,
+        best["score"],
+        best["departure_delta"],
+        best["shape_points"],
+        best["stop_count"],
     )
-    for trip in candidates:
-        stop_times_count = StopTime.query.filter_by(trip_id=trip.id).count()
-        shape_points_count = Shape.query.filter_by(shape_id=trip.shape_id).count()
-        if stop_times_count > 0 and shape_points_count > 0:
-            return trip
-    return None
+    return best["trip"]
 
 
 def _first_gtfs_backed_trip() -> Optional[Trip]:
@@ -1623,15 +1871,19 @@ def _mark_route_operational(route_id: Optional[int]) -> None:
 def _bus_report_context(bus: Optional[Bus]) -> dict:
     if not bus:
         return {}
-    trip = _active_trip_for_bus(bus)
+    trip = _driver_dashboard_trip_for_bus(bus)
     route = db.session.get(Route, trip.route_id if trip else bus.route_id)
     driver_name, driver_code = _driver_display_fields(bus)
     current_stop = None
     if route and trip:
         gps = _fresh_gps_packet(bus.id, time.time())
-        points = _route_points_for_assigned_trip(route, trip) if gps else []
+        points = _route_points_for_assigned_trip(route, trip)
         if points:
-            current_stop = points[_nearest_route_index(gps["lat"], gps["lon"], points)]["name"]
+            current_stop = (
+                points[_nearest_route_index(gps["lat"], gps["lon"], points)]["name"]
+                if gps
+                else points[0]["name"]
+            )
     return {
         "bus_number": bus.bus_number,
         "registration_number": bus.registration_number,
@@ -1654,6 +1906,16 @@ def _clean_complaint_evidence_image(value: Optional[str]) -> Optional[str]:
     if len(raw) > 2_000_000:
         raise ValueError("Complaint image is too large.")
     return re.sub(r"\s+", "", raw)
+
+
+def _parse_iso_date(value: Optional[str]) -> Optional[datetime]:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError("Date must be in YYYY-MM-DD format.") from exc
 
 
 def _find_or_create_route(route_code: str, route_name: str, origin: str, destination: str,
@@ -1679,11 +1941,54 @@ def _find_or_create_route(route_code: str, route_name: str, origin: str, destina
 def create_app() -> Flask:
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(Config)
+    if app.config.get("SESSION_COOKIE_SECURE") and app.config.get("SECRET_KEY") and os.getenv("SECRET_KEY") is None:
+        logger.warning("[SECURITY] Production should set a stable SECRET_KEY environment variable.")
 
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
     login_manager.login_view = "login_page"
+    csrf = CSRFProtect(app)
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=["200 per day", "50 per hour"],
+        storage_uri=app.config.get("RATELIMIT_STORAGE_URI", "memory://")
+    )
+    app.csrf = csrf
+    app.limiter = limiter
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(error):
+        if _request_wants_json():
+            return jsonify({"success": False, "error": error.description}), 400
+        flash("Your session security token expired. Please try again.", "warning")
+        return redirect(request.referrer or url_for("index"))
+
+    @app.errorhandler(404)
+    def handle_not_found(error):
+        if _request_wants_json() or request.path.startswith("/api/"):
+            return jsonify({"success": False, "error": "Not found"}), 404
+        return render_template("error.html", error="Page not found"), 404
+
+    @app.errorhandler(500)
+    def handle_internal_error(error):
+        db.session.rollback()
+        logger.exception("[APP_ERROR] Unhandled request failure on %s", request.path)
+        if _request_wants_json() or request.path.startswith("/api/"):
+            return jsonify({"success": False, "error": "Internal server error"}), 500
+        return render_template("error.html", error="Something went wrong. Please try again."), 500
+
+    @app.after_request
+    def set_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "geolocation=(self), camera=(), microphone=()",
+        )
+        return response
 
     @app.cli.command("import-gtfs")
     def import_gtfs_command():
@@ -1702,10 +2007,17 @@ def create_app() -> Flask:
     return app
 
 @login_manager.user_loader
-def load_user(user_id: str): return db.session.get(User, int(user_id))
+def load_user(user_id: str):
+    try:
+        return db.session.get(User, int(user_id))
+    except (TypeError, ValueError):
+        logger.warning("[AUTH] Invalid user id in session: %r", user_id)
+        return None
 
 @login_manager.unauthorized_handler
 def unauthorized():
+    if _request_wants_json() or request.path.startswith("/api/"):
+        return jsonify({"success": False, "error": "Authentication required"}), 401
     flash("Please log in to continue.", "warning")
     return redirect(url_for("login_page"))
 
@@ -1715,6 +2027,8 @@ def role_required(*allowed_roles):
         @login_required
         def wrapper(*args, **kwargs):
             if current_user.role not in allowed_roles:
+                if _request_wants_json() or request.path.startswith("/api/"):
+                    return jsonify({"success": False, "error": "Forbidden"}), 403
                 flash("You do not have access to this page.", "danger")
                 return redirect(url_for("index"))
             return func(*args, **kwargs)
@@ -1918,8 +2232,6 @@ def _display_geometry_for_map(route: Route, trip, points: list, shape_path: list
         "source": "gtfs",
         "generated_point_count": 0,
     }
-    if _gtfs_shape_has_sufficient_detail(points, shape_path):
-        return default
     if len(points) < 2:
         return default
 
@@ -2053,6 +2365,47 @@ def _route_geometry_path_for_assigned_trip(trip) -> list:
     return shape_path if len(shape_path) >= 2 else []
 
 
+def _ensure_trip_shape_from_stop_times(trip) -> bool:
+    if not trip:
+        return False
+    if _route_geometry_path_for_assigned_trip(trip):
+        return True
+
+    stop_times = _ordered_stop_times_for_trip(trip.id)
+    points = []
+    for stop_time in stop_times:
+        stop = stop_time.stop
+        if stop and stop.stop_lat is not None and stop.stop_lon is not None:
+            points.append((float(stop.stop_lat), float(stop.stop_lon)))
+    if len(points) < 2:
+        return False
+
+    if not getattr(trip, "shape_id", None):
+        trip.shape_id = f"tp-generated-trip-{trip.id}"
+
+    existing_count = Shape.query.filter_by(shape_id=trip.shape_id).count()
+    if existing_count >= 2:
+        return True
+    if existing_count:
+        Shape.query.filter_by(shape_id=trip.shape_id).delete(synchronize_session=False)
+
+    for sequence, (lat, lon) in enumerate(points, start=1):
+        db.session.add(Shape(
+            shape_id=trip.shape_id,
+            shape_pt_lat=lat,
+            shape_pt_lon=lon,
+            shape_pt_sequence=sequence,
+        ))
+    db.session.flush()
+    logger.warning(
+        "[GTFS_ASSIGNMENT] generated fallback shape from stop_times trip_id=%s shape_id=%s points=%s",
+        trip.id,
+        trip.shape_id,
+        len(points),
+    )
+    return True
+
+
 def _assigned_trip_validation_error(route: Optional[Route], trip, points: list, route_path: list) -> Optional[str]:
     if not trip:
         return "Validation error: no assigned trip is active for this bus."
@@ -2068,13 +2421,17 @@ def _assigned_trip_validation_error(route: Optional[Route], trip, points: list, 
         return f"Validation error: assigned trip {trip.id} has no complete stop-time timeline."
     if len(points) < 2:
         return f"Validation error: assigned trip {trip.id} stop times do not have usable stop coordinates."
-    endpoint_error = _route_endpoint_validation_error(route, trip, points)
-    if endpoint_error:
-        return endpoint_error
+    if not getattr(trip, "shape_id", None) or len(route_path) < 2:
+        _ensure_trip_shape_from_stop_times(trip)
+        route_path = _route_geometry_path_for_assigned_trip(trip)
     if not getattr(trip, "shape_id", None):
-        return f"Validation error: assigned trip {trip.id} has no shape_id."
-    if len(route_path) < 2:
-        return f"Validation error: assigned trip {trip.id} shape {trip.shape_id} has no usable shape points."
+        return f"Validation error: assigned trip {trip.id} has no GTFS shape and no generated shape could be built."
+    if getattr(trip, "shape_id", None) and len(route_path) < 2:
+        logger.warning(
+            "[GTFS_ASSIGNMENT] trip %s shape %s has no usable shape points; road geometry fallback will be used",
+            trip.id,
+            trip.shape_id,
+        )
     return None
 
 
@@ -2160,13 +2517,6 @@ def _route_points_for(route, trip=None):
             })
         if len(points) >= 2:
             return points
-
-        fallback_trip = _route_stop_template_trip(
-            route.id,
-            getattr(trip, "shape_id", None)
-        ) or _route_stop_template_trip(route.id)
-        if fallback_trip and getattr(fallback_trip, "id", None) != getattr(trip, "id", None):
-            return _route_points_for(route, fallback_trip)
 
     stops = (
         Stop.query
@@ -2554,6 +2904,10 @@ def _phase_list_duration(phases: list) -> int:
 
 
 def _route_geometry_path(route, trip=None) -> list:
+    if isinstance(route, int):
+        route = db.session.get(Route, route)
+    if not route:
+        return []
     trip = _resolve_trip_for_route(route, trip)
     shape_path = _shape_path_for_trip(trip) if trip else []
     if shape_path:
@@ -2572,24 +2926,58 @@ def _complete_active_trips(bus_id: int) -> None:
     )
 
 
+def _retire_pending_assignment_trips(bus_id: int) -> None:
+    Trip.query.filter(
+        Trip.bus_id == bus_id,
+        Trip.status.in_(("assigned", "ready", "scheduled", "return_ready"))
+    ).update(
+        {"status": "cancelled", "end_time": datetime.now(UTC)},
+        synchronize_session=False
+    )
+
+
 def _create_trip_for_bus(bus: Bus, route_id: int) -> Trip:
     template_trip = _gtfs_backed_trip_for_route(route_id)
+    route = db.session.get(Route, route_id)
+    if not template_trip and _route_has_gtfs_stop_times(route_id):
+        raise ValueError("No scheduled GTFS trip with complete stop times was found for this route. Assignment was not saved.")
     new_trip = Trip(
         bus_id=bus.id,
         route_id=route_id,
         shape_id=template_trip.shape_id if template_trip else None,
         direction_id=getattr(template_trip, "direction_id", None) if template_trip else None,
+        service_id=getattr(template_trip, "service_id", None) if template_trip else None,
+        gtfs_trip_id=None,
+        trip_headsign=getattr(template_trip, "trip_headsign", None) if template_trip else None,
+        trip_short_name=getattr(template_trip, "trip_short_name", None) if template_trip else None,
+        block_id=getattr(template_trip, "block_id", None) if template_trip else None,
+        wheelchair_accessible=getattr(template_trip, "wheelchair_accessible", 0) if template_trip else 0,
+        bikes_allowed=getattr(template_trip, "bikes_allowed", 0) if template_trip else 0,
         start_time=None,
-        status="ready"
+        status="assigned"
     )
     db.session.add(new_trip)
     db.session.flush()
     if template_trip:
+        new_trip.gtfs_trip_id = _assignment_gtfs_trip_id(template_trip, new_trip.id)
+    if template_trip:
         _copy_stop_times_from_template(new_trip, template_trip)
     else:
-        route = db.session.get(Route, route_id)
         if route:
             _ensure_trip_stop_times_from_route(new_trip, route)
+    if template_trip:
+        _ensure_trip_shape_from_stop_times(new_trip)
+        points = _route_points_for_assigned_trip(route, new_trip) if route else []
+        route_path = _route_geometry_path_for_assigned_trip(new_trip)
+        validation_error = _assigned_trip_validation_error(route, new_trip, points, route_path)
+        if validation_error:
+            logger.warning(
+                "[GTFS_ASSIGNMENT] selected template trip failed assignment validation route_id=%s template_trip_id=%s reason=%s",
+                route_id,
+                template_trip.id,
+                validation_error,
+            )
+            raise ValueError("The selected GTFS trip failed structural validation. Assignment was not saved.")
     logger.info(
         "[ROUTE_ASSIGN] bus_id=%s bus_number=%s bus.route_id=%s trip.route_id=%s shape_id=%s",
         bus.id, bus.bus_number, route_id, route_id,
@@ -2599,33 +2987,46 @@ def _create_trip_for_bus(bus: Bus, route_id: int) -> Trip:
 
 
 def _active_trip_for_bus(bus: Bus) -> Optional[Trip]:
-    if not bus:
+    if not bus or not bus.route_id:
         return None
     return (
-        Trip.query.filter(Trip.bus_id == bus.id, Trip.status.in_(ACTIVE_TRIP_STATUSES))
+        Trip.query.filter(Trip.bus_id == bus.id, Trip.route_id == bus.route_id, Trip.status.in_(ACTIVE_TRIP_STATUSES))
         .order_by(Trip.start_time.desc())
         .first()
     )
 
 
 def _driver_dashboard_trip_for_bus(bus: Optional[Bus]) -> Optional[Trip]:
-    if not bus:
+    if not bus or not bus.route_id:
         return None
-    return (
+    trip = (
         Trip.query.filter(
             Trip.bus_id == bus.id,
-            Trip.status.in_(("active", "in_progress", "return_ready", "ready", "scheduled"))
+            Trip.route_id == bus.route_id,
+            Trip.status.in_(("active", "in_progress", "return_ready", "assigned", "ready", "scheduled"))
         )
         .order_by(
             case(
                 (Trip.status.in_(ACTIVE_TRIP_STATUSES), 0),
                 (Trip.status == "return_ready", 1),
-                (Trip.status.in_(("ready", "scheduled")), 2),
+                (Trip.status == "assigned", 2),
+                (Trip.status.in_(("ready", "scheduled")), 3),
                 else_=3,
             ),
             Trip.created_at.desc(),
             Trip.id.desc(),
         )
+        .first()
+    )
+    if trip:
+        return trip
+    return (
+        Trip.query.filter(
+            Trip.bus_id == bus.id,
+            Trip.route_id == bus.route_id,
+            Trip.status.in_(("completed", "return_completed"))
+        )
+        .order_by(Trip.created_at.desc(), Trip.id.desc())
         .first()
     )
 
@@ -2634,25 +3035,217 @@ def _trip_state_label(trip: Optional[Trip], bus: Optional[Bus] = None) -> str:
     if not trip:
         return "OFFLINE"
     status = (trip.status or "").strip().lower()
-    if status in ACTIVE_TRIP_STATUSES:
-        return "ACTIVE"
+    if status in ACTIVE_TRIP_STATUSES or status == "running":
+        if getattr(trip, "direction_id", 0) == 1:
+            return "RETURN_RUNNING"
+        return "RUNNING"
     if status == "return_ready":
         return "RETURN_READY"
-    if status in {"ready", "scheduled"}:
-        return "NOT_STARTED"
+    if status in {"assigned", "ready", "scheduled", "waiting_to_depart"}:
+        return "WAITING_TO_DEPART"
     if status == "completed":
+        if getattr(trip, "direction_id", 0) == 1:
+            return "RETURN_COMPLETED"
         return "COMPLETED"
+    if status == "return_completed":
+        return "RETURN_COMPLETED"
+    if status == "waiting_for_next_assignment":
+        return "WAITING_FOR_NEXT_ASSIGNMENT"
+    if status == "arrived_destination":
+        return "ARRIVED_DESTINATION"
     if bus and not bus.is_active:
         return "OFFLINE"
     return status.upper() or "OFFLINE"
 
 
+
+def _assignment_gtfs_trip_id(template_trip: Optional[Trip], assignment_trip_id: int) -> str:
+    source_id = (
+        getattr(template_trip, "gtfs_trip_id", None)
+        or (f"trip-{getattr(template_trip, 'id', assignment_trip_id)}" if template_trip else f"trip-{assignment_trip_id}")
+    )
+    suffix = f"::assigned-{assignment_trip_id}"
+    return f"{str(source_id)[:max(1, 120 - len(suffix))]}{suffix}"
+
+
+def _copy_gtfs_trip_metadata(target_trip: Trip, template_trip: Optional[Trip]) -> None:
+    if not target_trip or not template_trip:
+        return
+    target_trip.shape_id = getattr(template_trip, "shape_id", None) or target_trip.shape_id
+    target_trip.direction_id = (
+        getattr(template_trip, "direction_id", None)
+        if getattr(template_trip, "direction_id", None) is not None
+        else target_trip.direction_id
+    )
+    target_trip.service_id = getattr(template_trip, "service_id", None) or target_trip.service_id
+    target_trip.trip_headsign = getattr(template_trip, "trip_headsign", None) or target_trip.trip_headsign
+    target_trip.trip_short_name = getattr(template_trip, "trip_short_name", None) or target_trip.trip_short_name
+    target_trip.block_id = getattr(template_trip, "block_id", None) or target_trip.block_id
+    target_trip.wheelchair_accessible = getattr(template_trip, "wheelchair_accessible", target_trip.wheelchair_accessible)
+    target_trip.bikes_allowed = getattr(template_trip, "bikes_allowed", target_trip.bikes_allowed)
+
+
+def _ensure_assigned_trip_gtfs_metadata(bus: Optional[Bus], trip: Optional[Trip], route: Optional[Route] = None) -> Optional[Trip]:
+    if not trip:
+        return None
+    reverse = getattr(trip, "direction_id", 0) == 1
+    template_trip = _gtfs_backed_trip_for_route(trip.route_id, reverse=reverse)
+    if template_trip:
+        _copy_gtfs_trip_metadata(trip, template_trip)
+        if StopTime.query.filter_by(trip_id=trip.id).count() < 2:
+            _copy_stop_times_from_template(trip, template_trip)
+    if trip.direction_id is None:
+        trip.direction_id = 0
+    if not getattr(trip, "gtfs_trip_id", None):
+        db.session.flush()
+        trip.gtfs_trip_id = _assignment_gtfs_trip_id(template_trip or trip, trip.id)
+    if not getattr(trip, "shape_id", None):
+        _ensure_trip_shape_from_stop_times(trip)
+    return template_trip
+
+
+def _validate_driver_start_trip_gtfs(bus: Bus, trip: Optional[Trip]) -> Route:
+    if not bus:
+        raise ValueError("Assigned bus was not found.")
+    if not trip:
+        raise ValueError("No assigned GTFS trip is available for this bus.")
+
+    route = db.session.get(Route, trip.route_id)
+    if not route:
+        raise ValueError("Assigned GTFS trip has no valid route.")
+
+    _ensure_assigned_trip_gtfs_metadata(bus, trip, route)
+    points = _route_points_for_assigned_trip(route, trip)
+    route_path = _route_geometry_path_for_assigned_trip(trip)
+    validation_error = _assigned_trip_validation_error(route, trip, points, route_path)
+    if validation_error:
+        raise ValueError(validation_error)
+
+    missing = []
+    if not getattr(trip, "gtfs_trip_id", None):
+        missing.append("gtfs_trip_id")
+    if not getattr(trip, "service_id", None):
+        missing.append("service_id")
+    if getattr(trip, "direction_id", None) is None:
+        missing.append("direction_id")
+    if not getattr(trip, "shape_id", None):
+        missing.append("shape_id")
+    if StopTime.query.filter_by(trip_id=trip.id).count() < 2:
+        missing.append("stop_times")
+    if missing:
+        raise ValueError(f"Assigned GTFS trip is incomplete: {', '.join(missing)}.")
+    return route
+
+
+def _driver_runtime_session_payload(bus: Bus, trip: Trip, gps_state: str = "ACTIVE") -> dict:
+    route = db.session.get(Route, trip.route_id) if trip else None
+    points = _route_points_for_assigned_trip(route, trip) if route and trip else []
+    now = datetime.now(UTC)
+    start_time = trip.start_time or now
+    driver_user_id = current_user.id if getattr(current_user, "is_authenticated", False) else bus.assigned_driver_id
+    return {
+        "session_id": f"driver:{bus.id}:{trip.id}",
+        "start_time": start_time.isoformat(),
+        "driver_id": driver_user_id,
+        "driver_code": bus.assigned_driver_code,
+        "bus_id": bus.id,
+        "bus_number": bus.bus_number,
+        "trip_id": trip.id,
+        "route_id": trip.route_id,
+        "shape_id": trip.shape_id,
+        "service_id": trip.service_id,
+        "direction_id": trip.direction_id,
+        "gtfs_trip_id": trip.gtfs_trip_id,
+        "driver_state": "ON_DUTY",
+        "bus_state": "ACTIVE",
+        "gps_state": gps_state,
+        "last_update_timestamp": now.isoformat(),
+        "current_stop": points[0]["name"] if points else "--",
+        "next_stop": points[1]["name"] if len(points) > 1 else "--",
+        "trip_progress": 0,
+        "distance_travelled_km": 0,
+        "speed": 0,
+        "heading": None,
+        "delay_minutes": 0,
+    }
+
+
+def _activate_driver_runtime_session(bus: Bus, trip: Trip) -> dict:
+    session_payload = _driver_runtime_session_payload(bus, trip, "ACTIVE")
+    DRIVER_RUNTIME_SESSIONS[bus.id] = session_payload
+    return session_payload
+
+
+def _mark_driver_runtime_gps_state(bus_id: Optional[int], state: str) -> None:
+    if not bus_id:
+        return
+    runtime = DRIVER_RUNTIME_SESSIONS.get(bus_id)
+    if runtime:
+        runtime["gps_state"] = state
+        runtime["last_update_timestamp"] = datetime.now(UTC).isoformat()
+
+
+def _complete_driver_runtime_session(bus: Bus, trip: Trip) -> None:
+    runtime = DRIVER_RUNTIME_SESSIONS.get(bus.id)
+    if not runtime:
+        runtime = _driver_runtime_session_payload(bus, trip, "OFF")
+        DRIVER_RUNTIME_SESSIONS[bus.id] = runtime
+    runtime.update({
+        "driver_state": "OFF_DUTY",
+        "bus_state": "OFFLINE",
+        "gps_state": "OFF",
+        "ended_at": datetime.now(UTC).isoformat(),
+        "last_update_timestamp": datetime.now(UTC).isoformat(),
+    })
+
+
+def _runtime_state_for_bus(bus_id: Optional[int]) -> dict:
+    if not bus_id:
+        return {}
+    runtime = DRIVER_RUNTIME_SESSIONS.get(bus_id)
+    if not runtime:
+        # Recover from database if bus is active but session was lost/cleared
+        bus = db.session.get(Bus, bus_id)
+        if bus and bus.is_active:
+            trip = _driver_dashboard_trip_for_bus(bus)
+            if trip:
+                gps = LIVE_GPS_DATA.get(bus_id)
+                gps_state = "ACTIVE"
+                if gps:
+                    now = time.time()
+                    if now - float(gps.get("timestamp") or 0) > 60:
+                        gps_state = "STALE"
+                else:
+                    gps_state = "OFF"
+                runtime = _driver_runtime_session_payload(bus, trip, gps_state)
+                if gps:
+                    points = _route_points_for_assigned_trip(db.session.get(Route, trip.route_id), trip)
+                    current_stop_idx = int(gps.get("current_stop_index") or 0)
+                    runtime.update({
+                        "driver_location": {"lat": float(gps.get("lat")), "lng": float(gps.get("lon"))},
+                        "bus_location": {"lat": float(gps.get("lat")), "lng": float(gps.get("lon"))},
+                        "trip_progress": float(gps.get("trip_progress") or 0),
+                        "distance_travelled_km": float(gps.get("distance_covered_km") or 0.0),
+                        "speed": float(gps.get("speed") or 0.0),
+                        "heading": gps.get("bearing"),
+                        "last_update_timestamp": datetime.fromtimestamp(gps["timestamp"], UTC).isoformat(),
+                        "current_stop": points[current_stop_idx]["name"] if points and current_stop_idx < len(points) else "--",
+                        "next_stop": points[current_stop_idx + 1]["name"] if points and current_stop_idx + 1 < len(points) else "--",
+                    })
+                DRIVER_RUNTIME_SESSIONS[bus_id] = runtime
+    return runtime or {}
+
+
 def _prepare_return_trip(bus: Bus, completed_trip: Trip) -> Trip:
     existing = (
-        Trip.query.filter_by(bus_id=bus.id, status="return_ready")
+        Trip.query.filter_by(bus_id=bus.id, route_id=completed_trip.route_id, status="return_ready")
         .order_by(Trip.id.desc())
         .first()
     )
+
+    direction = 0 if getattr(completed_trip, "direction_id", 0) == 1 else 1
+    target_template = _gtfs_backed_trip_for_route(completed_trip.route_id, reverse=(direction == 1))
+
     if existing:
         existing_first = (
             StopTime.query
@@ -2670,27 +3263,47 @@ def _prepare_return_trip(bus: Bus, completed_trip: Trip) -> Trip:
             StopTime.query.filter_by(trip_id=existing.id).count() == 0
             or (existing_first and completed_last and existing_first.stop_id != completed_last.stop_id)
         ):
-            _copy_reversed_stop_times_from_trip(existing, completed_trip)
+            if target_template:
+                _copy_gtfs_trip_metadata(existing, target_template)
+                _copy_stop_times_from_template(existing, target_template)
+            else:
+                _copy_reversed_stop_times_from_trip(existing, completed_trip)
+        if target_template and not existing.gtfs_trip_id:
+            existing.gtfs_trip_id = _assignment_gtfs_trip_id(target_template, existing.id)
+        if existing.direction_id is None:
+            existing.direction_id = direction
         return existing
 
     return_trip = Trip(
         bus_id=bus.id,
         route_id=completed_trip.route_id,
-        shape_id=completed_trip.shape_id,
-        direction_id=0 if getattr(completed_trip, "direction_id", 0) == 1 else 1,
+        shape_id=target_template.shape_id if target_template else completed_trip.shape_id,
+        direction_id=direction,
+        service_id=getattr(target_template, "service_id", None) if target_template else completed_trip.service_id,
+        gtfs_trip_id=None,
+        trip_headsign=getattr(target_template, "trip_headsign", None) if target_template else completed_trip.trip_headsign,
+        trip_short_name=getattr(target_template, "trip_short_name", None) if target_template else completed_trip.trip_short_name,
+        block_id=getattr(target_template, "block_id", None) if target_template else completed_trip.block_id,
+        wheelchair_accessible=getattr(target_template, "wheelchair_accessible", 0) if target_template else completed_trip.wheelchair_accessible,
+        bikes_allowed=getattr(target_template, "bikes_allowed", 0) if target_template else completed_trip.bikes_allowed,
         start_time=None,
         end_time=None,
         status="return_ready",
     )
     db.session.add(return_trip)
     db.session.flush()
-    _copy_reversed_stop_times_from_trip(return_trip, completed_trip)
+    if target_template:
+        return_trip.gtfs_trip_id = _assignment_gtfs_trip_id(target_template, return_trip.id)
+    if target_template:
+        _copy_stop_times_from_template(return_trip, target_template)
+    else:
+        _copy_reversed_stop_times_from_trip(return_trip, completed_trip)
     return return_trip
 
 
 def _repair_live_trip_stop_times_from_gtfs() -> list:
     repairs = []
-    repair_statuses = ("active", "in_progress", "ready", "scheduled")
+    repair_statuses = ("active", "in_progress", "assigned", "ready", "scheduled")
     trips = (
         Trip.query
         .filter(Trip.bus_id.isnot(None), Trip.status.in_(repair_statuses))
@@ -2698,30 +3311,25 @@ def _repair_live_trip_stop_times_from_gtfs() -> list:
         .all()
     )
     for trip in trips:
-        if getattr(trip, "direction_id", 0) == 1:
-            continue
         route = db.session.get(Route, trip.route_id)
         if not route:
             continue
         points = _route_points_for_assigned_trip(route, trip)
-        if not _route_endpoint_validation_error(route, trip, points):
+        route_path = _route_geometry_path_for_assigned_trip(trip)
+        validation_error = _assigned_trip_validation_error(route, trip, points, route_path)
+        if not validation_error:
             continue
 
-        template_trip = _gtfs_backed_trip_for_route(trip.route_id)
+        template_trip = _gtfs_backed_trip_for_route(
+            trip.route_id,
+            reverse=(getattr(trip, "direction_id", 0) == 1),
+        )
         if not template_trip:
             repairs.append({
                 "trip_id": trip.id,
                 "route_id": trip.route_id,
                 "repaired": False,
-                "reason": "No canonical GTFS trip for route",
-            })
-            continue
-        if trip.shape_id and template_trip.shape_id != trip.shape_id:
-            repairs.append({
-                "trip_id": trip.id,
-                "route_id": trip.route_id,
-                "repaired": False,
-                "reason": "Assigned trip shape differs from canonical GTFS shape",
+                "reason": validation_error,
             })
             continue
 
@@ -2733,17 +3341,19 @@ def _repair_live_trip_stop_times_from_gtfs() -> list:
         db.session.flush()
         after_points = _route_points_for_assigned_trip(route, trip)
         after = (after_points[0]["name"], after_points[-1]["name"]) if len(after_points) >= 2 else (None, None)
+        _ensure_trip_shape_from_stop_times(trip)
+        after_path = _route_geometry_path_for_assigned_trip(trip)
         repairs.append({
             "trip_id": trip.id,
             "route_id": trip.route_id,
             "template_trip_id": template_trip.id,
-            "repaired": not _route_endpoint_validation_error(route, trip, after_points),
+            "repaired": _assigned_trip_validation_error(route, trip, after_points, after_path) is None,
             "before": before,
             "after": after,
         })
 
     if repairs:
-        logger.warning("[GTFS_TRACKING_REPAIR] %s", repairs)
+        logger.debug("[GTFS_TRACKING_REPAIR] %s", repairs)
     return repairs
 
 
@@ -2751,18 +3361,33 @@ def _start_driver_trip(bus: Bus, requested_return: bool = False) -> Trip:
     if not bus.route_id:
         raise ValueError("Assigned bus has no route.")
 
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("=========================================")
+        logger.debug("[START TRIP DEBUG] BEFORE TRIP SELECTION")
+        logger.debug("Bus ID: %s", bus.id)
+        logger.debug("Bus Route ID: %s", bus.route_id)
+        logger.debug("Driver ID: %s", bus.assigned_driver_code)
+        logger.debug("Requested Return Trip: %s", requested_return)
+
     trip = None
+    selection_reason = ""
+
     if requested_return:
         trip = (
-            Trip.query.filter_by(bus_id=bus.id, status="return_ready")
+            Trip.query.filter_by(bus_id=bus.id, route_id=bus.route_id, status="return_ready")
             .order_by(Trip.id.desc())
             .first()
         )
+        if trip:
+            selection_reason = "return_ready trip"
+            logger.debug("Query matched return_ready trip.")
+
     if not trip:
         trip = (
             Trip.query.filter(
                 Trip.bus_id == bus.id,
-                Trip.status.in_(("ready", "scheduled", "return_ready"))
+                Trip.route_id == bus.route_id,
+                Trip.status.in_(("assigned", "ready", "scheduled", "return_ready"))
             )
             .order_by(
                 case((Trip.status == "return_ready", 0), else_=1),
@@ -2770,22 +3395,59 @@ def _start_driver_trip(bus: Bus, requested_return: bool = False) -> Trip:
             )
             .first()
         )
+        if trip:
+            selection_reason = f"existing {trip.status.upper()} trip"
+            logger.debug("Query matched existing %s trip.", trip.status)
+
+    route = db.session.get(Route, bus.route_id)
+
+    # Discard only structurally invalid trips. Route origin/destination are display fields
+    # and must never decide GTFS assignment validity.
+    if trip:
+        pts = _route_points_for_assigned_trip(route, trip) if route else []
+        route_path = _route_geometry_path_for_assigned_trip(trip)
+        discard_reason = _assigned_trip_validation_error(route, trip, pts, route_path)
+        if discard_reason:
+            logger.debug("DISCARDING Trip %s: %s", trip.id, discard_reason)
+            db.session.delete(trip)
+            db.session.flush()
+            trip = None
+
     if not trip:
         trip = _create_trip_for_bus(bus, bus.route_id)
+        selection_reason = "newly created trip"
+
+    _validate_driver_start_trip_gtfs(bus, trip)
+
+    # Log selected trip details
+    pts = _route_points_for_assigned_trip(route, trip) if route else []
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("Selected Trip ID: %s", trip.id)
+        logger.debug("Selected Trip Status: %s", trip.status)
+        logger.debug("Selected Trip Route ID: %s", trip.route_id)
+        logger.debug("Selected Trip Direction ID: %s", trip.direction_id)
+        logger.debug("Selected Trip Shape ID: %s", trip.shape_id)
+        logger.debug("Selected Trip First Stop: %s", pts[0]["name"] if len(pts) > 0 else "None")
+        logger.debug("Selected Trip Last Stop: %s", pts[-1]["name"] if len(pts) > 0 else "None")
+        logger.debug("Reason for Selection: %s", selection_reason)
+        logger.debug("=========================================")
 
     _complete_active_trips(bus.id)
     trip.status = "active"
     trip.start_time = datetime.now(UTC)
     trip.end_time = None
     route = db.session.get(Route, trip.route_id)
-    points = _route_points_for_assigned_trip(route, trip) if route else []
-    route_path = _route_geometry_path_for_assigned_trip(trip)
-    validation_error = _assigned_trip_validation_error(route, trip, points, route_path)
-    if validation_error:
-        raise ValueError(validation_error)
+    _validate_driver_start_trip_gtfs(bus, trip)
     bus.is_active = True
     LIVE_GPS_DATA.pop(bus.id, None)
+    LIVE_GPS_BREADCRUMBS.pop(bus.id, None)
     BUS_DELAY_DATA.pop(bus.id, None)
+    runtime = _activate_driver_runtime_session(bus, trip)
+    logger.info(
+        "[DRIVER_SESSION] started bus_id=%s trip_id=%s route_id=%s shape_id=%s service_id=%s direction_id=%s",
+        runtime["bus_id"], runtime["trip_id"], runtime["route_id"], runtime["shape_id"],
+        runtime["service_id"], runtime["direction_id"],
+    )
     return trip
 
 
@@ -2793,12 +3455,21 @@ def _end_driver_trip(bus: Bus) -> tuple[Trip, Trip]:
     trip = _active_trip_for_bus(bus)
     if not trip:
         raise ValueError("No active trip to end.")
-    trip.status = "completed"
+    if getattr(trip, "direction_id", 0) == 1:
+        trip.status = "return_completed"
+    else:
+        trip.status = "completed"
     trip.end_time = datetime.now(UTC)
     bus.is_active = False
     LIVE_GPS_DATA.pop(bus.id, None)
+    LIVE_GPS_BREADCRUMBS.pop(bus.id, None)
     BUS_DELAY_DATA.pop(bus.id, None)
-    return_trip = _prepare_return_trip(bus, trip)
+    _complete_driver_runtime_session(bus, trip)
+
+    return_trip = None
+    if getattr(trip, "direction_id", 0) == 0:
+        return_trip = _prepare_return_trip(bus, trip)
+
     return trip, return_trip
 
 
@@ -2853,11 +3524,18 @@ def _validate_data_integrity() -> list:
 def _get_active_subscriptions_cache():
     cache = []
     try:
-        subs = Subscription.query.filter_by(active=True).all()
-        for sub in subs:
-            stop = db.session.get(Stop, sub.stop_id)
-            if stop: cache.append({'user_id': sub.user_id, 'route_id': stop.route_id, 'stop_name': stop.stop_name})
-    except Exception: db.session.rollback()
+        rows = (
+            db.session.query(Subscription.user_id, Stop.route_id, Stop.stop_name)
+            .join(Stop, Stop.id == Subscription.stop_id)
+            .filter(Subscription.active.is_(True))
+            .all()
+        )
+        cache = [
+            {"user_id": user_id, "route_id": route_id, "stop_name": stop_name}
+            for user_id, route_id, stop_name in rows
+        ]
+    except Exception:
+        db.session.rollback()
     return cache
 
 
@@ -2869,6 +3547,34 @@ def _cleanup_tracking_sessions(now: Optional[float] = None) -> None:
     ]
     for user_id in expired:
         PASSENGER_TRACKING_SESSIONS.pop(user_id, None)
+
+
+def _cleanup_live_state(now: Optional[float] = None) -> None:
+    now = now or time.time()
+    stale_gps = [
+        bus_id for bus_id, gps in LIVE_GPS_DATA.items()
+        if now - float(gps.get("timestamp") or 0) > 60
+    ]
+    for bus_id in stale_gps:
+        # Keep last known GPS coordinates and breadcrumbs during signal loss
+        # DO NOT pop from LIVE_GPS_DATA or LIVE_GPS_BREADCRUMBS
+        _mark_driver_runtime_gps_state(bus_id, "STALE")
+
+    stale_delay = [
+        bus_id for bus_id, entry in BUS_DELAY_DATA.items()
+        if now - float(entry.get("timestamp") or 0) > DELAY_PROFILE_TTL_SECONDS
+    ]
+    for bus_id in stale_delay:
+        BUS_DELAY_DATA.pop(bus_id, None)
+
+    stale_simulation = [
+        bus_id for bus_id, state in BUS_SIMULATION_STATE.items()
+        if now - float(state.get("timestamp") or 0) > SIMULATION_STATE_TTL_SECONDS
+    ]
+    for bus_id in stale_simulation:
+        BUS_SIMULATION_STATE.pop(bus_id, None)
+
+    _cleanup_tracking_sessions(now)
 
 
 def _record_passenger_tracking_session(user_id: int, bus_id: Optional[int],
@@ -2995,7 +3701,7 @@ def _queue_meaningful_delay_notifications(bus_data: dict, route: Optional[Route]
         message = f"[DELAY] Bus {bus_data.get('bus_number')} is back on schedule. Route: {route_name}."
     else:
         message = (
-            f"🚌 Bus Delay Alert\n\n"
+            f"Bus Delay Alert\n\n"
             f"Bus: {bus_data.get('bus_number')}\n\n"
             f"Current Delay: +{delay_minutes} minutes\n\n"
             f"Reason:\n{reason}\n\n"
@@ -3025,7 +3731,7 @@ def _fresh_gps_packet(bus_id: int, now_seconds: float) -> Optional[dict]:
         lon = float(gps.get("lon"))
     except (TypeError, ValueError):
         return None
-    if now_seconds - timestamp >= 30:
+    if now_seconds - timestamp >= 60:
         return None
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return None
@@ -3053,6 +3759,8 @@ def _nearest_route_index(lat: float, lon: float, points: list) -> int:
 
 def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], message: str,
                                        gps: Optional[dict] = None) -> dict:
+    if not isinstance(gps, dict):
+        gps = {}
     driver_name_out, driver_code_out = _driver_display_fields(bus)
     occ_pct, occ_level = _latest_recorded_occupancy_for_bus(bus)
     trip_id = getattr(trip, "id", None) if trip else None
@@ -3061,6 +3769,17 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
     route_code = getattr(route, "route_code", None) if route else None
     route_name = getattr(route, "name", None) if route else None
     now_iso = datetime.now(UTC).isoformat()
+    runtime = _runtime_state_for_bus(bus.id)
+
+    gps_is_valid = bool(gps and gps.get("lat") is not None and gps.get("lon") is not None)
+
+    formatted_gps_timestamp = now_iso
+    if gps and gps.get("timestamp") is not None:
+        try:
+            formatted_gps_timestamp = datetime.fromtimestamp(float(gps["timestamp"]), UTC).isoformat()
+        except (TypeError, ValueError, OverflowError, OSError):
+            pass
+
     return {
         "bus_id": bus.id,
         "bus_number": bus.bus_number,
@@ -3070,15 +3789,19 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
         "assigned_driver_id": bus.assigned_driver_id,
         "assigned_driver_code": driver_code_out,
         "assigned_driver_name": driver_name_out,
+        "driver_state": runtime.get("driver_state") or ("ON_DUTY" if bus.is_active else "OFF_DUTY"),
+        "bus_state": runtime.get("bus_state") or ("ACTIVE" if bus.is_active else "OFFLINE"),
+        "gps_state": runtime.get("gps_state") or ("ACTIVE" if gps_is_valid else "OFF"),
+        "last_update_timestamp": runtime.get("last_update_timestamp") or now_iso,
         "sos_active": False,
         "route_id": route_id,
         "route_code": route_code or "BUS-RT",
         "route_name": route_name or "Tracking Validation Error",
         "status": "Validation Error",
         "service_status": "validation_error",
-        "bus_status": "LIVE" if bus.is_active else "OFFLINE",
+        "bus_status": "ACTIVE" if bus.is_active else "OFFLINE",
         "trip_status": _trip_state_label(trip, bus),
-        "gps_status": "LIVE GPS" if gps else "Waiting for GPS",
+        "gps_status": "LIVE GPS" if gps_is_valid else "GPS Off",
         "speed": None,
         "occupancy_pct": occ_pct,
         "occupancy_level": occ_level,
@@ -3086,22 +3809,22 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
         "current_stop_index": 0,
         "completed_stops": 0,
         "trip_progress": 0,
-        "source_stop": getattr(route, "origin", None) or "Waiting for GPS",
-        "destination_stop": getattr(route, "destination", None) or "Calculating...",
-        "current_stop": "Waiting for GPS",
-        "next_stop": "Calculating...",
+        "source_stop": getattr(route, "origin", None) or "Source",
+        "destination_stop": getattr(route, "destination", None) or "Destination",
+        "current_stop": "Source",
+        "next_stop": "Next Scheduled Stop",
         "distance_remaining_km": 0,
         "distance_covered_km": 0,
         "eta_minutes": None,
         "base_eta_minutes": None,
         "updated_eta_minutes": None,
         "next_stop_eta_minutes": None,
-        "eta_label": "Waiting for GPS" if gps else "Offline",
+        "eta_label": "Calculating..." if gps_is_valid else "Scheduled",
         "bearing": None,
-        "current_lat": gps.get("lat") if gps else None,
-        "current_lon": gps.get("lon") if gps else None,
-        "is_live_gps": bool(gps),
-        "gps_timestamp": datetime.fromtimestamp(gps["timestamp"], UTC).isoformat() if gps else now_iso,
+        "current_lat": gps.get("lat") if gps_is_valid else None,
+        "current_lon": gps.get("lon") if gps_is_valid else None,
+        "is_live_gps": gps_is_valid,
+        "gps_timestamp": formatted_gps_timestamp if gps_is_valid else now_iso,
         "shape_id": shape_id,
         "shape_point_count": 0,
         "shape_points_db": _shape_point_count_db(shape_id),
@@ -3116,10 +3839,10 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
         "validation_error": message,
         "trip_id": trip_id,
         "schedule": _route_schedule_for_assigned_trip(route, trip),
-        "departure_time": "Waiting for GPS",
-        "arrival_time": "Calculating...",
-        "updated_arrival_time": "Calculating...",
-        "journey_duration": "Calculating...",
+        "departure_time": "Scheduled",
+        "arrival_time": "Scheduled",
+        "updated_arrival_time": "Scheduled",
+        "journey_duration": "Scheduled",
         "journey_duration_minutes": None,
         "schedule_status": "VALIDATION ERROR",
         "delay_status": "VALIDATION ERROR",
@@ -3128,38 +3851,108 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
         "current_delay_label": "0 min",
         "current_delay_reason": message,
         "remaining_delay_minutes": 0,
-        "current_stop_scheduled_time": "Waiting for GPS",
-        "current_stop_actual_time": "Waiting for GPS",
-        "next_stop_scheduled_time": "Calculating...",
-        "next_stop_expected_time": "Calculating...",
+        "current_stop_scheduled_time": "Scheduled",
+        "current_stop_actual_time": "--",
+        "next_stop_scheduled_time": "Scheduled",
+        "next_stop_expected_time": "Scheduled",
         "display_schedule_stops": [],
     }
 
 
-def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: dict) -> dict:
+def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = None) -> dict:
+    if not isinstance(gps, dict):
+        gps = {}
     points = _route_points_for_assigned_trip(route, trip)
     route_path = _route_geometry_path_for_assigned_trip(trip)
     validation_error = _assigned_trip_validation_error(route, trip, points, route_path)
     if validation_error:
         return _live_tracking_validation_snapshot(bus, trip, route, validation_error, gps)
     direction = "backward" if getattr(trip, "direction_id", 0) == 1 else "forward"
-    if direction == "backward":
-        route_path = list(reversed(route_path))
-    lat = gps["lat"]
-    lon = gps["lon"]
-    current_stop_idx = _nearest_route_index(lat, lon, points)
-    next_stop_idx = min(current_stop_idx + 1, len(points) - 1) if points else 0
-    path_index = _nearest_route_index(lat, lon, route_path)
-    path_distance_km = _path_segment_distance(route_path) if len(route_path) >= 2 else 0.0
+
+    default_lat = points[0]["lat"] if points else 0.0
+    default_lon = points[0]["lng"] if points else 0.0
+    try:
+        lat = float(gps.get("lat") if gps.get("lat") is not None else default_lat)
+    except (TypeError, ValueError):
+        lat = default_lat
+    try:
+        lon = float(gps.get("lon") if gps.get("lon") is not None else default_lon)
+    except (TypeError, ValueError):
+        lon = default_lon
+
+    now_seconds = time.time()
+    gps_timestamp = now_seconds
+    if gps:
+        try:
+            ts_val = gps.get("timestamp")
+            if ts_val is not None:
+                gps_timestamp = float(ts_val)
+        except (TypeError, ValueError):
+            pass
+    gps_age = now_seconds - gps_timestamp
+    is_gps_lost = (gps_age >= 60.0) if gps else True
+
+    if points and route_path:
+        dist_start = _haversine_km(points[0]["lat"], points[0]["lng"], route_path[0]["lat"], route_path[0]["lng"])
+        dist_end = _haversine_km(points[0]["lat"], points[0]["lng"], route_path[-1]["lat"], route_path[-1]["lng"])
+        if dist_end < dist_start:
+            route_path = list(reversed(route_path))
+    display_geometry = _display_geometry_for_map(route, trip, points, route_path)
     try:
         covered_km = float(gps.get("distance_covered_km") or 0.0)
     except (TypeError, ValueError):
         covered_km = 0.0
-    covered_km = max(0.0, min(path_distance_km, covered_km)) if path_distance_km else max(0.0, covered_km)
-    remaining_km = max(0.0, path_distance_km - covered_km)
-    trip_progress = (covered_km / path_distance_km * 100.0) if path_distance_km else 0.0
+    covered_km = max(0.0, covered_km)
+    
+    movement_begun = covered_km > 0.001
+
+    if not movement_begun:
+        if points:
+            lat = points[0]["lat"]
+            lon = points[0]["lng"]
+        path_index = 0
+        max_path_index = 0
+        current_stop_idx = 0
+        next_stop_idx = min(1, len(points) - 1) if points else 0
+        completed_stops = 0
+        remaining_km = "--"
+        trip_progress = 0.0
+        delay_minutes = 0
+        live_speed = 0.0
+        eta_minutes = None
+        eta_label = "--"
+        active_stop_index = 0
+    else:
+        path_index = _nearest_route_index(lat, lon, route_path)
+        try:
+            max_path_index_val = gps.get("max_path_index")
+            max_path_index = int(max_path_index_val) if max_path_index_val is not None else path_index
+        except (TypeError, ValueError):
+            max_path_index = path_index
+            
+        if points and route_path:
+            stop_path_indexes = _path_indexes_for_stops(points, route_path)
+            current_stop_idx = 0
+            for i, path_idx in enumerate(stop_path_indexes):
+                if max_path_index >= path_idx:
+                    current_stop_idx = i
+                else:
+                    break
+        else:
+            current_stop_idx = 0
+
+        next_stop_idx = min(current_stop_idx + 1, len(points) - 1) if points else 0
+        completed_stops = current_stop_idx
+
+    at_stop_val = gps.get("at_stop", False)
+    if isinstance(at_stop_val, str):
+        at_stop = at_stop_val.strip().lower() in ("true", "1", "yes")
+    else:
+        at_stop = bool(at_stop_val)
+
     driver_name_out, driver_code_out = _driver_display_fields(bus)
     occ_pct, occ_level = _latest_recorded_occupancy_for_bus(bus)
+    
     schedule_payload = _bus_schedule_payload(
         route,
         trip,
@@ -3192,6 +3985,8 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: dict) -> dict:
         })
 
     def _optional_float(*keys):
+        if not gps:
+            return None
         for key in keys:
             value = gps.get(key)
             if value is None:
@@ -3203,14 +3998,59 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: dict) -> dict:
         return None
 
     shape_id = getattr(trip, "shape_id", None) if trip else None
-    delay_minutes = int(schedule_payload.get("current_delay_minutes") or 0)
-    live_speed = _optional_float("speed", "velocity")
-    completed_stops = max(0, min(len(points), int(gps.get("completed_stops") or 0)))
-    active_stop_index = min(completed_stops, max(0, len(points) - 1)) if points else 0
-    eta_minutes = None
-    if live_speed and live_speed > 1 and remaining_km > 0:
-        eta_minutes = max(1, int(math.ceil((remaining_km / live_speed) * 60)))
-    eta_label = f"{eta_minutes} min" if eta_minutes is not None else "--"
+    
+    if movement_begun:
+        delay_minutes = int(schedule_payload.get("current_delay_minutes") or 0)
+        live_speed = _optional_float("speed", "velocity")
+        remaining_km = _path_segment_distance(route_path[max_path_index:]) if route_path and max_path_index < len(route_path) else 0.0
+        total_dist = _path_segment_distance(route_path)
+        travelled_dist = _path_segment_distance(route_path[:max_path_index + 1]) if route_path else 0.0
+        trip_progress = (travelled_dist / total_dist * 100.0) if total_dist > 0.0 else 0.0
+        
+        speed_to_use = max(5.0, live_speed) if live_speed is not None else 25.0
+        travel_time_by_speed = (remaining_km / speed_to_use) * 60.0
+
+        dest_sched = points[-1].get("scheduled_time") or (schedule_stops[-1].get("scheduled_time") if (len(points) - 1) < len(schedule_stops) else "--")
+        curr_sched = points[current_stop_idx].get("scheduled_time") or (schedule_stops[current_stop_idx].get("scheduled_time") if current_stop_idx < len(schedule_stops) else "--")
+        
+        def parse_time_str(t_str: str) -> Optional[int]:
+            if not t_str or t_str == "--":
+                return None
+            m = re.match(r"^(\d{1,2}):(\d{2})\s*([AP]M)?$", str(t_str).strip(), re.IGNORECASE)
+            if not m:
+                return None
+            h = int(m.group(1))
+            m_val = int(m.group(2))
+            suffix = m.group(3)
+            if suffix:
+                suffix = suffix.upper()
+                if h == 12:
+                    h = 0
+                if suffix == "PM":
+                    h += 12
+            return h * 60 + m_val
+
+        dest_mins = parse_time_str(dest_sched)
+        curr_mins = parse_time_str(curr_sched)
+        if dest_mins is not None and curr_mins is not None:
+            scheduled_remaining = float(max(0, dest_mins - curr_mins))
+        else:
+            journey_mins = float(route.journey_duration_minutes or 60.0)
+            progress_ratio = float(current_stop_idx) / float(max(1, len(points) - 1))
+            scheduled_remaining = (1.0 - progress_ratio) * journey_mins
+
+        base_eta = 0.7 * travel_time_by_speed + 0.3 * scheduled_remaining
+        eta_minutes = max(1, int(math.ceil(base_eta + delay_minutes)))
+        eta_label = f"{eta_minutes} min"
+        active_stop_index = min(current_stop_idx, max(0, len(points) - 1)) if points else 0
+
+    formatted_gps_timestamp = None
+    if gps and gps.get("timestamp") is not None:
+        try:
+            formatted_gps_timestamp = datetime.fromtimestamp(float(gps["timestamp"]), UTC).isoformat()
+        except (TypeError, ValueError, OverflowError, OSError):
+            pass
+
     return {
         "bus_id": bus.id,
         "bus_number": bus.bus_number,
@@ -3224,24 +4064,25 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: dict) -> dict:
         "route_id": route.id,
         "route_code": route.route_code or "BUS-RT",
         "route_name": route.name or "Tracking Active",
-        "status": "IN PROGRESS",
-        "service_status": "delayed" if delay_minutes > 0 else "on_time",
-        "bus_status": "LIVE",
-        "trip_status": "ACTIVE",
-        "gps_status": "LIVE GPS",
+        "status": _trip_state_label(trip, bus),
+        "service_status": "gps_lost" if is_gps_lost else ("delayed" if delay_minutes > 0 else "on_time"),
+        "bus_status": "Running",
+        "trip_status": _trip_state_label(trip, bus),
+        "gps_status": "Offline" if is_gps_lost else "Online",
         "speed": live_speed,
         "occupancy_pct": occ_pct,
         "occupancy_level": occ_level,
         "direction": direction,
         "current_stop_index": current_stop_idx,
         "completed_stops": completed_stops,
+        "remaining_stops": max(0, len(points) - completed_stops),
         "active_stop_index": active_stop_index,
         "trip_progress": round(trip_progress, 3),
         "source_stop": points[0]["name"] if points else (route.origin or "--"),
         "destination_stop": points[-1]["name"] if points else (route.destination or "--"),
-        "current_stop": points[current_stop_idx]["name"] if points else "--",
+        "current_stop": f"{points[current_stop_idx]['name']} (Arrived)" if points and at_stop else (points[current_stop_idx]["name"] if points else "--"),
         "next_stop": points[next_stop_idx]["name"] if points else "--",
-        "distance_remaining_km": round(remaining_km, 2),
+        "distance_remaining_km": round(remaining_km, 2) if isinstance(remaining_km, (int, float)) else remaining_km,
         "distance_covered_km": round(covered_km, 2),
         "eta_minutes": eta_minutes,
         "base_eta_minutes": eta_minutes,
@@ -3251,8 +4092,8 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: dict) -> dict:
         "bearing": _optional_float("bearing", "heading", "course"),
         "current_lat": lat,
         "current_lon": lon,
-        "is_live_gps": True,
-        "gps_timestamp": datetime.fromtimestamp(gps["timestamp"], UTC).isoformat(),
+        "is_live_gps": not is_gps_lost,
+        "gps_timestamp": formatted_gps_timestamp,
         "shape_id": shape_id,
         "shape_point_count": len(route_path),
         "shape_points_db": _shape_point_count_db(shape_id),
@@ -3261,6 +4102,9 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: dict) -> dict:
         "shape_point_index": path_index if route_path else None,
         "movement_state": "live_gps",
         "path": route_path,
+        "display_path": route_path,
+        "display_geometry_source": display_geometry.get("source"),
+        "generated_road_geometry_points": display_geometry.get("generated_point_count", 0),
         "stops": stop_payload,
         "geometry_available": True,
         "geometry_message": None,
@@ -3294,6 +4138,8 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
     direction = "backward" if getattr(trip, "direction_id", 0) == 1 else "forward"
     if direction == "backward":
         route_path = list(reversed(route_path))
+    display_geometry = _display_geometry_for_map(route, trip, points, route_path)
+    route_path = display_geometry.get("path") or route_path
 
     final_idx = max(0, len(points) - 1)
     driver_name_out, driver_code_out = _driver_display_fields(bus)
@@ -3332,6 +4178,7 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
     final_point = points[final_idx] if points else None
     path_distance_km = _path_segment_distance(route_path) if len(route_path) >= 2 else 0.0
     shape_id = getattr(trip, "shape_id", None) if trip else None
+    status_str = "RETURN_COMPLETED" if (trip and (trip.status == "return_completed" or direction == "backward")) else "COMPLETED"
 
     return {
         "bus_id": bus.id,
@@ -3346,10 +4193,10 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
         "route_id": route.id,
         "route_code": route.route_code or "BUS-RT",
         "route_name": route.name or "Tracking Completed",
-        "status": "Trip Completed",
+        "status": status_str,
         "service_status": "completed",
         "bus_status": "OFFLINE",
-        "trip_status": "COMPLETED",
+        "trip_status": status_str,
         "gps_status": "Offline",
         "speed": 0,
         "occupancy_pct": occ_pct,
@@ -3357,6 +4204,7 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
         "direction": direction,
         "current_stop_index": final_idx,
         "completed_stops": len(points),
+        "remaining_stops": 0,
         "trip_progress": 100,
         "source_stop": points[0]["name"] if points else (route.origin or "--"),
         "destination_stop": points[-1]["name"] if points else (route.destination or "--"),
@@ -3368,7 +4216,7 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
         "base_eta_minutes": 0,
         "updated_eta_minutes": 0,
         "next_stop_eta_minutes": 0,
-        "eta_label": "Offline",
+        "eta_label": "Completed",
         "bearing": 0,
         "current_lat": final_point["lat"] if final_point else None,
         "current_lon": final_point["lng"] if final_point else None,
@@ -3385,6 +4233,25 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
         "shape_point_index": len(route_path) - 1 if route_path else None,
         "movement_state": "completed",
         "path": route_path,
+        "bearing": 0,
+        "current_lat": final_point["lat"] if final_point else None,
+        "current_lon": final_point["lng"] if final_point else None,
+        "display_current_lat": final_point["lat"] if final_point else None,
+        "display_current_lon": final_point["lng"] if final_point else None,
+        "is_live_gps": False,
+        "gps_timestamp": trip.end_time.isoformat() if trip.end_time else None,
+        "completed_at": trip.end_time.isoformat() if trip.end_time else None,
+        "shape_id": shape_id,
+        "shape_point_count": len(route_path),
+        "shape_points_db": _shape_point_count_db(shape_id),
+        "shape_points_api": len(route_path),
+        "points_removed": max(0, _shape_point_count_db(shape_id) - len(route_path)),
+        "shape_point_index": len(route_path) - 1 if route_path else None,
+        "movement_state": "completed",
+        "path": route_path,
+        "display_path": route_path,
+        "display_geometry_source": display_geometry.get("source"),
+        "generated_road_geometry_points": display_geometry.get("generated_point_count", 0),
         "stops": stop_payload,
         "geometry_available": True,
         "geometry_message": None,
@@ -3393,9 +4260,155 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
     }
 
 
+def _planned_assignment_snapshot(bus: Bus, trip, route: Route, now_seconds: Optional[float] = None,
+                                 active_without_gps: bool = False) -> dict:
+    now_seconds = now_seconds or time.time()
+    points = _route_points_for_assigned_trip(route, trip) if trip else _route_points_for(route, None)
+    route_path = _route_geometry_path_for_assigned_trip(trip) if trip else _route_geometry_path(route)
+    validation_error = _assigned_trip_validation_error(route, trip, points, route_path) if trip else None
+    if validation_error:
+        return _live_tracking_validation_snapshot(bus, trip, route, validation_error, None)
+
+    if points and route_path:
+        dist_start = _haversine_km(points[0]["lat"], points[0]["lng"], route_path[0]["lat"], route_path[0]["lng"])
+        dist_end = _haversine_km(points[0]["lat"], points[0]["lng"], route_path[-1]["lat"], route_path[-1]["lng"])
+        if dist_end < dist_start:
+            route_path = list(reversed(route_path))
+
+    display_geometry = _display_geometry_for_map(route, trip, points, route_path) if points else {"path": route_path, "source": "gtfs", "generated_point_count": 0}
+    display_path = display_geometry.get("path") or route_path
+    direction = "backward" if getattr(trip, "direction_id", 0) == 1 else "forward"
+    schedule_payload = _bus_schedule_payload(
+        route,
+        trip,
+        bus.id,
+        0,
+        1 if len(points) > 1 else 0,
+        points,
+        direction,
+        0.0,
+        assigned_trip_only=bool(trip),
+    )
+    schedule_stops = schedule_payload.get("display_schedule_stops") or []
+    stops_payload = []
+    for idx, point in enumerate(points):
+        scheduled = schedule_stops[idx] if idx < len(schedule_stops) else {}
+        stops_payload.append({
+            "name": point["name"],
+            "lat": point["lat"],
+            "lng": point["lng"],
+            "stop_order": idx + 1,
+            "arrival_time": scheduled.get("arrival_time", "--"),
+            "departure_time": scheduled.get("departure_time", "--"),
+            "scheduled_time": scheduled.get("scheduled_time", "--"),
+            "actual_time": "--",
+            "expected_time": scheduled.get("scheduled_time", "--"),
+            "delay_minutes": 0,
+            "delay_label": "0 min",
+            "delay_reason": "Waiting for driver",
+            "delay_status": "ON TIME",
+        })
+
+    driver_name_out, driver_code_out = _driver_display_fields(bus)
+    occ_pct, occ_level = _latest_recorded_occupancy_for_bus(bus)
+    route_distance_km = round(_path_segment_distance(display_path), 2) if len(display_path) >= 2 else round(float(route.distance_km or 0), 2)
+    duration_minutes = schedule_payload.get("journey_duration_minutes")
+    eta_label = _duration_label(duration_minutes) if duration_minutes is not None else schedule_payload.get("journey_duration", "--")
+    trip_state = _trip_state_label(trip, bus)
+    bus_status = "Running" if active_without_gps else "Offline"
+    gps_status = "Online" if active_without_gps else "Offline"
+    gps_state_val = "ACTIVE" if active_without_gps else "OFFLINE"
+    if active_without_gps:
+        status_label = "Return Running" if (trip and getattr(trip, "direction_id", 0) == 1) else "Running"
+    else:
+        status_label = "Waiting to Depart"
+    
+    current_lat = points[0]["lat"] if (points and active_without_gps) else None
+    current_lon = points[0]["lng"] if (points and active_without_gps) else None
+
+    runtime = _runtime_state_for_bus(bus.id)
+    now_iso = datetime.fromtimestamp(now_seconds, UTC).isoformat()
+    return {
+        "bus_id": bus.id,
+        "bus_number": bus.bus_number,
+        "registration_number": bus.registration_number,
+        "driver_id": driver_code_out,
+        "driver_name": driver_name_out,
+        "assigned_driver_id": bus.assigned_driver_id,
+        "assigned_driver_code": driver_code_out,
+        "assigned_driver_name": driver_name_out,
+        "driver_state": runtime.get("driver_state") or ("ON_DUTY" if bus.is_active else "OFF_DUTY"),
+        "bus_state": runtime.get("bus_state") or ("ACTIVE" if bus.is_active else "OFFLINE"),
+        "gps_state": runtime.get("gps_state") or gps_state_val,
+        "last_update_timestamp": runtime.get("last_update_timestamp") or now_iso,
+        "sos_active": False,
+        "route_id": route.id,
+        "route_code": route.route_code or "BUS-RT",
+        "route_name": route.name or route.route_code or "Assigned Route",
+        "status": status_label,
+        "service_status": "running" if active_without_gps else "offline",
+        "bus_status": bus_status,
+        "trip_status": trip_state,
+        "gps_status": gps_status,
+        "speed": 0,
+        "occupancy_pct": occ_pct,
+        "occupancy_level": occ_level,
+        "direction": direction,
+        "current_stop_index": 0,
+        "completed_stops": 0,
+        "remaining_stops": len(points),
+        "active_stop_index": 0,
+        "trip_progress": 0,
+        "source_stop": points[0]["name"] if points else (route.origin or "--"),
+        "destination_stop": points[-1]["name"] if points else (route.destination or "--"),
+        "current_stop": points[0]["name"] if points else (route.origin or "--"),
+        "next_stop": points[1]["name"] if len(points) > 1 else (route.destination or "--"),
+        "distance_remaining_km": "--",
+        "distance_covered_km": 0,
+        "eta_minutes": None,
+        "base_eta_minutes": None,
+        "updated_eta_minutes": None,
+        "next_stop_eta_minutes": None,
+        "eta_label": "--",
+        "current_delay_minutes": 0,
+        "current_delay_label": "0 min",
+        "current_delay_reason": "Waiting to Depart" if not active_without_gps else "On time",
+        "bearing": None,
+        "current_lat": current_lat,
+        "current_lon": current_lon,
+        "planned_marker_lat": points[0]["lat"] if points else None,
+        "planned_marker_lon": points[0]["lng"] if points else None,
+        "is_live_gps": active_without_gps,
+        "gps_timestamp": datetime.fromtimestamp(now_seconds, UTC).isoformat(),
+        "shape_id": getattr(trip, "shape_id", None) if trip else None,
+        "shape_point_count": len(display_path),
+        "shape_points_db": _shape_point_count_db(getattr(trip, "shape_id", None) if trip else None),
+        "shape_points_api": len(display_path),
+        "points_removed": 0,
+        "shape_point_index": None,
+        "movement_state": "waiting_for_driver" if not active_without_gps else "gps_pending",
+        "path": display_path,
+        "display_path": display_path,
+        "display_geometry_source": display_geometry.get("source"),
+        "generated_road_geometry_points": display_geometry.get("generated_point_count", 0),
+        "travelled_path": [],
+        "stops": stops_payload,
+        "geometry_available": bool(display_path and points),
+        "geometry_message": None if display_path and points else "Assigned route geometry is not available.",
+        "trip_id": getattr(trip, "id", None) if trip else None,
+        "assigned": True,
+        **schedule_payload,
+    }
+
+
 def _live_fleet_snapshot() -> list:
-    snapshot = []
+    global _FLEET_SNAPSHOT_CACHE, _FLEET_SNAPSHOT_CACHE_TIME
     now_seconds = time.time()
+    if _FLEET_SNAPSHOT_CACHE is not None and (now_seconds - _FLEET_SNAPSHOT_CACHE_TIME) < 2.0:
+        return _FLEET_SNAPSHOT_CACHE
+
+    snapshot = []
+    _cleanup_live_state(now_seconds)
     queued_delay_notifications = 0
     active_sos_bus_ids = {
         row[0]
@@ -3404,50 +4417,67 @@ def _live_fleet_snapshot() -> list:
         .all()
     }
 
-    stale_buses = [
-        b_id
-        for b_id, data in LIVE_GPS_DATA.items()
-        if now_seconds - data["timestamp"] >= 30
-    ]
-
-    for b_id in stale_buses:
-        del LIVE_GPS_DATA[b_id]
-
-    active_buses = Bus.query.filter_by(
-        is_active=True
-    ).all()
+    active_buses = Bus.query.filter(
+        Bus.assigned_driver_code.isnot(None),
+        Bus.route_id.isnot(None)
+    ).order_by(Bus.bus_number.asc()).all()
 
     for bus in active_buses:
-
         real_gps = _fresh_gps_packet(bus.id, now_seconds)
-        if not real_gps:
-            continue
-
-        trip = _active_trip_for_bus(bus)
-
+        gps_to_use = real_gps
+        if not gps_to_use:
+            stale_gps = LIVE_GPS_DATA.get(bus.id)
+            if stale_gps:
+                gps_to_use = stale_gps
+        trip = _driver_dashboard_trip_for_bus(bus)
         if not trip:
             continue
 
-        route = db.session.get(
-            Route,
-            trip.route_id
-        )
-
+        route = db.session.get(Route, trip.route_id)
         if route is None:
             continue
 
-        try:
-            bus_data = _real_gps_bus_snapshot(bus, trip, route, real_gps)
-        except Exception as exc:
-            logger.exception("[FLEET] real GPS snapshot failed for bus %s: %s", bus.bus_number, exc)
-            continue
+        if trip.status in ("completed", "return_completed"):
+            try:
+                bus_data = _completed_trip_snapshot(bus, trip, route)
+            except Exception as exc:
+                logger.exception("[FLEET] completed trip snapshot failed for bus %s: %s", bus.bus_number, exc)
+                continue
+        elif trip.status in ("active", "in_progress"):
+            try:
+                bus_data = _real_gps_bus_snapshot(bus, trip, route, gps_to_use)
+                bus_data["travelled_path"] = LIVE_GPS_BREADCRUMBS.get(bus.id, [])
+            except Exception:
+                logger.exception(
+                    "REAL GPS SNAPSHOT FAILED\n"
+                    "Bus=%s\n"
+                    "Trip=%s\n"
+                    "Status=%s",
+                    bus.bus_number,
+                    getattr(trip, "id", None),
+                    getattr(trip, "status", None),
+                )
+                raise
+        else:
+            try:
+                bus_data = _planned_assignment_snapshot(
+                    bus,
+                    trip,
+                    route,
+                    now_seconds,
+                    active_without_gps=bool(bus.is_active),
+                )
+            except Exception as exc:
+                logger.exception("[FLEET] planned assignment snapshot failed for bus %s: %s", bus.bus_number, exc)
+                continue
 
         if bus_data:
             bus_data["sos_active"] = bus.id in active_sos_bus_ids
-            try:
-                queued_delay_notifications += _queue_meaningful_delay_notifications(bus_data, route, trip)
-            except Exception as exc:
-                logger.warning("[DELAY_NOTIFY] skipped for bus %s: %s", bus.bus_number, exc)
+            if bus_data.get("is_live_gps"):
+                try:
+                    queued_delay_notifications += _queue_meaningful_delay_notifications(bus_data, route, trip)
+                except Exception as exc:
+                    logger.warning("[DELAY_NOTIFY] skipped for bus %s: %s", bus.bus_number, exc)
             snapshot.append(bus_data)
 
     if queued_delay_notifications:
@@ -3457,31 +4487,42 @@ def _live_fleet_snapshot() -> list:
             db.session.rollback()
             logger.warning("[DELAY_NOTIFY] commit failed: %s", exc)
 
+    _FLEET_SNAPSHOT_CACHE = snapshot
+    _FLEET_SNAPSHOT_CACHE_TIME = now_seconds
     return snapshot
 
-def _admin_shell_metrics(include_snapshot: bool = False) -> dict:
+
+def _admin_shell_metrics(include_snapshot: bool = True) -> dict:
     """Return admin page metrics without forcing live telemetry simulation."""
     total_buses = Bus.query.count()
     snapshot = _live_fleet_snapshot() if include_snapshot else []
-    running = delayed = maintenance = offline = 0
+    
+    waiting_to_depart = 0
+    running = 0
+    completed = 0
+    return_ready = 0
+    
     for b in snapshot:
-        st = b.get("service_status", "")
-        if st == "offline":
-            offline += 1
-        elif st == "maintenance":
-            maintenance += 1
-        elif st == "delayed":
-            delayed += 1
-        else:
+        trip_st = b.get("trip_status", "")
+        if trip_st == "WAITING_TO_DEPART":
+            waiting_to_depart += 1
+        elif trip_st in ("RUNNING", "RETURN_RUNNING"):
             running += 1
+        elif trip_st in ("COMPLETED", "RETURN_COMPLETED"):
+            completed += 1
+        elif trip_st == "RETURN_READY":
+            return_ready += 1
+
+    offline = max(0, total_buses - (waiting_to_depart + running + completed + return_ready))
 
     return {
         "total_buses": total_buses,
-        "active_buses": (running + delayed) if include_snapshot else Bus.query.filter_by(is_active=True).count(),
+        "active_buses": Bus.query.filter_by(is_active=True).count(),
+        "waiting_to_depart": waiting_to_depart,
         "running": running,
-        "delayed": delayed,
-        "maintenance": maintenance,
         "offline": offline,
+        "return_ready": return_ready,
+        "completed_buses": completed,
         "total_routes": Route.query.count(),
         "total_drivers": Bus.query.filter(Bus.assigned_driver_code.isnot(None)).count(),
         "total_passengers": User.query.filter_by(role='passenger').count(),
@@ -3502,7 +4543,7 @@ def register_routes(app: Flask) -> None:
         if filename not in allowed_files:
             flash("Document not found or access denied.", "danger")
             return redirect(url_for("admin_dashboard"))
-        
+
         filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
         if not os.path.exists(filepath):
             flash(f"Document {filename} not found on server.", "danger")
@@ -3515,6 +4556,7 @@ def register_routes(app: Flask) -> None:
         return render_template("admin_docs.html", html_content=html_content, current_doc=filename, allowed_files=allowed_files)
 
     @app.route("/register", methods=["GET", "POST"])
+    @app.limiter.limit("10 per hour")
     def register_page():
         if current_user.is_authenticated: return redirect(url_for(_dashboard_route_for_role(current_user.role)))
         if request.method == "POST":
@@ -3524,6 +4566,13 @@ def register_routes(app: Flask) -> None:
             confirm_password = request.form.get("confirm_password") or ""
             if not all([full_name, email, password]):
                 flash("All fields are required.", "danger")
+                return render_template("register.html")
+            if not _is_valid_email(email):
+                flash("Enter a valid email address.", "danger")
+                return render_template("register.html")
+            password_error = _validate_password_strength(password)
+            if password_error:
+                flash(password_error, "danger")
                 return render_template("register.html")
             if password != confirm_password:
                 flash("Passwords do not match.", "danger")
@@ -3542,12 +4591,15 @@ def register_routes(app: Flask) -> None:
         return render_template("register.html")
 
     @app.route("/google_register", methods=["POST"])
+    @app.limiter.limit("10 per hour")
     def google_register():
-        full_name = (request.form.get("full_name") or "").strip()
-        email = (request.form.get("email") or "").strip().lower()
-        if not email or not full_name:
-            flash("Invalid Google account profile data.", "danger")
+        try:
+            profile = _verified_google_profile(request.form.get("credential") or "")
+        except ValueError as exc:
+            flash(str(exc), "danger")
             return redirect(url_for("register_page"))
+        full_name = profile["full_name"]
+        email = profile["email"]
         user = User.query.filter_by(email=email).first()
         if user:
             flash("Email already exists. Please log in.", "warning")
@@ -3558,10 +4610,14 @@ def register_routes(app: Flask) -> None:
         new_user.set_password(random_password)
         db.session.add(new_user)
         db.session.commit()
-        login_user(new_user)
-        return redirect(url_for("passenger_dashboard"))
+        session.clear()
+
+        flash("Registration successful. Please sign in with Google.", "success")
+
+        return redirect(url_for("login_page"))
 
     @app.route("/forgot-password", methods=["GET", "POST"])
+    @app.limiter.limit("5 per hour", methods=["POST"])
     def forgot_password():
         if current_user.is_authenticated:
             return redirect(url_for(_dashboard_route_for_role(current_user.role)))
@@ -3570,13 +4626,13 @@ def register_routes(app: Flask) -> None:
         if request.method == "POST":
             wants_json = _request_wants_json()
             submitted_email = (request.form.get("email") or "").strip().lower()
-            if not submitted_email:
+            if not submitted_email or not _is_valid_email(submitted_email):
                 if wants_json:
                     return jsonify({
                         "success": False,
-                        "message": "Registered passenger email is required.",
+                        "message": "A valid registered passenger email is required.",
                     }), 400
-                flash("Registered passenger email is required.", "danger")
+                flash("A valid registered passenger email is required.", "danger")
                 return render_template("forgot_password.html", email=submitted_email)
 
             user = User.query.filter_by(email=submitted_email, role="passenger").first()
@@ -3612,6 +4668,7 @@ def register_routes(app: Flask) -> None:
         return render_template("forgot_password.html", email=submitted_email)
 
     @app.route("/reset-password/<token>", methods=["GET", "POST"])
+    @app.limiter.limit("10 per hour", methods=["POST"])
     def reset_password(token):
         if current_user.is_authenticated:
             return redirect(url_for(_dashboard_route_for_role(current_user.role)))
@@ -3630,8 +4687,9 @@ def register_routes(app: Flask) -> None:
         if request.method == "POST":
             password = request.form.get("password") or ""
             confirm_password = request.form.get("confirm_password") or ""
-            if len(password) < min_length:
-                flash(f"Password must be at least {min_length} characters.", "danger")
+            password_error = _validate_password_strength(password)
+            if password_error:
+                flash(password_error, "danger")
                 return render_template("reset_password.html", token=token, min_length=min_length)
             if password != confirm_password:
                 flash("Passwords do not match.", "danger")
@@ -3645,6 +4703,7 @@ def register_routes(app: Flask) -> None:
         return render_template("reset_password.html", token=token, min_length=min_length)
 
     @app.route("/login", methods=["GET", "POST"])
+    @app.limiter.limit("20 per hour", methods=["POST"])
     def login_page():
         if current_user.is_authenticated: return redirect(url_for(_dashboard_route_for_role(current_user.role)))
         if request.method == "POST":
@@ -3654,7 +4713,7 @@ def register_routes(app: Flask) -> None:
             driver_id = request.form.get("driver_id")
             admin_id = request.form.get("admin_id")
 
-            if not email or not password:
+            if not email or not password or not _is_valid_email(email):
                 flash("Email and password are required.", "danger")
                 return render_template("login.html")
 
@@ -3679,31 +4738,45 @@ def register_routes(app: Flask) -> None:
                     return render_template("login.html")
                 assigned_bus = _bus_for_driver_code(formatted_code)
                 if not assigned_bus:
-                    flash("No bus assigned to this Driver ID.", "danger")
+                    flash("No Bus Assigned.", "danger")
                     return render_template("login.html")
                 session["driver_code"] = formatted_code
                 session["assigned_bus_id"] = assigned_bus.id
-            
+
             if login_type == "admin":
+                if email != "admin@transpulse.com":
+                    flash("Admin must log in with admin@transpulse.com.", "danger")
+                    return render_template("login.html")
                 if user.role != "admin":
                     flash("Account is not an admin profile.", "danger")
                     return render_template("login.html")
-                formatted_admin = _resolve_transpulse_id(admin_id or "", "admin")
-                user_tid = user.transpulse_id or _admin_transpulse_id_for_user(user.id)
-                if not formatted_admin or user_tid != formatted_admin:
-                    flash("Admin ID does not match this user account profile.", "danger")
+                if (admin_id or "").strip() != "ATP-01":
+                    flash("Invalid Admin Security Code.", "danger")
                     return render_template("login.html")
 
+            driver_session = {}
+            if login_type == "driver":
+                driver_session = {
+                    "driver_code": session.get("driver_code"),
+                    "assigned_bus_id": session.get("assigned_bus_id"),
+                }
+            session.clear()
             login_user(user)
+            if login_type == "driver":
+                session["driver_code"] = driver_session.get("driver_code")
+                session["assigned_bus_id"] = driver_session.get("assigned_bus_id")
             return redirect(url_for(_dashboard_route_for_role(current_user.role)))
         return render_template("login.html")
 
     @app.route("/google_login", methods=["POST"])
+    @app.limiter.limit("20 per hour")
     def google_login():
-        email = (request.form.get("email") or "").strip().lower()
-        if not email:
-            flash("Google authentication payload missing.", "danger")
+        try:
+            profile = _verified_google_profile(request.form.get("credential") or "")
+        except ValueError as exc:
+            flash(str(exc), "danger")
             return redirect(url_for("login_page"))
+        email = profile["email"]
         user = User.query.filter_by(email=email).first()
         if not user:
             flash("Google account not found. Please register first.", "danger")
@@ -3711,6 +4784,7 @@ def register_routes(app: Flask) -> None:
         if getattr(user, 'auth_provider', 'local') != "google":
             flash("This account was created locally. Please sign in with your password.", "warning")
             return redirect(url_for("login_page"))
+        session.clear()
         login_user(user)
         session.permanent = True
         session.modified = True
@@ -3725,6 +4799,7 @@ def register_routes(app: Flask) -> None:
         flash("Logged out successfully.", "info")
         return redirect(url_for("index"))
 
+    @app.route("/dashboard/admin")
     @app.route('/admin_dashboard')
     @role_required("admin")
     def admin_dashboard():
@@ -3753,7 +4828,7 @@ def register_routes(app: Flask) -> None:
             registration_number = (request.form.get("registration_number") or "").strip().upper()
             capacity_raw = (request.form.get("capacity") or "").strip()
             assigned_driver_code_raw = (request.form.get("assigned_driver_code") or "").strip()
-            
+
             route_code = (request.form.get("route_code") or "").strip().upper()
             route_name = (request.form.get("route_name") or "").strip()
             origin = (request.form.get("origin") or "").strip()
@@ -3769,6 +4844,9 @@ def register_routes(app: Flask) -> None:
                 capacity = int(capacity_raw)
             except ValueError:
                 flash("Parsing parameters error encountered.", "danger")
+                return redirect(url_for("admin_buses"))
+            if capacity <= 0:
+                flash("Bus capacity must be greater than zero.", "danger")
                 return redirect(url_for("admin_buses"))
 
             route_id = None
@@ -3832,7 +4910,7 @@ def register_routes(app: Flask) -> None:
                     registration_number=registration_number,
                     capacity=capacity,
                     route_id=route_id,
-                    is_active=True
+                    is_active=False
                 )
                 db.session.add(bus)
                 db.session.flush()
@@ -3844,7 +4922,7 @@ def register_routes(app: Flask) -> None:
                 if route_id is not None:
                     bus.route_id = route_id
                     logger.info("[ROUTE_ASSIGN] Updated bus id=%s route_id=%s", bus.id, route_id)
-                bus.is_active = True
+                bus.is_active = False
 
             if assigned_driver_code_raw:
                 driver_err = _assign_driver_code_to_bus(bus, assigned_driver_code_raw)
@@ -3857,14 +4935,22 @@ def register_routes(app: Flask) -> None:
 
             try:
                 _mark_route_operational(route_id)
-                db.session.commit()
 
                 if route_id:
                     _complete_active_trips(bus.id)
+                    _retire_pending_assignment_trips(bus.id)
                     _create_trip_for_bus(bus, route_id)
-                    db.session.commit()
+                    LIVE_GPS_DATA.pop(bus.id, None)
+                    LIVE_GPS_BREADCRUMBS.pop(bus.id, None)
+                    BUS_DELAY_DATA.pop(bus.id, None)
 
+                db.session.commit()
+                _invalidate_fleet_snapshot_cache()
+                _live_fleet_snapshot()
                 flash(f"Bus {bus_number} saved successfully.", "success")
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "danger")
             except IntegrityError:
                 db.session.rollback()
                 if assigned_driver_code_raw and _driver_code_taken(_normalize_driver_code(assigned_driver_code_raw)):
@@ -3876,12 +4962,19 @@ def register_routes(app: Flask) -> None:
 
         buses = Bus.query.order_by(Bus.created_at.desc()).all()
         for b in buses:
-            trip = _active_trip_for_bus(b)
+            trip = _active_trip_for_bus(b) or _driver_dashboard_trip_for_bus(b)
             route_ref = b.route_id or (trip.route_id if trip else None)
             b.route = db.session.get(Route, route_ref) if route_ref else None
-            if b.route and trip:
-                stops_data = _route_points_for(b.route, trip)
-                b.route.intermediate_stops = ", ".join([s["name"] for s in stops_data[1:-1]]) if len(stops_data) > 2 else None
+            if b.route:
+                t = trip or _resolve_trip_for_route(b.route)
+                stops_data = _route_points_for(b.route, t)
+                names = [s["name"] for s in stops_data[1:-1]]
+                if len(names) > 3:
+                    b.route.intermediate_stops = ", ".join(names[:3]) + f", +{len(names) - 3} more"
+                elif names:
+                    b.route.intermediate_stops = ", ".join(names)
+                else:
+                    b.route.intermediate_stops = "None"
 
         all_routes = Route.query.order_by(Route.route_code.asc()).all()
         return render_template("bus_management.html", buses=buses, routes=all_routes, fleet_snapshot=[])
@@ -3896,13 +4989,20 @@ def register_routes(app: Flask) -> None:
             if bus.route_id
             else (db.session.get(Route, trip.route_id) if trip else None)
         )
-        
+
         if request.method == "POST":
             bus.bus_number = request.form.get("bus_number", bus.bus_number).strip().upper()
             bus.registration_number = request.form.get("registration_number", bus.registration_number).strip().upper()
-            bus.capacity = int(request.form.get("capacity", bus.capacity))
+            try:
+                bus.capacity = int(request.form.get("capacity", bus.capacity))
+            except (TypeError, ValueError):
+                flash("Bus capacity must be a valid number.", "danger")
+                return redirect(url_for("edit_bus", bus_id=bus.id))
+            if bus.capacity <= 0:
+                flash("Bus capacity must be greater than zero.", "danger")
+                return redirect(url_for("edit_bus", bus_id=bus.id))
             assigned_driver_code_raw = (request.form.get("assigned_driver_code") or "").strip()
-            
+
             existing_route_id_raw = (request.form.get("existing_route_id") or "").strip()
             route_code = (request.form.get("route_code") or "").strip().upper()
             route_name = (request.form.get("route_name") or "").strip()
@@ -3910,7 +5010,7 @@ def register_routes(app: Flask) -> None:
             destination = (request.form.get("destination") or "").strip()
             intermediates = (request.form.get("intermediate_stops") or "").strip()
             departure_time = (request.form.get("departure_time") or "").strip()
-            
+
             if assigned_driver_code_raw:
                 driver_err = _assign_driver_code_to_bus(bus, assigned_driver_code_raw)
                 if driver_err:
@@ -3963,10 +5063,20 @@ def register_routes(app: Flask) -> None:
                 _apply_manual_route_schedule(manual_schedule_route, intermediates, departure_time)
 
             if new_route_id is not None:
-                bus.route_id = new_route_id
-                _complete_active_trips(bus.id)
-                _create_trip_for_bus(bus, new_route_id)
-                _mark_route_operational(new_route_id)
+                try:
+                    bus.route_id = new_route_id
+                    bus.is_active = False
+                    _complete_active_trips(bus.id)
+                    _retire_pending_assignment_trips(bus.id)
+                    _create_trip_for_bus(bus, new_route_id)
+                    _mark_route_operational(new_route_id)
+                    LIVE_GPS_DATA.pop(bus.id, None)
+                    LIVE_GPS_BREADCRUMBS.pop(bus.id, None)
+                    BUS_DELAY_DATA.pop(bus.id, None)
+                except ValueError as exc:
+                    db.session.rollback()
+                    flash(str(exc), "danger")
+                    return redirect(url_for("edit_bus", bus_id=bus.id))
 
             existing_reg = Bus.query.filter_by(registration_number=bus.registration_number).first()
             if existing_reg and existing_reg.id != bus.id:
@@ -3975,7 +5085,12 @@ def register_routes(app: Flask) -> None:
 
             try:
                 db.session.commit()
+                _invalidate_fleet_snapshot_cache()
+                _live_fleet_snapshot()
                 flash(f"Bus {bus.bus_number} updated successfully.", "success")
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "danger")
             except IntegrityError:
                 db.session.rollback()
                 if assigned_driver_code_raw and _driver_code_taken(_normalize_driver_code(assigned_driver_code_raw), exclude_bus_id=bus.id):
@@ -3983,7 +5098,7 @@ def register_routes(app: Flask) -> None:
                 else:
                     flash("Registration Number Already Exists", "danger")
             return redirect(url_for("admin_buses"))
-            
+
         all_routes = Route.query.order_by(Route.route_code.asc()).all()
         intermediates_str = ""
         if assigned_route:
@@ -4010,10 +5125,12 @@ def register_routes(app: Flask) -> None:
             SOSAlert.query.filter_by(bus_id=bus.id).delete(synchronize_session=False)
             BusOccupancy.query.filter_by(bus_id=bus.id).delete(synchronize_session=False)
 
-        
+
             db.session.delete(bus)
-            
+
             db.session.commit()
+            _invalidate_fleet_snapshot_cache()
+            _live_fleet_snapshot()
 
             flash(f"Bus '{bus_number}' deleted successfully.", "success")
 
@@ -4034,7 +5151,7 @@ def register_routes(app: Flask) -> None:
                 "success": False,
                 "message": str(exc)
             }), 500
-        
+
     @app.route("/admin/routes", methods=["GET", "POST"])
     @role_required("admin")
     def admin_routes():
@@ -4065,6 +5182,8 @@ def register_routes(app: Flask) -> None:
             _apply_manual_route_schedule(route, intermediates, departure_time)
             try:
                 db.session.commit()
+                _invalidate_fleet_snapshot_cache()
+                _live_fleet_snapshot()
                 flash(f"Route {route_code} created. Assign GTFS geometry via import or link to an imported route.", "success")
             except IntegrityError:
                 db.session.rollback()
@@ -4089,8 +5208,15 @@ def register_routes(app: Flask) -> None:
             if departure_time:
                 route.departure_time = departure_time
             _apply_manual_route_schedule(route, intermediates, departure_time)
-            db.session.commit()
-            flash(f"Route {route.route_code} updated successfully.", "success")
+            try:
+                db.session.commit()
+                _invalidate_fleet_snapshot_cache()
+                _live_fleet_snapshot()
+                flash(f"Route {route.route_code} updated successfully.", "success")
+            except IntegrityError:
+                db.session.rollback()
+                flash("Route code already exists.", "danger")
+                return redirect(url_for("edit_route", route_id=route.id))
             return redirect(url_for("admin_buses"))
         return render_template("route_edit.html", route=route)
 
@@ -4114,21 +5240,19 @@ def register_routes(app: Flask) -> None:
                 assigned_route = db.session.get(Route, assigned_bus.route_id)
 
             driver_trip_state = _trip_state_label(assigned_trip, assigned_bus)
-            if (
-                assigned_trip
-                and (assigned_trip.status or "").strip().lower() in ACTIVE_TRIP_STATUSES
-                and not _fresh_gps_packet(assigned_bus.id, time.time())
-            ):
-                driver_trip_state = "NOT_STARTED"
 
             if assigned_route and assigned_trip:
                 driver_route_points = _route_points_for_assigned_trip(assigned_route, assigned_trip)
                 driver_schedule = _route_schedule_for_assigned_trip(assigned_route, assigned_trip)
+                route_path = _route_geometry_path_for_assigned_trip(assigned_trip)
+                route_distance = round(_path_segment_distance(route_path), 2) if len(route_path) >= 2 else 0.0
             elif assigned_route:
                 driver_route_points = _route_points_for(assigned_route, None)
                 driver_schedule = _route_schedule_for(assigned_route, None)
+                route_distance = round(assigned_route.distance_km, 2) if assigned_route else 0.0
             else:
                 driver_schedule = {}
+                route_distance = 0.0
 
             direction_label = "Return" if assigned_trip and getattr(assigned_trip, "direction_id", 0) == 1 else "Forward"
             driver_initial_context = {
@@ -4156,18 +5280,37 @@ def register_routes(app: Flask) -> None:
                 "totalStops": len(driver_route_points),
                 "scheduledDeparture": driver_schedule.get("departure_time", "--"),
                 "scheduledArrival": driver_schedule.get("arrival_time", "--"),
+                "scheduledEta": driver_schedule.get("duration", "--"),
+                "scheduledEtaMinutes": driver_schedule.get("duration_minutes"),
+                "routeDistance": route_distance,
             }
 
         if request.method == "POST":
             action = request.form.get("action")
             if not assigned_trip: return redirect(url_for("driver_dashboard"))
-            
-            if action == "start":
-                _start_driver_trip(assigned_bus, requested_return=(assigned_trip.status == "return_ready"))
-            elif action == "end":
-                _end_driver_trip(assigned_bus)
-            
-            db.session.commit()
+
+            active_trip = _active_trip_for_bus(assigned_bus)
+            try:
+                if action == "start":
+                    if active_trip:
+                        flash("Trip is already active and running.", "danger")
+                    else:
+                        _start_driver_trip(assigned_bus, requested_return=(assigned_trip.status == "return_ready"))
+                        db.session.commit()
+                        _invalidate_fleet_snapshot_cache()
+                        _live_fleet_snapshot()
+                elif action == "end":
+                    if not active_trip:
+                        flash("No active trip to end.", "danger")
+                    else:
+                        _end_driver_trip(assigned_bus)
+                        db.session.commit()
+                        _invalidate_fleet_snapshot_cache()
+                        _live_fleet_snapshot()
+            except Exception as exc:
+                db.session.rollback()
+                flash(str(exc), "danger")
+
             return redirect(url_for("driver_dashboard"))
 
         return render_template("driver_dashboard.html", assigned_bus=assigned_bus, assigned_route=assigned_route,
@@ -4186,17 +5329,52 @@ def register_routes(app: Flask) -> None:
         if not assigned_bus:
             return jsonify({"success": False, "error": "No assigned bus"}), 404
         data = request.get_json(silent=True) or {}
+        requested_return = bool(data.get("return_trip"))
+
+        # Duplicate / Conflict checks
+        active_trip = _active_trip_for_bus(assigned_bus)
+        if active_trip:
+            return jsonify({"success": False, "error": "Trip is already active and running"}), 409
+
+        if requested_return:
+            forward_completed = Trip.query.filter_by(
+                bus_id=assigned_bus.id,
+                route_id=assigned_bus.route_id,
+                direction_id=0,
+                status="completed"
+            ).first()
+            if not forward_completed:
+                return jsonify({"success": False, "error": "Cannot start return trip: forward trip is not completed yet"}), 400
+
+            return_trip = Trip.query.filter(
+                Trip.bus_id == assigned_bus.id,
+                Trip.route_id == assigned_bus.route_id,
+                Trip.status == "return_ready"
+            ).order_by(Trip.id.desc()).first()
+            if not return_trip:
+                return jsonify({"success": False, "error": "No return_ready trip available to start"}), 400
+        else:
+            forward_trip = Trip.query.filter(
+                Trip.bus_id == assigned_bus.id,
+                Trip.route_id == assigned_bus.route_id,
+                Trip.direction_id == 0
+            ).order_by(Trip.id.desc()).first()
+            if forward_trip and forward_trip.status == "completed":
+                return jsonify({"success": False, "error": "Forward trip has already been completed"}), 409
+
         try:
             trip = _start_driver_trip(
                 assigned_bus,
-                requested_return=bool(data.get("return_trip"))
+                requested_return=requested_return
             )
             db.session.commit()
+            _invalidate_fleet_snapshot_cache()
+            _live_fleet_snapshot()
             return jsonify({
                 "success": True,
                 "trip_id": trip.id,
                 "trip_status": _trip_state_label(trip, assigned_bus),
-                "bus_status": "LIVE",
+                "bus_status": "ACTIVE",
                 "gps_enabled": True,
             }), 200
         except Exception as exc:
@@ -4211,15 +5389,29 @@ def register_routes(app: Flask) -> None:
         assigned_bus = _get_session_driver_bus()
         if not assigned_bus:
             return jsonify({"success": False, "error": "No assigned bus"}), 404
+
+        active_trip = _active_trip_for_bus(assigned_bus)
+        if not active_trip:
+            last_trip = Trip.query.filter(
+                Trip.bus_id == assigned_bus.id,
+                Trip.route_id == assigned_bus.route_id
+            ).order_by(Trip.id.desc()).first()
+            if last_trip and last_trip.status in ("completed", "return_completed"):
+                return jsonify({"success": False, "error": "Trip is already completed"}), 409
+            return jsonify({"success": False, "error": "No active trip to end"}), 400
+
         try:
             completed_trip, return_trip = _end_driver_trip(assigned_bus)
             db.session.commit()
+            _invalidate_fleet_snapshot_cache()
+            _live_fleet_snapshot()
+            next_state = _trip_state_label(return_trip, assigned_bus) if return_trip else "OFFLINE"
             return jsonify({
                 "success": True,
                 "completed_trip_id": completed_trip.id,
-                "return_trip_id": return_trip.id,
+                "return_trip_id": return_trip.id if return_trip else None,
                 "trip_status": "COMPLETED",
-                "next_trip_status": "RETURN_READY",
+                "next_trip_status": next_state,
                 "bus_status": "OFFLINE",
                 "gps_enabled": False,
             }), 200
@@ -4287,10 +5479,12 @@ def register_routes(app: Flask) -> None:
         if not assigned_bus:
             return jsonify({"error": "No assigned bus"}), 404
 
-        active_trip = _active_trip_for_bus(assigned_bus)
+        active_trip = _driver_dashboard_trip_for_bus(assigned_bus)
         if not active_trip or not assigned_bus.is_active:
             LIVE_GPS_DATA.pop(assigned_bus.id, None)
-            return jsonify({"error": "Trip is not active"}), 409
+            LIVE_GPS_BREADCRUMBS.pop(assigned_bus.id, None)
+            _mark_driver_runtime_gps_state(assigned_bus.id, "OFF")
+            return jsonify({"error": "Trip is not active or ready"}), 409
 
         now_seconds = time.time()
         previous = LIVE_GPS_DATA.get(assigned_bus.id)
@@ -4312,6 +5506,9 @@ def register_routes(app: Flask) -> None:
                 if elapsed_seconds > 0 and gps_delta_km <= max_reasonable_delta:
                     covered_km += gps_delta_km
                     derived_speed_kmh = (gps_delta_km / elapsed_seconds) * 3600.0
+                    prev_speed = float(previous.get("speed") or 0.0)
+                    if prev_speed > 0:
+                        derived_speed_kmh = (0.3 * derived_speed_kmh) + (0.7 * prev_speed)
             except (TypeError, ValueError):
                 pass
 
@@ -4336,16 +5533,49 @@ def register_routes(app: Flask) -> None:
             speed_kmh = max(0.0, min(140.0, float(speed_kmh)))
 
         route = db.session.get(Route, active_trip.route_id)
+        route_path = _route_geometry_path_for_assigned_trip(active_trip)
+        current_path_index = _nearest_route_index(lat, lng, route_path) if route_path else 0
+
         route_points = _route_points_for_assigned_trip(route, active_trip) if route else []
-        current_stop_index = _nearest_route_index(lat, lng, route_points) if route_points else 0
+        
+        # Monotonic max_path_index calculation
+        max_path_index = int(previous.get("max_path_index") or 0) if same_trip else 0
+        reversal_threshold = max(5, int(len(route_path) * 0.10)) if route_path else 100
+        if current_path_index > max_path_index:
+            max_path_index = current_path_index
+        elif max_path_index - current_path_index > reversal_threshold:
+            max_path_index = current_path_index
+
+        # Projection-based Stop Selection
+        if route_points and route_path:
+            stop_path_indexes = _path_indexes_for_stops(route_points, route_path)
+            current_stop_index = 0
+            for i, path_idx in enumerate(stop_path_indexes):
+                if max_path_index >= path_idx:
+                    current_stop_index = i
+                else:
+                    break
+        else:
+            current_stop_index = 0
+
+        # One-time GPS synchronization on Start Trip
+        if not same_trip and route_points:
+            completed_stops = current_stop_index
+
+        at_stop = bool(previous.get("at_stop", False)) if same_trip else False
         if route_points:
             completed_stops = max(0, min(completed_stops, len(route_points)))
             target_stop_index = completed_stops
-            if same_trip and gps_delta_km > 0.01 and target_stop_index < len(route_points):
+            if target_stop_index < len(route_points):
                 target = route_points[target_stop_index]
                 distance_to_target = _haversine_km(lat, lng, target["lat"], target["lng"])
-                if distance_to_target <= DRIVER_STOP_COMPLETION_THRESHOLD_KM:
+                stop_radius = current_app.config.get("STOP_RADIUS_KM", 0.03)
+
+                if distance_to_target <= stop_radius:
+                    at_stop = True
+                elif at_stop and distance_to_target > stop_radius:
                     completed_stops = min(len(route_points), completed_stops + 1)
+                    at_stop = False
 
         bearing = None
         for key in ("bearing", "heading", "course"):
@@ -4370,11 +5600,67 @@ def register_routes(app: Flask) -> None:
             "elapsed_seconds": elapsed_seconds,
             "current_stop_index": current_stop_index,
             "completed_stops": completed_stops,
+            "max_path_index": max_path_index,
+            "at_stop": at_stop,
         }
+        breadcrumbs = LIVE_GPS_BREADCRUMBS.setdefault(assigned_bus.id, [])
+        breadcrumbs.append({
+            "lat": lat,
+            "lng": lng,
+            "timestamp": now_seconds,
+            "speed": speed_kmh,
+        })
+        if len(breadcrumbs) > 1000:
+            LIVE_GPS_BREADCRUMBS[assigned_bus.id] = breadcrumbs[-1000:]
+
+        runtime = DRIVER_RUNTIME_SESSIONS.setdefault(
+            assigned_bus.id,
+            _driver_runtime_session_payload(assigned_bus, active_trip, "ACTIVE"),
+        )
+        total_dist = _path_segment_distance(route_path)
+        travelled_dist = _path_segment_distance(route_path[:max_path_index + 1]) if route_path else 0.0
+        trip_progress = (
+            round((travelled_dist / total_dist) * 100.0, 3)
+            if total_dist > 0.0 else 0.0
+        )
+        runtime.update({
+            "driver_location": {"lat": lat, "lng": lng},
+            "bus_location": {"lat": lat, "lng": lng},
+            "trip_progress": trip_progress,
+            "distance_travelled_km": round(max(0.0, covered_km), 3),
+            "speed": speed_kmh,
+            "heading": bearing,
+            "last_update_timestamp": datetime.fromtimestamp(now_seconds, UTC).isoformat(),
+            "current_stop": route_points[current_stop_index]["name"] if route_points else "--",
+            "next_stop": route_points[current_stop_index + 1]["name"] if (route_points and current_stop_index + 1 < len(route_points)) else "--",
+            "delay_minutes": _current_bus_delay_minutes(assigned_bus.id),
+            "gps_state": "ACTIVE",
+            "driver_state": "ON_DUTY",
+            "bus_state": "ACTIVE",
+        })
+
+        _invalidate_fleet_snapshot_cache()
+        _live_fleet_snapshot()
 
         return jsonify({"success": True})
 
-   
+    @app.route("/api/driver/location/off", methods=["POST"])
+    @login_required
+    @role_required("driver")
+    def api_driver_location_off():
+        assigned_bus = _get_session_driver_bus()
+        if not assigned_bus:
+            return jsonify({"success": False, "error": "No assigned bus"}), 404
+        LIVE_GPS_DATA.pop(assigned_bus.id, None)
+        LIVE_GPS_BREADCRUMBS.pop(assigned_bus.id, None)
+        _mark_driver_runtime_gps_state(assigned_bus.id, "OFF")
+        return jsonify({
+            "success": True,
+            "bus_id": assigned_bus.id,
+            "gps_enabled": False,
+        }), 200
+
+
     @app.route("/api/driver/report-delay", methods=["POST"])
     @app.route("/api/buses/delay", methods=["POST"])
     @login_required
@@ -4387,10 +5673,10 @@ def register_routes(app: Flask) -> None:
             minutes = 20
         minutes = max(0, min(120, minutes))
         reason = _normalize_delay_reason(data.get("reason"))
-            
+
         assigned_bus = _get_session_driver_bus()
         if not assigned_bus: return jsonify({"error": "No assigned bus profile found for active session."}), 404
-        
+
         trip = _active_trip_for_bus(assigned_bus)
         if not trip or not assigned_bus.is_active:
             return jsonify({"error": "Start a trip before reporting a delay."}), 400
@@ -4467,8 +5753,13 @@ def register_routes(app: Flask) -> None:
             active_trip,
             respect_cooldown=False,
         )
-                
-        db.session.commit()
+
+        try:
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            logger.exception("[DRIVER_DELAY] report failed: %s", exc)
+            return jsonify({"success": False, "error": "Delay report could not be saved."}), 500
         return jsonify({
             "success": True,
             "message": "Delay notifications dispatched completely.",
@@ -4501,6 +5792,56 @@ def register_routes(app: Flask) -> None:
             back_url = url_for("passenger_dashboard")
         return render_template("tracking.html", bus_identifier=bus_id, back_url=back_url)
 
+    @app.route("/api/tracking/completed/<bus_identifier>", methods=["GET"])
+    @login_required
+    def api_tracking_completed(bus_identifier):
+        bus = Bus.query.filter(
+            (Bus.bus_number == bus_identifier) | (Bus.id == str(bus_identifier))
+        ).first()
+        if not bus:
+            return jsonify({"error": "Bus not found"}), 404
+
+        recent_cutoff = datetime.now(UTC) - timedelta(hours=1)
+        last_trip = Trip.query.filter(
+            Trip.bus_id == bus.id,
+            Trip.status == "completed",
+            Trip.end_time >= recent_cutoff
+        ).order_by(Trip.end_time.desc()).first()
+
+        if not last_trip:
+            return jsonify({"error": "No recent completed trip found"}), 404
+
+        route = db.session.get(Route, last_trip.route_id)
+        if not route:
+            return jsonify({"error": "Route not found"}), 404
+
+        try:
+            snapshot = _completed_trip_snapshot(bus, last_trip, route)
+            return jsonify({"bus": snapshot}), 200
+        except Exception as exc:
+            logger.exception("[TRACKING] completed trip snapshot failed for bus %s: %s", bus.bus_number, exc)
+            return jsonify({"error": "Internal server error"}), 500
+
+    @app.route("/api/tracking/session", methods=["POST"])
+    @login_required
+    def api_tracking_session():
+        data = request.get_json(silent=True) or request.form.to_dict()
+        try:
+            bus_id = int(data.get("bus_id")) if data.get("bus_id") is not None else None
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "Valid bus_id is required"}), 400
+        if bus_id is None or not db.session.get(Bus, bus_id):
+            return jsonify({"success": False, "error": "Bus not found"}), 404
+
+        try:
+            route_id = int(data.get("route_id")) if data.get("route_id") not in (None, "") else None
+            trip_id = int(data.get("trip_id")) if data.get("trip_id") not in (None, "") else None
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "Invalid route or trip identifier"}), 400
+
+        _record_passenger_tracking_session(current_user.id, bus_id, route_id, trip_id)
+        return jsonify({"success": True}), 200
+
     @app.route("/notifications", methods=["GET", "POST"])
     @login_required
     def notifications_center():
@@ -4513,7 +5854,7 @@ def register_routes(app: Flask) -> None:
             title = (request.form.get("title") or "System Alert").strip()
             message = (request.form.get("message") or "").strip()
             target = (request.form.get("target") or "all").strip()
-            
+
             if not message:
                 if wants_json:
                     return jsonify({"success": False, "message": "Announcement message is required."}), 400
@@ -4579,9 +5920,10 @@ def register_routes(app: Flask) -> None:
     def api_alerts_subscribe():
         data = request.get_json(silent=True) or {}
 
-        stop_id = data.get("stop_id")
-        if not stop_id:
-            return jsonify({"error": "stop_id is required"}), 400
+        try:
+            stop_id = int(data.get("stop_id"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Valid stop_id is required"}), 400
 
         stop = db.session.get(Stop, stop_id)
         if not stop:
@@ -4602,52 +5944,49 @@ def register_routes(app: Flask) -> None:
             )
             db.session.add(sub)
 
-        db.session.commit()
+        bus_id_raw = data.get("bus_id")
+        if bus_id_raw not in (None, ""):
+            try:
+                bus_id = int(bus_id_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid bus_id"}), 400
 
-        return jsonify({
-            "success": True,
-            "active": sub.active
-        }), 200
+            if bus_id <= 0:
+                return jsonify({"error": "Invalid bus_id"}), 400
 
-    @app.route("/api/tracking/session", methods=["POST"])
-    @login_required
-    def api_tracking_session():
-        if current_user.role != "passenger":
-            return jsonify({"error": "Unauthorized"}), 403
+            bus = db.session.get(Bus, bus_id)
+            if not bus:
+                return jsonify({"error": "Bus not found"}), 404
 
-        data = request.get_json(silent=True) or {}
+            try:
+                route_id = int(data.get("route_id")) if data.get("route_id") not in (None, "") else None
+            except (TypeError, ValueError):
+                route_id = None
+
+            try:
+                trip_id = int(data.get("trip_id")) if data.get("trip_id") not in (None, "") else None
+            except (TypeError, ValueError):
+                trip_id = None
+
+            _record_passenger_tracking_session(
+                current_user.id,
+                bus_id,
+                route_id,
+                trip_id
+            )
 
         try:
-            bus_id = int(data.get("bus_id"))
-        except (TypeError, ValueError):
-            return jsonify({"error": "Invalid bus_id"}), 400
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({"error": "Subscription could not be saved"}), 409
+        except Exception as exc:
+            db.session.rollback()
+            logger.exception("[ALERT_SUBSCRIBE] update failed: %s", exc)
+            return jsonify({"error": "Subscription could not be updated"}), 500
 
-        if bus_id <= 0:
-            return jsonify({"error": "Invalid bus_id"}), 400
+        return jsonify({"success": True, "active": sub.active, "stop_id": stop.id}), 200
 
-        bus = db.session.get(Bus, bus_id)
-        if not bus:
-            return jsonify({"error": "Bus not found"}), 404
-
-        try:
-            route_id = int(data.get("route_id")) if data.get("route_id") is not None else None
-        except (TypeError, ValueError):
-            route_id = None
-
-        try:
-            trip_id = int(data.get("trip_id")) if data.get("trip_id") is not None else None
-        except (TypeError, ValueError):
-            trip_id = None
-
-        _record_passenger_tracking_session(
-            current_user.id,
-            bus_id,
-            route_id,
-            trip_id
-        )
-
-        return jsonify({"success": True}), 200
-    
     @app.route("/api/notifications/<int:notif_id>/read", methods=["POST"])
     @login_required
     def api_notifications_read(notif_id):
@@ -4670,7 +6009,7 @@ def register_routes(app: Flask) -> None:
         if not reply_message: return jsonify({"error": "Reply text required"}), 400
         if new_status not in {"open", "in progress", "resolved", "closed"}:
             return jsonify({"error": "Invalid status"}), 400
-            
+
         comp = db.get_or_404(Complaint, complaint_id)
         old_status = comp.status
         if _is_inactive_record_status(old_status) and _is_active_record_status(new_status):
@@ -4719,7 +6058,7 @@ def register_routes(app: Flask) -> None:
     @login_required
     def complaints_api():
         if request.method == "POST":
-            data = request.get_json() or request.form.to_dict()
+            data = request.get_json(silent=True) or request.form.to_dict()
             action = data.get("action")
             if action == "delete":
                 comp = db.session.get(Complaint, data.get("complaint_id"))
@@ -4729,7 +6068,7 @@ def register_routes(app: Flask) -> None:
                     db.session.commit()
                     return jsonify({"message": "Success"}), 200
                 return jsonify({"error": "Unauthorized"}), 403
-                
+
             if action == "edit":
                 comp = db.session.get(Complaint, data.get("complaint_id"))
                 if comp and (current_user.role == 'admin' or comp.passenger_id == current_user.id):
@@ -4795,7 +6134,7 @@ def register_routes(app: Flask) -> None:
                 driver_user = shared_driver
             elif current_user.role == "driver":
                 driver_user = current_user
-            
+
             did = driver_user.id if driver_user else None
             route_id_val = selected_route_id
             if matched_bus:
@@ -4811,7 +6150,7 @@ def register_routes(app: Flask) -> None:
                 return jsonify({"error": "Please select a valid bus and route."}), 400
             if current_user.role == "driver" and (bus_id_val is None or route_id_val is None):
                 return jsonify({"error": "Assigned bus and route not found for driver."}), 400
-            
+
             complaint = Complaint(passenger_id=current_user.id, driver_id=did, bus_id=bus_id_val, route_id=route_id_val, complaint_type=ctype, description=desc, severity=data.get("severity", "medium"), status="open", evidence_image=evidence_image)
             db.session.add(complaint)
             db.session.flush()
@@ -4834,7 +6173,7 @@ def register_routes(app: Flask) -> None:
                 "complaint_id": complaint.id,
                 **ctx
             }), 201
-            
+
         view = request.args.get("view", "active")
         if current_user.role == "admin":
             complaints_query = Complaint.query
@@ -4845,18 +6184,24 @@ def register_routes(app: Flask) -> None:
             complaints_query = Complaint.query.filter_by(passenger_id=current_user.id)
         complaints = (
             _apply_lifecycle_filter(complaints_query, Complaint, view)
+            .options(
+                joinedload(Complaint.passenger),
+                joinedload(Complaint.bus),
+                joinedload(Complaint.route),
+                joinedload(Complaint.driver),
+            )
             .order_by(Complaint.created_at.desc())
             .all()
         )
         payload = []
         for c in complaints:
             cd = c.to_dict()
-            user = db.session.get(User, c.passenger_id)
+            user = c.passenger
             cd['author_name'] = user.full_name if user else "Passenger User"
             cd['author_role'] = user.role if user else "passenger"
-            bus = db.session.get(Bus, c.bus_id) if c.bus_id else None
-            route = db.session.get(Route, c.route_id) if c.route_id else None
-            driver = db.session.get(User, c.driver_id) if c.driver_id else None
+            bus = c.bus
+            route = c.route
+            driver = c.driver
             ctx = _bus_report_context(bus)
             cd.update({
                 'bus_number': ctx.get('bus_number') or (bus.bus_number if bus else None),
@@ -4874,7 +6219,7 @@ def register_routes(app: Flask) -> None:
     @login_required
     def lost_and_found_api():
         if request.method == "POST":
-            data = request.get_json() or request.form.to_dict()
+            data = request.get_json(silent=True) or request.form.to_dict()
             action = data.get("action")
             if action == "delete":
                 item = db.session.get(LostAndFound, data.get("report_id"))
@@ -4883,7 +6228,7 @@ def register_routes(app: Flask) -> None:
                     db.session.commit()
                     return jsonify({"message": "Success"}), 200
                 return jsonify({"error": "Unauthorized"}), 403
-                
+
             if action == "edit":
                 item = db.session.get(LostAndFound, data.get("report_id"))
                 if item and (current_user.role == 'admin' or item.user_id == current_user.id):
@@ -4893,12 +6238,17 @@ def register_routes(app: Flask) -> None:
                     item.description = data.get("other_description", "") if item.item_name == "Other" else data.get("description", "")
                     item.color = data.get("color", item.color)
                     item.brand = data.get("brand", item.brand)
-                    if data.get("lost_date"): item.incident_date = datetime.strptime(data.get("lost_date"), '%Y-%m-%d')
+                    try:
+                        parsed_date = _parse_iso_date(data.get("lost_date"))
+                    except ValueError as exc:
+                        return jsonify({"error": str(exc)}), 400
+                    if parsed_date:
+                        item.incident_date = parsed_date
                     item.contact_phone = data.get("contact_number", item.contact_phone)
                     db.session.commit()
                     return jsonify({"message": "Success"}), 200
                 return jsonify({"error": "Unauthorized"}), 403
-                
+
             desc = data.get("other_description", "") if data.get("item_category") == "Other" else data.get("description", "")
             bus_input = str(data.get("bus_id") or data.get("bus_number") or "").strip().upper()
             matched_bus = Bus.query.filter(or_(Bus.bus_number == bus_input, Bus.registration_number == bus_input)).first() if bus_input else None
@@ -4931,13 +6281,18 @@ def register_routes(app: Flask) -> None:
             if bus_id_val is None or route_id_val is None:
                 return jsonify({"error": "Valid bus number required. Bus must have an assigned route."}), 400
 
+            try:
+                incident_date = _parse_iso_date(data.get("lost_date")) or datetime.now(UTC)
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
             item = LostAndFound(
                 user_id=current_user.id,
                 item_name=data.get("item_category", "Unknown"),
                 description=desc,
                 color=data.get("color", ""),
                 brand=data.get("brand", ""),
-                incident_date=datetime.strptime(data.get("lost_date"), '%Y-%m-%d') if data.get("lost_date") else datetime.now(UTC),
+                incident_date=incident_date,
                 contact_name=current_user.full_name,
                 contact_phone=data.get("contact_number", ""),
                 status="Open",
@@ -4985,13 +6340,22 @@ def register_routes(app: Flask) -> None:
         elif current_user.role == "passenger":
             items_query = items_query.filter_by(user_id=current_user.id)
         items_query = _apply_lifecycle_filter(items_query, LostAndFound, view)
-        items = items_query.order_by(LostAndFound.created_at.desc()).all()
+        items = (
+            items_query
+            .options(
+                joinedload(LostAndFound.bus),
+                joinedload(LostAndFound.route),
+                joinedload(LostAndFound.assigned_driver),
+            )
+            .order_by(LostAndFound.created_at.desc())
+            .all()
+        )
 
         payload = []
         for i in items:
-            bus = db.session.get(Bus, i.bus_id)
-            route = db.session.get(Route, i.route_id)
-            driver = db.session.get(User, i.assigned_driver_id) if i.assigned_driver_id else None
+            bus = i.bus
+            route = i.route
+            driver = i.assigned_driver
             trip = _active_trip_for_bus(bus) if bus else None
             ctx = _bus_report_context(bus)
             payload.append({
@@ -5046,7 +6410,7 @@ def register_routes(app: Flask) -> None:
     @login_required
     @role_required("driver", "admin")
     def lost_and_found_reply_api(report_id: int):
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         reply_message = (data.get("reply_message") or "").strip()
         new_status = (data.get("status") or "OPEN").strip()
         if new_status.upper() not in ("OPEN", "FOUND", "NOT FOUND", "RETURNED"):
@@ -5099,6 +6463,7 @@ def register_routes(app: Flask) -> None:
         return jsonify({"success": True, "status": item.status}), 200
 
     @app.route("/api/occupancy/live", methods=["GET"])
+    @login_required
     def occupancy_live_api():
         occupancy_data = {}
         for bus in Bus.query.all():
@@ -5146,6 +6511,60 @@ def register_routes(app: Flask) -> None:
 
         return jsonify(occupancy_data)
 
+    @app.route("/api/complaints/buses", methods=["GET"])
+    @login_required
+    def api_complaints_buses():
+        active_buses = Bus.query.filter(
+            Bus.assigned_driver_code.isnot(None),
+            Bus.route_id.isnot(None)
+        ).all()
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
+        completed_trips = Trip.query.filter(
+            Trip.status == "completed",
+            Trip.end_time >= cutoff
+        ).order_by(Trip.end_time.desc()).all()
+
+        bus_map = {}
+        for b in active_buses:
+            route = db.session.get(Route, b.route_id) if b.route_id else None
+            trip = _driver_dashboard_trip_for_bus(b)
+            driver_name, driver_code = _driver_display_fields(b)
+            bus_map[b.id] = {
+                "id": b.id,
+                "bus_number": b.bus_number,
+                "registration_number": b.registration_number,
+                "route_id": b.route_id,
+                "route_code": route.route_code if route else None,
+                "route_name": route.name if route else None,
+                "origin": route.origin if route else None,
+                "destination": route.destination if route else None,
+                "driver_code": driver_code,
+                "driver_name": driver_name,
+                "trip_id": trip.id if trip else None,
+                "status": "Active" if b.is_active else "Offline"
+            }
+        for t in completed_trips:
+            if t.bus_id not in bus_map:
+                b = db.session.get(Bus, t.bus_id)
+                if b:
+                    bus_map[b.id] = {
+                        "id": b.id,
+                        "bus_number": b.bus_number,
+                        "registration_number": b.registration_number,
+                        "route_id": t.route_id,
+                        "status": f"Completed ({t.end_time.strftime('%H:%M')})" if t.end_time else "Completed"
+                    }
+        return jsonify({"buses": list(bus_map.values())})
+
+    @app.route("/api/buses/offline", methods=["GET"])
+    @login_required
+    def api_buses_offline():
+        results = [
+            bus for bus in _live_fleet_snapshot()
+            if not bus.get("is_live_gps") and bus.get("service_status") != "completed"
+        ]
+        return jsonify({"updated_at": datetime.now(UTC).isoformat() + "Z", "buses": results})
+
     @app.route("/api/buses/live", methods=["GET"])
     @login_required
     def api_buses_live():
@@ -5169,10 +6588,15 @@ def register_routes(app: Flask) -> None:
             if not rid:
                 continue
             route_bus_count[rid] = route_bus_count.get(rid, 0) + 1
-            route_eta_values.setdefault(rid, []).append(b.get("eta_minutes", 0))
+            eta_value = b.get("updated_eta_minutes", b.get("eta_minutes"))
+            try:
+                if eta_value is not None:
+                    route_eta_values.setdefault(rid, []).append(float(eta_value))
+            except (TypeError, ValueError):
+                pass
 
         active_route_ids = set(route_bus_count.keys())
-        for bus in Bus.query.filter_by(is_active=True).filter(Bus.route_id.isnot(None)).all():
+        for bus in Bus.query.filter(Bus.route_id.isnot(None)).all():
             active_route_ids.add(bus.route_id)
 
         if not active_route_ids:
@@ -5188,16 +6612,18 @@ def register_routes(app: Flask) -> None:
                 continue
             if not route.route_code and not route.origin and not route.destination:
                 continue
-            active_bus = Bus.query.filter_by(route_id=route.id, is_active=True).order_by(Bus.id.asc()).first()
-            trip = _active_trip_for_bus(active_bus) if active_bus else None
+            active_bus = (
+                Bus.query
+                .filter(
+                    Bus.route_id == route.id,
+                    Bus.assigned_driver_code.isnot(None),
+                )
+                .order_by(case((Bus.is_active.is_(True), 0), else_=1), Bus.id.asc())
+                .first()
+            )
+            trip = _driver_dashboard_trip_for_bus(active_bus) if active_bus else None
             if not trip:
-                trip = (
-                    Trip.query
-                    .filter_by(route_id=route.id)
-                    .filter(Trip.shape_id.isnot(None))
-                    .order_by(Trip.id.asc())
-                    .first()
-                ) or Trip.query.filter_by(route_id=route.id).order_by(Trip.id.asc()).first()
+                trip = _resolve_trip_for_route(route)
             points = (
                 _route_points_for_assigned_trip(route, trip)
                 if active_bus and trip
@@ -5216,7 +6642,7 @@ def register_routes(app: Flask) -> None:
             display_geometry = _display_geometry_for_map(route, trip, points, gtfs_path)
             geom_path = display_geometry["path"] or gtfs_path
             etas = route_eta_values.get(route.id, [])
-            avg_eta = int(sum(etas) / len(etas)) if etas else 0
+            avg_eta = int(sum(etas) / len(etas)) if etas else None
             schedule = (
                 _route_schedule_for_assigned_trip(route, trip)
                 if active_bus and trip
@@ -5244,6 +6670,7 @@ def register_routes(app: Flask) -> None:
                 "generated_road_geometry_points": display_geometry["generated_point_count"],
                 "active_bus_count": route_bus_count.get(route.id, 0),
                 "eta_minutes": avg_eta,
+                "eta_label": f"{avg_eta} min" if avg_eta is not None else "Calculating...",
                 "departure_time": schedule.get("departure_time", "--"),
                 "arrival_time": schedule.get("arrival_time", "--"),
                 "journey_duration": schedule.get("duration", "--"),
@@ -5283,7 +6710,7 @@ def register_routes(app: Flask) -> None:
                 "distance_covered": 0,
             })
         return jsonify({"drivers": sorted(payload, key=lambda x: x['driver_score'], reverse=True), "analytics": {"total_drivers": len(assigned_buses)}})
-        
+
     @app.route("/api/notifications", methods=["GET"])
     @login_required
     def api_notifications_list():
@@ -5331,7 +6758,7 @@ def register_routes(app: Flask) -> None:
     @login_required
     @role_required("passenger")
     def sos_trigger_api():
-        data = request.get_json() or request.form.to_dict()
+        data = request.get_json(silent=True) or request.form.to_dict()
         bus_id_val = None
         bus_input = str(data.get("bus_id") or data.get("bus_number") or "").strip().upper()
         if bus_input:
@@ -5385,8 +6812,6 @@ def register_routes(app: Flask) -> None:
                 return float(raw_value) if raw_value not in (None, "") else None
             except (TypeError, ValueError):
                 return None
-        sos_msg = f"[SOS EMERGENCY] {bus_label}: {reason} — passenger {current_user.full_name} needs immediate assistance."
-
         sos_msg = f"[SOS EMERGENCY] {bus_label}: {reason} - passenger {current_user.full_name} ({current_user.transpulse_id or current_user.id}) needs immediate assistance."
 
         sos = SOSAlert(
@@ -5415,6 +6840,95 @@ def register_routes(app: Flask) -> None:
             "bus_id": bus_id_val,
             "emergency_type": reason,
             **ctx
+        }), 201
+
+    @app.route("/api/driver/sos", methods=["POST"])
+    @login_required
+    @role_required("driver")
+    def driver_sos_trigger_api():
+        assigned_bus = _get_session_driver_bus()
+        if not assigned_bus:
+            return jsonify({"success": False, "error": "No assigned bus"}), 404
+
+        active_trip = _active_trip_for_bus(assigned_bus)
+        if not active_trip or not assigned_bus.is_active:
+            return jsonify({"success": False, "error": "Start a trip before sending SOS."}), 400
+
+        route = db.session.get(Route, active_trip.route_id)
+        if not route:
+            return jsonify({"success": False, "error": "Assigned route not found."}), 404
+
+        data = request.get_json(silent=True) or request.form.to_dict()
+
+        def _coordinate(raw_value):
+            try:
+                return float(raw_value) if raw_value not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+
+        gps = _fresh_gps_packet(assigned_bus.id, time.time())
+        latitude = _coordinate(data.get("latitude"))
+        longitude = _coordinate(data.get("longitude"))
+        if gps:
+            latitude = latitude if latitude is not None else gps.get("lat")
+            longitude = longitude if longitude is not None else gps.get("lon")
+
+        reason = (data.get("emergency_type") or data.get("reason") or "Driver Emergency").strip()[:200]
+        severity = (data.get("severity") or "critical").strip().lower()
+        if severity not in {"low", "medium", "high", "critical"}:
+            severity = "critical"
+
+        driver_name, driver_code = _driver_display_fields(assigned_bus)
+        reference = f"SOS-{secrets.randbelow(100000):05d}"
+        message = (
+            f"[SOS EMERGENCY] {assigned_bus.bus_number}: {reason} - "
+            f"driver {driver_code} needs immediate assistance. Ref: {reference}."
+        )
+
+        sos = SOSAlert(
+            passenger_id=current_user.id,
+            bus_id=assigned_bus.id,
+            route_id=route.id,
+            driver_id=current_user.id,
+            reason=reason,
+            description=f"Driver-originated SOS from {driver_name} ({driver_code}).",
+            severity=severity,
+            status="NEW",
+            latitude=latitude,
+            longitude=longitude,
+        )
+        db.session.add(sos)
+
+        for admin in User.query.filter_by(role="admin").all():
+            db.session.add(Notification(
+                recipient_id=admin.id,
+                trip_id=active_trip.id,
+                message=message,
+            ))
+        db.session.add(Notification(
+            recipient_id=current_user.id,
+            trip_id=active_trip.id,
+            message=message,
+        ))
+
+        try:
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            logger.exception("[DRIVER_SOS] trigger failed: %s", exc)
+            return jsonify({"success": False, "error": "SOS could not be sent."}), 500
+
+        return jsonify({
+            "success": True,
+            "message": "SOS triggered",
+            "id": sos.id,
+            "reference": reference,
+            "bus_id": assigned_bus.id,
+            "route_id": route.id,
+            "trip_id": active_trip.id,
+            "emergency_type": reason,
+            "latitude": latitude,
+            "longitude": longitude,
         }), 201
 
     @app.route("/api/sos/<int:alert_id>/status", methods=["GET"])
@@ -5451,10 +6965,22 @@ def register_routes(app: Flask) -> None:
             bus = db.session.get(Bus, alert.bus_id)
             route = db.session.get(Route, alert.route_id)
             ctx = _bus_report_context(bus)
+            reporter_is_driver = bool(passenger and passenger.role == "driver" and alert.driver_id == alert.passenger_id)
+            reporter_name = (
+                f"Driver {ctx.get('driver_code') or passenger.full_name}"
+                if reporter_is_driver and passenger
+                else (passenger.full_name if passenger else "Unknown")
+            )
+            reporter_id = (
+                ctx.get("driver_code")
+                if reporter_is_driver
+                else ((passenger.transpulse_id or passenger.id) if passenger else alert.passenger_id)
+            )
             payload.append({
                 "id": alert.id,
-                "passenger_name": passenger.full_name if passenger else "Unknown",
-                "passenger_id": (passenger.transpulse_id or passenger.id) if passenger else alert.passenger_id,
+                "passenger_name": reporter_name,
+                "passenger_id": reporter_id,
+                "reporter_role": "driver" if reporter_is_driver else "passenger",
                 "bus_number": bus.bus_number if bus else "Unknown",
                 "route_name": route.name if route else "Unknown",
                 "trip_id": ctx.get("trip_id"),
@@ -5494,6 +7020,30 @@ def register_routes(app: Flask) -> None:
             alert.resolved_at = datetime.now(UTC)
         db.session.commit()
         return jsonify({"message": "Success"})
+
+    @app.route("/api/sos/driver/acknowledge/<int:alert_id>", methods=["POST"])
+    @role_required("driver")
+    def driver_sos_acknowledge_api(alert_id: int):
+        alert = db.get_or_404(SOSAlert, alert_id)
+        driver_bus = _get_session_driver_bus()
+        if not driver_bus or alert.bus_id != driver_bus.id:
+            return jsonify({"success": False, "error": "Unauthorized"}), 403
+        alert.status = "ACKNOWLEDGED"
+        alert.acknowledged_at = datetime.now(UTC)
+        db.session.commit()
+        return jsonify({"success": True, "message": "SOS acknowledged"}), 200
+
+    @app.route("/api/sos/resolve/<int:alert_id>", methods=["POST"])
+    @role_required("admin")
+    def admin_sos_resolve_api(alert_id: int):
+        data = request.get_json(silent=True) or request.form.to_dict()
+        alert = db.get_or_404(SOSAlert, alert_id)
+        alert.status = "RESOLVED"
+        alert.resolved_at = datetime.now(UTC)
+        if data.get("resolution_notes"):
+            alert.admin_notes = str(data.get("resolution_notes"))[:1000]
+        db.session.commit()
+        return jsonify({"success": True, "message": "SOS resolved"}), 200
 
     @app.route("/api/command-center/stats", methods=["GET"])
     @role_required("admin")
@@ -5572,26 +7122,7 @@ def _backfill_transpulse_ids() -> None:
 def initialize_database() -> None:
     db.create_all()
     _ensure_lost_found_columns()
-
-    if User.query.count() == 0:
-        print("[TRANSPULSE SYSTEM ENGINE] Initializing core system accounts...")
-        admin = User(
-            full_name="TransPulse Admin",
-            email="admin@transpulse.com",
-            role="admin",
-        )
-        admin.set_password("Admin@123")
-        db.session.add(admin)
-        db.session.flush()
-        admin.transpulse_id = _admin_transpulse_id_for_user(admin.id)
-
-        passenger = User(full_name="AP Passenger", email="passenger@transpulse.com", role="passenger")
-        passenger.set_password("Pass@123")
-        db.session.add(passenger)
-
-        db.session.commit()
-        print("[TRANSPULSE SYSTEM ENGINE] Core accounts ready (admin + passenger only).")
-
+    _ensure_default_admin()
     _ensure_shared_driver_account()
     _backfill_transpulse_ids()
 
@@ -5602,8 +7133,8 @@ MAIL_SERVER = "smtp.gmail.com"
 MAIL_PORT = 587
 MAIL_USE_TLS = True
 
-MAIL_USERNAME = "transpulse.official@gmail.com"
-MAIL_PASSWORD = "iinc rcar lwow igor"
+MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 
 if __name__ == "__main__":
     app.run(debug=False)

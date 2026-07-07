@@ -44,6 +44,7 @@
         <div class="card-body p-4">
             <h5 class="text-white fw-bold mb-3">📢 Broadcast New System Announcement Alert</h5>
             <form method="POST" action="{{ url_for('notifications_center') }}" id="announcement-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label text-muted small fw-bold">Announcement Title</label>

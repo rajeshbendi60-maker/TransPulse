@@ -9,7 +9,7 @@
         0% { transform: translate(0, 0) scale(1); }
         100% { transform: translate(30px, 30px) scale(1.1); }
     }
-    
+
     .floating-bus-animation {
         width: min(235px, 78%);
         height: auto;
@@ -18,18 +18,18 @@
         margin: 0 auto 0.35rem;
         filter: drop-shadow(0 15px 20px rgba(52,210,255,0.4));
     }
-    
+
     @keyframes floatBus {
-        0%, 100% { 
-            transform: translateY(0) scale(1); 
+        0%, 100% {
+            transform: translateY(0) scale(1);
             filter: drop-shadow(0 10px 15px rgba(52,210,255,0.3));
         }
-        50% { 
-            transform: translateY(-15px) scale(1.05); 
+        50% {
+            transform: translateY(-15px) scale(1.05);
             filter: drop-shadow(0 25px 25px rgba(52,210,255,0.6));
         }
     }
-    
+
     .divider {
         display: flex;
         align-items: center;
@@ -67,29 +67,30 @@
     <div class="row justify-content-center">
         <div class="col-md-6 col-lg-5">
             <div class="card glass-login-card auth-card p-4 p-md-5 shadow-lg border-info border-opacity-25" style="backdrop-filter: blur(15px); border-radius: 20px;">
-                
+
                 <div class="text-center mb-4 pb-2">
                     <img src="{{ url_for('static', filename='images/auth-bus.png') }}?v=tp-route" alt="APSRTC bus" class="floating-bus-animation">
                     <h2 class="text-white fw-bold mb-1" style="letter-spacing: -0.5px;">Welcome to TransPulse</h2>
                     <p class="text-info small mb-0 fw-semibold">APSRTC Smart Transport Management System</p>
                 </div>
-                
+
                 <form method="post" action="{{ url_for('login_page') }}" id="unifiedLoginForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="login_type" id="form-login-type" value="passenger">
-                    
+
                     <div class="mb-3">
                         <label class="form-label text-info fw-bold small">Email Address</label>
                         <input type="email" name="email" id="input-email" class="form-control bg-dark text-white border-info shadow-none" placeholder="name@domain.com" required oninput="evaluateEmailDomainSignature()">
                     </div>
 
                     <div class="mb-3 dynamic-field-wrapper" id="wrapper-driver-id">
-                        <label class="form-label text-info fw-bold small">Pilot Operational Code (DRV-XXX)</label>
-                        <input type="text" name="driver_id" id="input-driver-id" class="form-control bg-dark text-white border-info shadow-none" placeholder="e.g. DRV-001">
+                        <label class="form-label text-info fw-bold small">Pilot Operational Code (DTP-XXXXX)</label>
+                        <input type="text" name="driver_id" id="input-driver-id" class="form-control bg-dark text-white border-info shadow-none" placeholder="e.g. DTP-001">
                     </div>
 
                     <div class="mb-3 dynamic-field-wrapper" id="wrapper-admin-id">
-                        <label class="form-label text-info fw-bold small">Security Admin ID Token (ADM-XXX)</label>
-                        <input type="text" name="admin_id" id="input-admin-id" class="form-control bg-dark text-white border-info shadow-none" placeholder="e.g. ADM-TP01">
+                        <label class="form-label text-info fw-bold small">Security Code (ATP-01)</label>
+                        <input type="text" name="admin_id" id="input-admin-id" class="form-control bg-dark text-white border-info shadow-none" placeholder="e.g. ATP-01">
                     </div>
 
                     <div class="mb-3">
@@ -122,7 +123,7 @@
                     </button>
                     <div id="google_button_div" class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style="opacity: 0.01; z-index: 2; transform: scale(1.5);"></div>
                 </div>
-                
+
                 <div class="mt-4 text-center border-top border-secondary pt-3">
                     <small class="text-muted fw-semibold">Need passenger tracking access? <a href="{{ url_for('register_page') }}" class="text-info fw-bold text-decoration-none">Register profile</a></small>
                 </div>
@@ -135,7 +136,7 @@
 <script>
     window.onload = function () {
         google.accounts.id.initialize({
-            client_id: "971176989462-890jcmmhu12sohs9u7tjkpb0uktodavu.apps.googleusercontent.com", 
+            client_id: "{{ config.GOOGLE_CLIENT_ID }}",
             callback: handleRealGoogleLogin
         });
         google.accounts.id.renderButton(
@@ -158,18 +159,29 @@
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = "{{ url_for('google_login') }}";
-        
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = window.TransPulseCSRF || document.querySelector('meta[name="csrf-token"]')?.content || '';
+
         const emailInput = document.createElement('input');
         emailInput.type = 'hidden';
         emailInput.name = 'email';
         emailInput.value = responsePayload.email;
-        
+
+        const credentialInput = document.createElement('input');
+        credentialInput.type = 'hidden';
+        credentialInput.name = 'credential';
+        credentialInput.value = response.credential;
+
         const typeInput = document.createElement('input');
         typeInput.type = 'hidden';
         typeInput.name = 'login_type';
         typeInput.value = document.getElementById('form-login-type').value;
 
+        form.appendChild(csrfInput);
         form.appendChild(emailInput);
+        form.appendChild(credentialInput);
         form.appendChild(typeInput);
         document.body.appendChild(form);
         form.submit();
@@ -193,8 +205,8 @@
             loginTypeHidden.value = 'driver';
             submitBtn.innerText = 'Authorize Driver Profile';
             forgotLink.classList.add('d-none');
-        } 
-        else if (emailValue === 'admin@transpulse.com' || emailValue.includes('admin')) {
+        }
+        else if (emailValue === 'admin@transpulse.com') {
             driverWrapper.classList.remove('reveal');
             driverInput.required = false;
             adminWrapper.classList.add('reveal');
@@ -202,7 +214,7 @@
             loginTypeHidden.value = 'admin';
             submitBtn.innerText = 'Authorize Command Suite';
             forgotLink.classList.add('d-none');
-        } 
+        }
         else {
             driverWrapper.classList.remove('reveal');
             adminWrapper.classList.remove('reveal');

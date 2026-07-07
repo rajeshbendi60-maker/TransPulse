@@ -20,6 +20,7 @@
                     </h5>
                     
                     <form method="POST" action="{{ url_for('admin_buses') }}" id="tp-assign-bus-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="assign_bus">
                         <h6 class="text-info pb-2 mb-3" style="border-bottom: 1px solid rgba(52, 210, 255, 0.3);">Bus Configuration</h6>
                         <div class="row g-3 mb-4">
@@ -36,8 +37,8 @@
                                 <input type="number" name="capacity" class="form-control bg-dark text-white border-secondary" value="45" required>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label text-light small mb-1">Assigned Driver ID</label>
-                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" placeholder="e.g. DRV-001">
+                                <label class="form-label text-light small mb-1">Assigned Driver ID (DTP-XXXXX)</label>
+                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" placeholder="e.g. DTP-001">
                             </div>
                         </div>
 
@@ -48,7 +49,7 @@
                                 <select name="existing_route_id" class="form-select bg-dark text-white border-secondary">
                                     <option value="">— Select Existing Route OR Create New Below —</option>
                                     {% for r in routes %}
-                                        <option value="{{ r.id }}">{{ r.route_code }} — {{ r.origin }} → {{ r.destination }}</option>
+                                        <option value="{{ r.id }}">{{ r.route_code }} — {{ r.origin }} ➜ {{ r.destination }}</option>
                                     {% endfor %}
                                 </select>
                             </div>

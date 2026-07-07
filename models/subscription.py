@@ -40,6 +40,10 @@ class Subscription(db.Model):
         back_populates="subscriptions"
     )
 
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "stop_id", name="uq_subscription_user_stop"),
+    )
+
     def to_dict(self):
         return {
             "id": self.id,

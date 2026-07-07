@@ -34,22 +34,42 @@ function occupancyMeta(bus) {
 }
 
 function busStatusMeta(bus) {
-    const busStatus = String((bus && bus.bus_status) || '').toUpperCase();
-    const serviceStatus = String((bus && bus.service_status) || '').toLowerCase();
-    const completed = serviceStatus === 'completed' || String((bus && bus.trip_status) || '').toUpperCase() === 'COMPLETED';
-    if (completed) return { text: 'Trip Completed', badge: 'bg-secondary', live: 'OFFLINE' };
-    if (busStatus === 'LIVE' || (bus && bus.is_live_gps)) return { text: 'LIVE', badge: 'bg-success', live: 'LIVE' };
+    if (!bus) return { text: 'OFFLINE', badge: 'bg-secondary', live: 'OFFLINE' };
+    const tripStatus = String(bus.trip_status || '').toUpperCase();
+    const serviceStatus = String(bus.service_status || '').toLowerCase();
+    const gpsStatus = String(bus.gps_status || '').toLowerCase();
+
+    const completed = serviceStatus === 'completed' || tripStatus === 'COMPLETED' || tripStatus === 'RETURN_COMPLETED';
+    if (completed) {
+        return { text: 'Completed', badge: 'bg-secondary', live: 'OFFLINE' };
+    }
+
+    if (tripStatus === 'RUNNING' || tripStatus === 'RETURN_RUNNING' || bus.bus_status === 'Running') {
+        if (gpsStatus === 'offline' || serviceStatus === 'gps_lost' || bus.is_live_gps === false) {
+            return { text: 'Running', badge: 'bg-warning text-dark', live: 'GPS Offline' };
+        }
+        return { text: 'Running', badge: 'bg-success', live: 'GPS Online' };
+    }
+
+    if (tripStatus === 'WAITING_TO_DEPART') {
+        return { text: 'Waiting to Depart', badge: 'bg-warning text-dark', live: 'GPS Offline' };
+    }
+
     return { text: 'OFFLINE', badge: 'bg-secondary', live: 'OFFLINE' };
 }
 
 function etaDisplay(bus) {
-    if (!bus) return 'Waiting for GPS';
-    if (String(bus.service_status || '').toLowerCase() === 'completed' || String(bus.trip_status || '').toUpperCase() === 'COMPLETED') {
-        return 'Offline';
+    if (!bus) return '--';
+    const tripStatus = String(bus.trip_status || '').toUpperCase();
+    const serviceStatus = String(bus.service_status || '').toLowerCase();
+    const completed = serviceStatus === 'completed' || tripStatus === 'COMPLETED' || tripStatus === 'RETURN_COMPLETED';
+    if (completed) {
+        return 'Completed';
     }
+    if (tripStatus === 'WAITING_TO_DEPART') return '--';
     if (bus.eta_label) return bus.eta_label;
     const eta = bus.updated_eta_minutes ?? bus.eta_minutes;
-    return eta === null || eta === undefined ? 'Calculating...' : `${eta} min`;
+    return eta === null || eta === undefined ? '--' : `${eta} min`;
 }
 
 async function loadAssignedRoutes() {
@@ -90,7 +110,7 @@ async function loadAssignedRoutes() {
                 <div class="card-body p-3">
                     <h6 class="text-info fw-bold mb-1">${escapeHtml(route.route_code)}</h6>
                     <p class="text-white mb-1 fs-6">${escapeHtml(route.route_name || route.route_code)}</p>
-                    <p class="text-white-50 mb-2 small">${escapeHtml(origin)} → ${escapeHtml(dest)}</p>
+                    <p class="text-white-50 mb-2 small">Distance: <span class="text-light fw-bold">${escapeHtml(route.distance_km || '0.0')} km</span></p>
                     <p class="text-white-50 mb-2 small">Departure: <span class="text-info">${escapeHtml(departure)}</span> | Arrival: <span class="text-info">${escapeHtml(arrival)}</span> | Duration: <span class="text-warning">${escapeHtml(duration)}</span></p>
                     <div class="d-flex justify-content-between">
                         <small class="text-warning fw-bold">ETA: ${escapeHtml(eta)}</small>
@@ -118,7 +138,7 @@ window.Workflow = {
 
     init: async function() {
         await this.fetchData();
-        this.dataInterval = setInterval(() => this.fetchData(), 5000);
+        this.dataInterval = setInterval(() => this.fetchData(), 3000);
 
         this.pollNotifications();
         this.notificationInterval = setInterval(() => this.pollNotifications(), 15000);
@@ -380,6 +400,7 @@ window.Workflow = {
         buses.forEach(bus => {
             const route = this.findRouteForBus(bus);
             const routeName = route ? route.route_name : (bus.route_name || bus.route_code || 'Unknown Route');
+            const routeCode = bus.route_code || (route && route.route_code) || 'Unknown Code';
             const departure = bus.departure_time || (route && route.departure_time) || '--';
             const arrival = bus.arrival_time || (route && route.arrival_time) || '--';
             const duration = bus.journey_duration || (route && route.journey_duration) || '--';
@@ -401,6 +422,13 @@ window.Workflow = {
             const occupancy = occupancyMeta(bus);
 
             const trackUrl = `/tracking/${encodeURIComponent(bus.bus_number)}?source=search`;
+            
+            let trackButtonHtml = '';
+            if (bus.trip_status === 'WAITING_TO_DEPART') {
+                trackButtonHtml = `<button class="btn btn-sm btn-info w-100 fw-bold text-dark shadow-sm" disabled title="Tracking will be available once the driver starts the trip.">Track Bus</button>`;
+            } else {
+                trackButtonHtml = `<a href="${trackUrl}" class="btn btn-sm btn-info w-100 fw-bold text-dark shadow-sm">${bus.service_status === 'completed' || bus.trip_status === 'RETURN_COMPLETED' || bus.trip_status === 'COMPLETED' ? 'View Trip Completed' : 'Track Bus'}</a>`;
+            }
 
             resultsDiv.innerHTML += `
                 <div class="col-12 col-md-6 col-lg-4">
@@ -409,7 +437,8 @@ window.Workflow = {
                             <div class="d-flex justify-content-between align-items-start mb-2">
                                 <div>
                                     <h5 class="text-white fw-bold m-0">${escapeHtml(bus.bus_number)} <small class="text-muted fs-6">(ID: ${bus.bus_id})</small></h5>
-                                    <small class="text-info fw-bold">${escapeHtml(routeName)}</small>
+                                    <div class="text-info fw-bold small">${escapeHtml(routeCode)}</div>
+                                    <div class="text-white-50 small" style="font-size: 0.75rem;">${escapeHtml(routeName)}</div>
                                 </div>
                                 <div class="text-end">
                                     <span class="badge ${liveStatus.badge} shadow-sm text-uppercase d-block mb-1" style="font-size:0.65rem;">${escapeHtml(liveStatus.live)}</span>
@@ -442,7 +471,7 @@ window.Workflow = {
                             </div>
 
                             <div class="mt-2 text-end">
-                                <a href="${trackUrl}" class="btn btn-sm btn-info w-100 fw-bold text-dark shadow-sm">${bus.service_status === 'completed' ? 'View Trip Completed' : 'Track Bus'}</a>
+                                ${trackButtonHtml}
                             </div>
                         </div>
                     </div>

@@ -66,7 +66,10 @@
             toast.style.right = '20px';
             toast.style.zIndex = '999999';
             toast.style.padding = '12px 20px';
-            toast.innerHTML = `<div class="toast-body">${message}</div>`;
+            const body = document.createElement('div');
+            body.className = 'toast-body';
+            body.textContent = message == null ? '' : String(message);
+            toast.appendChild(body);
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), duration);
         },

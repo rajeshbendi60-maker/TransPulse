@@ -5,9 +5,9 @@ class LostAndFound(db.Model):
     __tablename__ = 'lost_and_found'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    bus_id = db.Column(db.Integer, db.ForeignKey('buses.id'), nullable=False)
-    route_id = db.Column(db.Integer, db.ForeignKey('routes.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    bus_id = db.Column(db.Integer, db.ForeignKey('buses.id'), nullable=False, index=True)
+    route_id = db.Column(db.Integer, db.ForeignKey('routes.id'), nullable=False, index=True)
     
     item_type = db.Column(db.String(50), nullable=False)  # lost, found
     item_name = db.Column(db.String(100), nullable=False)
@@ -23,10 +23,10 @@ class LostAndFound(db.Model):
     contact_phone = db.Column(db.String(20), nullable=False)
     contact_email = db.Column(db.String(100), nullable=True)
     
-    status = db.Column(db.String(20), default='open')  # open, claimed, resolved
+    status = db.Column(db.String(20), default='open', index=True)  # open, claimed, resolved
     driver_reply = db.Column(db.Text, nullable=True)
-    assigned_driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    claimed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    assigned_driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    claimed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     claimed_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship("User", foreign_keys=[user_id], back_populates="lost_and_found_reports")

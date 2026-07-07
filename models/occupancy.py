@@ -5,8 +5,8 @@ class BusOccupancy(db.Model):
     __tablename__ = 'bus_occupancy'
     
     id = db.Column(db.Integer, primary_key=True)
-    bus_id = db.Column(db.Integer, db.ForeignKey('buses.id'), nullable=False)
-    trip_id = db.Column(db.Integer, db.ForeignKey('trips.id'), nullable=False)
+    bus_id = db.Column(db.Integer, db.ForeignKey('buses.id'), nullable=False, index=True)
+    trip_id = db.Column(db.Integer, db.ForeignKey('trips.id'), nullable=False, index=True)
     
     total_seats = db.Column(db.Integer, nullable=False)
     occupied_seats = db.Column(db.Integer, default=0)
@@ -18,6 +18,11 @@ class BusOccupancy(db.Model):
 
     bus = db.relationship("Bus", back_populates="occupancy_records")
     trip = db.relationship("Trip", back_populates="occupancy_records")
+
+    __table_args__ = (
+        db.Index("idx_bus_occupancy_bus_recorded", "bus_id", "recorded_at"),
+        db.Index("idx_bus_occupancy_trip_recorded", "trip_id", "recorded_at"),
+    )
     
     def __repr__(self):
         return f'<BusOccupancy {self.bus_id} - {self.occupancy_level}>'

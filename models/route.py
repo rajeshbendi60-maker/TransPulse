@@ -28,5 +28,13 @@ class Route(db.Model):
     lost_and_found_items = db.relationship("LostAndFound", back_populates="route", lazy=True)
     sos_alerts = db.relationship("SOSAlert", back_populates="route", lazy=True)
 
+    @property
+    def route_name(self):
+        return self.name
+
+    @route_name.setter
+    def route_name(self, value):
+        self.name = value
+
     def __repr__(self) -> str:
         return f"<Route {self.route_code}>"

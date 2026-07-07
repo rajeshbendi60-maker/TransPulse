@@ -18,5 +18,7 @@ from .occupancy import BusOccupancy
 from .subscription import Subscription
 from .agency import Agency
 from .calendar import Calendar
+from .calendar_date import CalendarDate
+from .feed_info import FeedInfo
 from .shape import Shape
 from .road_geometry_cache import RoadGeometryCache

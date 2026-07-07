@@ -171,23 +171,23 @@
 
     <div class="dashboard-section">
         <div class="tracking-metric-grid">
-            <div class="metric-card-box"><label>Bus Number</label><p id="trk-bus-num" class="text-info"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Driver Code</label><p id="trk-driver-code" class="text-info"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box metric-card-wide"><label>Assigned Route Line</label><p id="trk-route" class="text-warning"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box metric-card-wide"><label>Current Stop</label><p id="trk-current-stop"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p><small id="trk-current-stop-time" class="text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Fetching schedules...</small></div>
-            <div class="metric-card-box metric-card-wide"><label>Next Stop</label><p id="trk-next-stop" class="text-warning"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p><small id="trk-next-stop-time" class="text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Fetching estimated times...</small></div>
-            <div class="metric-card-box"><label>ETA</label><p id="trk-eta" class="text-info"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Status</label><p id="trk-status" class="text-warning"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Schedule</label><p id="trk-schedule-status" class="text-success"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Departure</label><p id="trk-departure" class="text-info"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Arrival</label><p id="trk-arrival" class="text-info"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Scheduled</label><p id="trk-current-scheduled" class="text-warning"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Actual</label><p id="trk-current-actual" class="text-white"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Delay</label><p id="trk-delay" class="text-danger"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Occupancy</label><p id="trk-occupancy" class="text-info"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Progress</label><p id="trk-progress" class="text-success"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Dist Left</label><p id="trk-dist" class="text-info"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
-            <div class="metric-card-box"><label>Dist to You</label><p id="trk-user-dist" class="text-warning"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>
+            <div class="metric-card-box"><label>Bus Number</label><p id="trk-bus-num" class="text-info">{{ bus_identifier }}</p></div>
+            <div class="metric-card-box"><label>Driver Code</label><p id="trk-driver-code" class="text-info">--</p></div>
+            <div class="metric-card-box metric-card-wide"><label>Assigned Route Line</label><p id="trk-route" class="text-warning">--</p></div>
+            <div class="metric-card-box metric-card-wide"><label>Current Stop</label><p id="trk-current-stop">--</p><small id="trk-current-stop-time" class="text-muted">Fetching schedules...</small></div>
+            <div class="metric-card-box metric-card-wide"><label>Next Stop</label><p id="trk-next-stop" class="text-warning">--</p><small id="trk-next-stop-time" class="text-muted">Fetching estimated times...</small></div>
+            <div class="metric-card-box"><label>ETA</label><p id="trk-eta" class="text-info">Calculating...</p></div>
+            <div class="metric-card-box"><label>Status</label><p id="trk-status" class="text-warning">Waiting...</p></div>
+            <div class="metric-card-box"><label>Schedule</label><p id="trk-schedule-status" class="text-success">--</p></div>
+            <div class="metric-card-box"><label>Departure</label><p id="trk-departure" class="text-info">--</p></div>
+            <div class="metric-card-box"><label>Arrival</label><p id="trk-arrival" class="text-info">--</p></div>
+            <div class="metric-card-box"><label>Scheduled</label><p id="trk-current-scheduled" class="text-warning">--</p></div>
+            <div class="metric-card-box"><label>Actual</label><p id="trk-current-actual" class="text-white">--</p></div>
+            <div class="metric-card-box"><label>Delay</label><p id="trk-delay" class="text-danger">0 min</p></div>
+            <div class="metric-card-box"><label>Occupancy</label><p id="trk-occupancy" class="text-info">--</p></div>
+            <div class="metric-card-box"><label>Progress</label><p id="trk-progress" class="text-success">0%</p></div>
+            <div class="metric-card-box"><label>Dist Left</label><p id="trk-dist" class="text-info">--</p></div>
+            <div class="metric-card-box"><label>Dist to You</label><p id="trk-user-dist" class="text-warning">--</p></div>
         </div>
 
         <h4 class="text-white fw-bold mb-4 px-2" style="font-family: 'Poppins', sans-serif;"><i class="fa-solid fa-route text-info me-2"></i> Live Route Timeline</h4>

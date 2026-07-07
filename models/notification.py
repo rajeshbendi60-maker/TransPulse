@@ -9,10 +9,14 @@ class Notification(db.Model):
     trip_id = db.Column(db.Integer, db.ForeignKey("trips.id"), nullable=True, index=True)
     message = db.Column(db.String(300), nullable=False)
     is_read = db.Column(db.Boolean, default=False, nullable=False)
-    created_at = db.Column(db.DateTime, server_default=db.func.now(), nullable=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now(), nullable=False, index=True)
 
     recipient = db.relationship("User", back_populates="notifications")
     trip = db.relationship("Trip", back_populates="notifications")
+
+    __table_args__ = (
+        db.Index("idx_notification_recipient_read_created", "recipient_id", "is_read", "created_at"),
+    )
 
     def __repr__(self) -> str:
         return f"<Notification to={self.recipient_id}>"

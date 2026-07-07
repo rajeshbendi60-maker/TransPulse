@@ -301,15 +301,17 @@ window.TransPulseTracking = {
 
     _isTripCompleted: function(bus) {
         return String((bus && bus.service_status) || '').toLowerCase() === 'completed' ||
-            String((bus && bus.trip_status) || '').toUpperCase() === 'COMPLETED';
+            String((bus && bus.trip_status) || '').toUpperCase() === 'COMPLETED' ||
+            String((bus && bus.trip_status) || '').toUpperCase() === 'RETURN_COMPLETED';
     },
 
     _etaText: function(bus) {
-        if (!bus) return 'Waiting for GPS';
+        if (!bus) return '--';
         if (this._isTripCompleted(bus)) return 'Completed';
+        if (bus.trip_status === 'WAITING_TO_DEPART') return '--';
         if (bus.eta_label) return bus.eta_label;
         const eta = bus.updated_eta_minutes ?? bus.eta_minutes;
-        return eta === null || eta === undefined ? 'Calculating...' : `${eta} min`;
+        return eta === null || eta === undefined ? '--' : `${eta} min`;
     },
 
     _getTimelineStops: function(bus) {
@@ -450,6 +452,7 @@ window.TransPulseTracking = {
         }
 
         const currentIdx = bus.current_stop_index != null ? bus.current_stop_index : 0;
+        const tripCompleted = this._isTripCompleted(bus);
         let verticalHtml = '';
 
         timelineStops.forEach((stop, idx) => {
@@ -458,28 +461,36 @@ window.TransPulseTracking = {
             let dotColor = '#007bff';
             let textClass = 'text-white-50';
             let statusLabel = 'Upcoming Stop';
-            let prefix = '🔵';
+            let prefix = '○';
 
-            if (isFirst) {
-                dotColor = '#ffc107';
-                prefix = '🟡';
-            } else if (isLast) {
-                dotColor = '#dc3545';
-                prefix = '🔴';
-            }
-
-            if (idx < currentIdx) {
+            if (tripCompleted) {
+                prefix = '✔';
                 textClass = 'text-success fw-bold';
                 statusLabel = 'Completed';
+                dotColor = '#22d39a';
+            } else if (idx < currentIdx) {
+                prefix = '✔';
+                textClass = 'text-success fw-bold';
+                statusLabel = 'Completed';
+                dotColor = '#22d39a';
             } else if (idx === currentIdx) {
+                prefix = '▶';
                 textClass = 'text-warning fw-bold fs-5';
                 statusLabel = bus.status === 'AT BUS STAND' ? 'At Bus Stand (Current)' : 'Current Stop';
+                dotColor = '#ffc107';
             } else if (isLast) {
                 textClass = 'text-danger fw-bold';
                 statusLabel = 'Final Destination';
+                dotColor = '#dc3545';
             } else if (isFirst) {
                 textClass = 'text-warning';
                 statusLabel = 'Route Origin';
+                dotColor = '#ffc107';
+            }
+
+            let nameText = stop.name || '--';
+            if (isLast) {
+                nameText += ' (Destination)';
             }
 
             const delayMinutes = Number(stop.delay_minutes != null ? stop.delay_minutes : (bus.current_delay_minutes || 0));
@@ -490,11 +501,11 @@ window.TransPulseTracking = {
             verticalHtml += `
                 <div class="timeline-node-card">
                     <div class="timeline-node-dot" style="background:${dotColor}; box-shadow: 0 0 10px ${dotColor};"></div>
-                    <h5 class="m-0 ${textClass}">${prefix} ${stop.name}</h5>
-                    <small class="text-info d-block" style="font-size:0.75rem;">Scheduled: ${stop.scheduled_time || '--'}</small>
-                    <small class="text-white-50 d-block" style="font-size:0.75rem;">${timeLabel}: ${actualTime}</small>
-                    <small class="text-muted d-block" style="font-size:0.75rem;">Delay: ${delayLabel}</small>
-                    <small class="text-muted d-block" style="font-size:0.75rem;">Reason: ${stop.delay_reason || bus.current_delay_reason || 'On time'}</small>
+                    <h5 class="m-0 ${textClass}">${prefix} ${this._escapeHtml(nameText)}</h5>
+                    <small class="text-info d-block" style="font-size:0.75rem;">Scheduled: ${this._escapeHtml(stop.scheduled_time || '--')}</small>
+                    <small class="text-white-50 d-block" style="font-size:0.75rem;">${timeLabel}: ${this._escapeHtml(actualTime)}</small>
+                    <small class="text-muted d-block" style="font-size:0.75rem;">Delay: ${this._escapeHtml(delayLabel)}</small>
+                    <small class="text-muted d-block" style="font-size:0.75rem;">Reason: ${this._escapeHtml(stop.delay_reason || bus.current_delay_reason || 'On time')}</small>
                     <small class="text-muted d-block" style="font-size:0.75rem;">${statusLabel}</small>
                 </div>`;
         });
@@ -581,6 +592,21 @@ window.TransPulseTracking = {
                 return;
             }
 
+            const routeTripKey = `${bus.route_id || ''}|${bus.shape_id || ''}|${bus.trip_id || ''}`;
+            if (this.currentRouteTripKey && this.currentRouteTripKey !== routeTripKey) {
+                if (this.polyline) {
+                    this.activeMap.removeLayer(this.polyline);
+                    this.polyline = null;
+                }
+                if (this.busMarker) {
+                    this.activeMap.removeLayer(this.busMarker);
+                    this.busMarker = null;
+                }
+                this.stopLayerGroup.clearLayers();
+                this.cachedStopsHash = null;
+            }
+            this.currentRouteTripKey = routeTripKey;
+
             const telemetryReceivedAt = performance.now();
             const animationDuration = this.lastTelemetryReceivedAt
                 ? Math.max(900, Math.min(8000, telemetryReceivedAt - this.lastTelemetryReceivedAt + 350))
@@ -630,10 +656,23 @@ window.TransPulseTracking = {
             updateEl('trk-current-stop', currentStopName);
             updateEl('trk-next-stop', nextStopName);
             updateEl('trk-eta', this._etaText(bus));
-            updateEl('trk-dist', (bus.distance_remaining_km || 0) + " km");
-            updateEl('trk-progress', (bus.trip_progress || 0) + "%");
-            updateEl('trk-status', tripCompleted ? 'Trip Completed' : (bus.status || '--'));
-            updateEl('trk-schedule-status', bus.schedule_status || bus.delay_status || '--');
+            const distRemainingText = bus.distance_remaining_km === '--' || bus.distance_remaining_km == null
+                ? '--'
+                : `${bus.distance_remaining_km} km`;
+            updateEl('trk-dist', distRemainingText);
+            updateEl('trk-progress', (bus.trip_progress != null ? bus.trip_progress : 0) + "%");
+            
+            const statusMap = {
+                WAITING_TO_DEPART: 'Waiting to Depart',
+                RUNNING: 'Running',
+                COMPLETED: 'Trip Completed',
+                RETURN_RUNNING: 'Running',
+                RETURN_COMPLETED: 'Return Completed'
+            };
+            const trkStatusText = statusMap[bus.trip_status] || bus.status || '--';
+            updateEl('trk-status', trkStatusText);
+            const isGpsOnline = ['online', 'live gps'].includes(String(bus.gps_status || '').toLowerCase()) && bus.is_live_gps !== false;
+            updateEl('trk-schedule-status', isGpsOnline ? 'GPS Online' : 'GPS Offline');
             updateEl('trk-departure', bus.departure_time || '--');
             updateEl('trk-arrival', bus.updated_arrival_time || bus.arrival_time || '--');
             updateEl('trk-current-scheduled', currentScheduledTime);
@@ -657,7 +696,7 @@ window.TransPulseTracking = {
             const activeLinePath = (bus.display_path && bus.display_path.length)
                 ? bus.display_path
                 : bus.path;
-            const currentStopsHash = `${bus.stops ? bus.stops.map(s => s.name).join('|') : ''}|${bus.current_stop_index}|${bus.status}|${bus.direction}|${bus.shape_id || ''}|${bus.path ? bus.path.length : 0}|${bus.display_geometry_source || 'gtfs'}|${bus.display_path ? bus.display_path.length : 0}`;
+            const currentStopsHash = `${bus.route_id || ''}|${bus.shape_id || ''}|${bus.trip_id || ''}|${bus.stops ? bus.stops.map(s => s.name).join('|') : ''}|${bus.current_stop_index}|${bus.status}|${bus.direction}|${bus.shape_id || ''}|${bus.path ? bus.path.length : 0}|${bus.display_geometry_source || 'gtfs'}|${bus.display_path ? bus.display_path.length : 0}`;
 
             if (this.cachedStopsHash !== currentStopsHash && bus.stops) {
                 this.cachedStopsHash = currentStopsHash;

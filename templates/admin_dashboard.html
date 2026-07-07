@@ -59,11 +59,12 @@
                             <div class="d-flex justify-content-between align-items-start mb-3">
                                 <div>
                                     <h4 class="text-white fw-bold m-0">{{ bus.bus_number }}</h4>
-                                    <small class="text-info fw-bold font-monospace text-uppercase" style="letter-spacing: 0.5px;">{{ bus.route_code }}</small>
+                                    <div class="text-info fw-bold font-monospace text-uppercase small" style="letter-spacing: 0.5px;">{{ bus.route_code }}</div>
+                                    <div class="text-white-50 small mt-1" style="font-size: 0.75rem;">{{ bus.route_name }}</div>
                                 </div>
                                 <div class="text-end">
-                                    <span class="badge {% if bus.bus_status == 'LIVE' or bus.is_live_gps %}bg-success{% else %}bg-secondary{% endif %} text-uppercase px-2 py-1 d-block mb-1">
-                                        {{ bus.bus_status or ('LIVE' if bus.is_live_gps else 'OFFLINE') }}
+                                    <span class="badge {% if bus.bus_status == 'ACTIVE' or bus.is_live_gps %}bg-success{% else %}bg-secondary{% endif %} text-uppercase px-2 py-1 d-block mb-1">
+                                        {{ bus.bus_status or ('ACTIVE' if bus.is_live_gps else 'OFFLINE') }}
                                     </span>
                                     <span class="badge {% if bus.service_status == 'completed' %}bg-secondary{% elif bus.service_status == 'delayed' %}bg-danger{% else %}bg-success{% endif %} text-uppercase px-2 py-1">
                                         {% if bus.service_status == 'completed' %}Trip Completed{% else %}{{ bus.schedule_status or bus.status }}{% endif %}
@@ -124,20 +125,40 @@
         }
 
         function adminBusStatusMeta(bus) {
-            const completed = bus.service_status === 'completed' || String(bus.trip_status || '').toUpperCase() === 'COMPLETED';
-            if (completed) return { live: 'OFFLINE', trip: 'Trip Completed', liveClass: 'bg-secondary', tripClass: 'bg-secondary' };
-            if (bus.bus_status === 'LIVE' || bus.is_live_gps) {
-                return { live: bus.gps_status || 'LIVE GPS', trip: bus.trip_status || bus.schedule_status || bus.status || 'ACTIVE', liveClass: 'bg-success', tripClass: bus.service_status === 'delayed' ? 'bg-danger' : 'bg-success' };
+            if (!bus) return { live: 'OFFLINE', trip: 'OFFLINE', liveClass: 'bg-secondary', tripClass: 'bg-secondary' };
+            const tripStatus = String(bus.trip_status || '').toUpperCase();
+            const serviceStatus = String(bus.service_status || '').toLowerCase();
+            const gpsStatus = String(bus.gps_status || '').toLowerCase();
+
+            const completed = serviceStatus === 'completed' || tripStatus === 'COMPLETED' || tripStatus === 'RETURN_COMPLETED';
+            if (completed) {
+                return { live: 'OFFLINE', trip: 'Trip Completed', liveClass: 'bg-secondary', tripClass: 'bg-secondary' };
             }
-            return { live: bus.gps_status || 'OFFLINE', trip: bus.trip_status || bus.schedule_status || bus.status || 'OFFLINE', liveClass: 'bg-secondary', tripClass: 'bg-secondary' };
+
+            if (tripStatus === 'RUNNING' || tripStatus === 'RETURN_RUNNING' || bus.bus_status === 'Running') {
+                if (gpsStatus === 'offline' || serviceStatus === 'gps_lost' || bus.is_live_gps === false) {
+                    return { live: 'GPS Offline', trip: 'Fleet Running', liveClass: 'bg-warning text-dark', tripClass: 'bg-warning text-dark' };
+                }
+                return { live: 'GPS Online', trip: 'Fleet Running', liveClass: 'bg-success', tripClass: 'bg-success' };
+            }
+
+            if (tripStatus === 'WAITING_TO_DEPART') {
+                return { live: 'GPS Offline', trip: 'Waiting to Depart', liveClass: 'bg-warning text-dark', tripClass: 'bg-warning text-dark' };
+            }
+
+            return { live: bus.gps_status || 'OFFLINE', trip: tripStatus || 'OFFLINE', liveClass: 'bg-secondary', tripClass: 'bg-secondary' };
         }
 
         function adminEtaText(bus) {
-            if (!bus) return 'Waiting for GPS';
-            if (bus.service_status === 'completed' || String(bus.trip_status || '').toUpperCase() === 'COMPLETED') return 'Offline';
+            if (!bus) return '--';
+            const tripStatus = String(bus.trip_status || '').toUpperCase();
+            const serviceStatus = String(bus.service_status || '').toLowerCase();
+            const completed = serviceStatus === 'completed' || tripStatus === 'COMPLETED' || tripStatus === 'RETURN_COMPLETED';
+            if (completed) return 'Completed';
+            if (tripStatus === 'WAITING_TO_DEPART') return '--';
             if (bus.eta_label) return bus.eta_label;
             const eta = bus.updated_eta_minutes ?? bus.eta_minutes;
-            return eta === null || eta === undefined ? 'Calculating...' : `${eta} min`;
+            return eta === null || eta === undefined ? '--' : `${eta} min`;
         }
 
         function renderIndividualFleetCards(buses) {
@@ -145,7 +166,7 @@
             if (!container) return;
 
             if (!Array.isArray(buses) || buses.length === 0) {
-                container.innerHTML = '<div class="col-12 text-center text-muted py-5">No active fleet parameters reported in current deployment matrix.</div>';
+                container.innerHTML = '<div class="col-12 text-center text-muted py-5">No assigned fleet vehicles are available yet.</div>';
                 return;
             }
 
@@ -161,7 +182,8 @@
                                     <div class="d-flex justify-content-between align-items-start mb-3">
                                         <div>
                                             <h4 class="text-white fw-bold m-0">${escapeAdminFleetText(bus.bus_number)}</h4>
-                                            <small class="text-info fw-bold font-monospace text-uppercase" style="letter-spacing: 0.5px;">${escapeAdminFleetText(bus.route_code)}</small>
+                                            <div class="text-info fw-bold font-monospace text-uppercase small" style="letter-spacing: 0.5px;">${escapeAdminFleetText(bus.route_code)}</div>
+                                            <div class="text-white-50 small mt-1" style="font-size: 0.75rem;">${escapeAdminFleetText(bus.route_name)}</div>
                                         </div>
                                         <div class="text-end">
                                             <span class="badge ${busStatus.liveClass} text-uppercase px-2 py-1 d-block mb-1">
@@ -212,10 +234,41 @@
         function loadIndividualFleetCards() {
             fetch('/api/buses/live')
                 .then(response => response.ok ? response.json() : Promise.reject(new Error('Fleet telemetry unavailable')))
-                .then(data => renderIndividualFleetCards(data.buses || []))
+                .then(data => {
+                    const buses = data.buses || [];
+                    renderIndividualFleetCards(buses);
+                    
+                    let waiting = 0;
+                    let running = 0;
+                    let completed = 0;
+                    let returnReady = 0;
+                    
+                    buses.forEach(b => {
+                        const tripSt = b.trip_status || '';
+                        if (tripSt === 'WAITING_TO_DEPART') waiting++;
+                        else if (tripSt === 'RUNNING' || tripSt === 'RETURN_RUNNING') running++;
+                        else if (tripSt === 'COMPLETED' || tripSt === 'RETURN_COMPLETED') completed++;
+                        else if (tripSt === 'RETURN_READY') returnReady++;
+                    });
+                    
+                    const totalBuses = Number('{{ total_buses }}' || 0);
+                    const offline = Math.max(0, totalBuses - (waiting + running + completed + returnReady));
+                    
+                    const eWaiting = document.getElementById('stat-waiting');
+                    const eRunning = document.getElementById('stat-running');
+                    const eOffline = document.getElementById('stat-offline');
+                    const eCompleted = document.getElementById('stat-completed');
+                    const eReturn = document.getElementById('stat-return');
+                    
+                    if (eWaiting) eWaiting.textContent = waiting;
+                    if (eRunning) eRunning.textContent = running;
+                    if (eOffline) eOffline.textContent = offline;
+                    if (eCompleted) eCompleted.textContent = completed;
+                    if (eReturn) eReturn.textContent = returnReady;
+                })
                 .catch(() => {
                     const container = document.getElementById('individualFleetGridContainer');
-                    if (container) container.innerHTML = '<div class="col-12 text-center text-warning py-5">Live fleet telemetry is temporarily unavailable.</div>';
+                    if (container) container.innerHTML = '<div class="col-12 text-center text-warning py-5">Fleet assignment refresh is temporarily unavailable.</div>';
                 });
         }
 
@@ -232,7 +285,7 @@
             if (window.__tpLiveFleetTimer) clearInterval(window.__tpLiveFleetTimer);
             window.__tpLiveFleetTimer = setInterval(() => {
                 if (!document.hidden) loadIndividualFleetCards();
-            }, 6000); // More responsive 6s refresh rate
+            }, 2000); // 2s refresh rate
         });
     </script>
     
@@ -351,6 +404,39 @@
                 <div class="metric-card" style="border-color: rgba(255, 93, 108, 0.4);">
                     <h6><span class="icon"><i class="fa-solid fa-triangle-exclamation"></i></span>Active SOS Alerts</h6>
                     <p style="color: var(--tp-danger);">{{ sos_alerts }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-5 fade-up-1 d-flex flex-wrap justify-content-start" style="animation-delay: 0.1s;">
+            <div class="col-6 col-md-2" style="flex: 1 0 18%; min-width: 140px;">
+                <div class="metric-card bg-dark border-warning">
+                    <h6><span class="icon text-warning"><i class="fa-solid fa-clock"></i></span>Waiting to Depart</h6>
+                    <p class="text-warning" id="stat-waiting">{{ waiting_to_depart }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-2" style="flex: 1 0 18%; min-width: 140px;">
+                <div class="metric-card bg-dark border-info">
+                    <h6><span class="icon text-info"><i class="fa-solid fa-truck-fast"></i></span>Running</h6>
+                    <p class="text-info" id="stat-running">{{ running }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-2" style="flex: 1 0 18%; min-width: 140px;">
+                <div class="metric-card bg-dark border-secondary">
+                    <h6><span class="icon text-secondary"><i class="fa-solid fa-power-off"></i></span>Offline</h6>
+                    <p class="text-secondary" id="stat-offline">{{ offline }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-2" style="flex: 1 0 18%; min-width: 140px;">
+                <div class="metric-card bg-dark border-success">
+                    <h6><span class="icon text-success"><i class="fa-solid fa-flag-checkered"></i></span>Completed</h6>
+                    <p class="text-success" id="stat-completed">{{ completed_buses }}</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-2" style="flex: 1 0 18%; min-width: 140px;">
+                <div class="metric-card bg-dark border-primary">
+                    <h6><span class="icon text-primary"><i class="fa-solid fa-rotate-left"></i></span>Return Ready</h6>
+                    <p class="text-primary" id="stat-return">{{ return_ready }}</p>
                 </div>
             </div>
         </div>

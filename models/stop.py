@@ -12,14 +12,14 @@ class Stop(db.Model):
     scheduled_departure_time = db.Column(db.String(20), nullable=True)
 
     # --- GTFS PREPARATION FIELDS ---
-    stop_code = db.Column(db.String(50), nullable=True, index=True)
+    stop_code = db.Column(db.String(120), nullable=True, index=True)
     stop_desc = db.Column(db.String(255), nullable=True)
     stop_lat = db.Column(db.Float, nullable=True)
     stop_lon = db.Column(db.Float, nullable=True)
-    zone_id = db.Column(db.String(50), nullable=True)
+    zone_id = db.Column(db.String(120), nullable=True)
     stop_url = db.Column(db.String(255), nullable=True)
     location_type = db.Column(db.Integer, nullable=True, default=0)
-    parent_station = db.Column(db.String(50), nullable=True)
+    parent_station = db.Column(db.String(120), nullable=True)
 
     route = db.relationship("Route", back_populates="stops")
     stop_times = db.relationship("StopTime", back_populates="stop", lazy=True, cascade="all, delete-orphan")
@@ -27,6 +27,7 @@ class Stop(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("route_id", "stop_order", name="uq_stop_route_order"),
+        db.Index("idx_stops_code_location", "stop_code", "stop_lat", "stop_lon"),
     )
 
     def __repr__(self) -> str:
@@ -44,3 +45,9 @@ class StopTime(db.Model):
     
     trip = db.relationship("Trip", back_populates="stop_times")
     stop = db.relationship("Stop", back_populates="stop_times")
+
+    __table_args__ = (
+        db.UniqueConstraint("trip_id", "stop_sequence", name="uq_stop_time_trip_sequence"),
+        db.Index("idx_stop_time_trip_sequence", "trip_id", "stop_sequence"),
+        db.Index("idx_stop_time_stop_trip", "stop_id", "trip_id"),
+    )

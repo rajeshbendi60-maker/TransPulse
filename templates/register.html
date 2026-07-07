@@ -21,16 +21,16 @@
     }
 
     @keyframes floatBus {
-        0%, 100% { 
-            transform: translateY(0) scale(1); 
+        0%, 100% {
+            transform: translateY(0) scale(1);
             filter: drop-shadow(0 10px 15px rgba(52,210,255,0.3));
         }
-        50% { 
-            transform: translateY(-15px) scale(1.05); 
+        50% {
+            transform: translateY(-15px) scale(1.05);
             filter: drop-shadow(0 25px 25px rgba(52,210,255,0.6));
         }
     }
-    
+
     .divider {
         display: flex;
         align-items: center;
@@ -53,26 +53,27 @@
     <div class="row justify-content-center">
         <div class="col-md-7 col-lg-6">
             <div class="card glass-login-card auth-card p-4 p-md-5 shadow-lg border-info border-opacity-25" style="backdrop-filter: blur(15px); border-radius: 20px;">
-                
+
                 <!-- Registration banner merged inside container -->
                 <div class="text-center mb-4 pb-2">
                     <img src="{{ url_for('static', filename='images/auth-bus.png') }}?v=tp-route" alt="APSRTC bus" class="floating-bus-animation">
                     <h2 class="text-white fw-bold mb-1" style="letter-spacing: -0.5px;">Join APSRTC Smart Mobility</h2>
                     <p class="text-info small mb-0 fw-semibold">TransPulse Passenger Account Creation Only</p>
                 </div>
-                
+
                 <form method="post" action="{{ url_for('register_page') }}" class="text-start text-white" id="regForm">
-                    
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
                     <div class="mb-3">
                         <label class="form-label text-info fw-bold small">Full Legal Name</label>
                         <input type="text" name="full_name" id="reg-name" class="form-control bg-dark text-white border-info shadow-none" placeholder="Enter your full name" required>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label class="form-label text-info fw-bold small">Email Address</label>
                         <input type="email" name="email" id="reg-email" class="form-control bg-dark text-white border-info shadow-none" placeholder="Enter your email address" required>
                     </div>
-                    
+
                     <div class="row mb-3 g-2">
                         <div class="col-sm-6">
                             <label class="form-label text-info fw-bold small">Password</label>
@@ -83,12 +84,12 @@
                             <input type="password" id="pwd2" name="confirm_password" class="form-control bg-dark text-white border-info shadow-none" placeholder="Confirm password" required>
                         </div>
                     </div>
-                    
+
                     <div class="form-check mb-4 px-1">
                         <input class="form-check-input border-info" type="checkbox" id="show-passwords" onclick="document.getElementById('pwd1').type = this.checked ? 'text' : 'password'; document.getElementById('pwd2').type = this.checked ? 'text' : 'password';">
                         <label class="form-check-label small text-muted ms-1 fw-semibold" for="show-passwords">Show Passwords</label>
                     </div>
-                    
+
                     <button type="submit" class="btn btn-info w-100 fw-bold shadow-sm text-dark mb-2 rounded-pill py-2" style="font-size: 1.05rem;">Create Passenger Account</button>
                 </form>
 
@@ -108,7 +109,7 @@
                     <!-- Invisible Real Google iframe target stacked directly above -->
                     <div id="google_button_div_reg" class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style="opacity: 0.01; z-index: 2; transform: scale(1.5);"></div>
                 </div>
-                
+
                 <div class="mt-4 text-center border-top border-secondary pt-3">
                     <small class="text-muted fw-semibold">Already configured profile credentials? <a href="{{ url_for('login_page') }}" class="text-info fw-bold text-decoration-none">Login here</a></small>
                 </div>
@@ -121,10 +122,10 @@
 <script>
     window.onload = function () {
         google.accounts.id.initialize({
-            client_id: "971176989462-890jcmmhu12sohs9u7tjkpb0uktodavu.apps.googleusercontent.com", 
+            client_id: "{{ config.GOOGLE_CLIENT_ID }}",
             callback: handleRealGoogleRegister
         });
-        
+
         google.accounts.id.renderButton(
             document.getElementById("google_button_div_reg"),
             { theme: "filled_blue", size: "large", width: 350 }
@@ -142,24 +143,35 @@
 
     function handleRealGoogleRegister(response) {
         const responsePayload = decodeJwtResponse(response.credential);
-        
+
         // Dynamically execute background POST mappings target route securely
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = "{{ url_for('google_register') }}";
-        
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = window.TransPulseCSRF || document.querySelector('meta[name="csrf-token"]')?.content || '';
+
         const nameInput = document.createElement('input');
         nameInput.type = 'hidden';
         nameInput.name = 'full_name';
         nameInput.value = responsePayload.name;
-        
+
         const emailInput = document.createElement('input');
         emailInput.type = 'hidden';
         emailInput.name = 'email';
         emailInput.value = responsePayload.email;
 
+        const credentialInput = document.createElement('input');
+        credentialInput.type = 'hidden';
+        credentialInput.name = 'credential';
+        credentialInput.value = response.credential;
+
+        form.appendChild(csrfInput);
         form.appendChild(nameInput);
         form.appendChild(emailInput);
+        form.appendChild(credentialInput);
         document.body.appendChild(form);
         form.submit();
     }

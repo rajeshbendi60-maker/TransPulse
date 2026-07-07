@@ -8,6 +8,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TransPulse">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}TransPulse{% endblock %}</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}?v=tp-refined-square" sizes="any">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=tp-refined-square">
@@ -55,6 +56,7 @@
                     </div>
 
                     <form action="{{ url_for('logout_page') }}" method="post" class="mt-4">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-accent w-100" type="submit">Logout</button>
                     </form>
                 </div>
@@ -95,6 +97,7 @@
                             {% endif %}
                             <a class="sidebar-link" href="{{ url_for('notifications_center') }}">Notifications</a>
                             <form action="{{ url_for('logout_page') }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button class="btn btn-accent w-100 mt-2" type="submit">Logout</button>
                             </form>
                         </div>
@@ -141,6 +144,36 @@
     <script src="{{ url_for('static', filename='js/enhanced-utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     <script src="{{ url_for('static', filename='js/sos-handler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/route-selector.js') }}"></script>
+    <script>
+        window.TransPulseCSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('form[method="post"], form[method="POST"]').forEach((form) => {
+                if (!form.querySelector('input[name="csrf_token"]')) {
+                    const tokenInput = document.createElement('input');
+                    tokenInput.type = 'hidden';
+                    tokenInput.name = 'csrf_token';
+                    tokenInput.value = window.TransPulseCSRF;
+                    form.appendChild(tokenInput);
+                }
+            });
+        });
+        if (window.fetch && !window.__transPulseCsrfFetch) {
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = (input, init = {}) => {
+                const method = String(init.method || 'GET').toUpperCase();
+                const url = typeof input === 'string' ? input : input?.url;
+                const isSameOrigin = !url || url.startsWith('/') || url.startsWith(window.location.origin);
+                if (window.TransPulseCSRF && isSameOrigin && !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+                    const headers = new Headers(init.headers || (typeof input !== 'string' ? input.headers : undefined));
+                    if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', window.TransPulseCSRF);
+                    init = { ...init, headers };
+                }
+                return originalFetch(input, init);
+            };
+            window.__transPulseCsrfFetch = true;
+        }
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

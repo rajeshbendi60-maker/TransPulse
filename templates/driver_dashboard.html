@@ -52,10 +52,54 @@
                     <i class="fa-solid fa-rotate-left me-1"></i> Start Return Trip
                 </button>
                 <div id="driver-trip-status-panel" class="driver-trip-status-panel mt-3">
+                    {% if has_assigned_bus %}
+                    <div class="telemetry-layout">
+                        <section class="telemetry-section">
+                            <div class="telemetry-section-title">Trip Status</div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">Bus Number</span>
+                                <span class="telemetry-value">{{ driver_initial_context.busNumber }}</span>
+                            </div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">Route</span>
+                                <span class="telemetry-value">{{ driver_initial_context.routeName }}</span>
+                            </div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">Direction</span>
+                                <span class="telemetry-value">{{ driver_initial_context.direction }}</span>
+                            </div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">Bus Status</span>
+                                <span class="telemetry-value">OFFLINE</span>
+                            </div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">Trip Status</span>
+                                <span class="telemetry-value">{{ driver_initial_context.tripStatus }}</span>
+                            </div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">GPS Status</span>
+                                <span class="telemetry-value">OFFLINE</span>
+                            </div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">Current Stop</span>
+                                <span class="telemetry-value">{{ driver_initial_context.currentStop }}</span>
+                            </div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">Next Stop</span>
+                                <span class="telemetry-value">{{ driver_initial_context.nextStop }}</span>
+                            </div>
+                            <div class="telemetry-field">
+                                <span class="telemetry-label">Trip Progress</span>
+                                <span class="telemetry-value">0%</span>
+                            </div>
+                        </section>
+                    </div>
+                    {% else %}
                     <div class="d-flex align-items-center gap-2 text-muted">
                         <div class="spinner-border spinner-border-sm text-info" role="status"></div>
                         <span>Loading trip status...</span>
                     </div>
+                    {% endif %}
                 </div>
             </section>
 
@@ -63,10 +107,39 @@
                 <div class="driver-card-body">
                     <h5 class="text-white border-bottom border-secondary pb-2 mb-4">Live Telemetry Dashboard</h5>
                     <div id="dvr-telemetry-container">
+                        {% if has_assigned_bus %}
+                        <div class="telemetry-layout">
+                            <section class="telemetry-section">
+                                <div class="telemetry-section-title">Current Trip</div>
+                                <div class="telemetry-field"><span class="telemetry-label">Route</span><span class="telemetry-value">{{ driver_initial_context.routeCode }}</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Origin</span><span class="telemetry-value">{{ driver_initial_context.sourceStop }}</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Destination</span><span class="telemetry-value">{{ driver_initial_context.destinationStop }}</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Current Stop</span><span class="telemetry-value">{{ driver_initial_context.currentStop }}</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Next Stop</span><span class="telemetry-value">{{ driver_initial_context.nextStop }}</span></div>
+                            </section>
+                            <section class="telemetry-section">
+                                <div class="telemetry-section-title">Journey Information</div>
+                                <div class="telemetry-field"><span class="telemetry-label">Scheduled Arrival</span><span class="telemetry-value">{{ driver_initial_context.scheduledArrival }}</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Scheduled Departure</span><span class="telemetry-value">{{ driver_initial_context.scheduledDeparture }}</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Actual Arrival</span><span class="telemetry-value">--</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Actual Departure</span><span class="telemetry-value">--</span></div>
+                            </section>
+                            <section class="telemetry-section">
+                                <div class="telemetry-section-title">Live Telemetry</div>
+                                <div class="telemetry-field"><span class="telemetry-label">Speed</span><span class="telemetry-value">0 km/h</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Covered Distance</span><span class="telemetry-value">0 km</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Remaining Distance</span><span class="telemetry-value">{{ driver_initial_context.routeDistance }} km</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">ETA</span><span class="telemetry-value">{{ driver_initial_context.scheduledEta }}</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Progress</span><span class="telemetry-value">0%</span></div>
+                                <div class="telemetry-field"><span class="telemetry-label">Occupancy</span><span class="telemetry-value">--</span></div>
+                            </section>
+                        </div>
+                        {% else %}
                         <div class="d-flex align-items-center gap-2 text-muted">
                             <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
                             <span>Waiting for live GPS telemetry...</span>
                         </div>
+                        {% endif %}
                     </div>
                 </div>
             </section>
@@ -106,19 +179,62 @@
             <section class="driver-side-card card glass-panel border-info">
                 <h5 class="text-white border-bottom border-secondary pb-2">Trip Summary</h5>
                 <div id="dvr-trip-summary-container" class="driver-card-body">
+                    {% if has_assigned_bus %}
+                    <div class="trip-summary-panel">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small fw-bold text-uppercase">Progress</span>
+                            <span class="text-info fw-bold">0%</span>
+                        </div>
+                        <div class="trip-progress-track mb-3">
+                            <div class="trip-progress-fill" style="width:0%;"></div>
+                        </div>
+                        <div class="trip-summary-metrics">
+                            <div class="trip-summary-metric">
+                                <small class="text-muted d-block">Completed Stops</small>
+                                <strong class="text-white">0</strong>
+                            </div>
+                            <div class="trip-summary-metric">
+                                <small class="text-muted d-block">Remaining Stops</small>
+                                <strong class="text-white">{{ driver_initial_context.totalStops }}</strong>
+                            </div>
+                            <div class="trip-summary-metric">
+                                <small class="text-muted d-block">ETA</small>
+                                <strong class="text-white">{{ driver_initial_context.scheduledEta }}</strong>
+                            </div>
+                            <div class="trip-summary-metric">
+                                <small class="text-muted d-block">Distance Remaining</small>
+                                <strong class="text-white">--</strong>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
                     <div class="d-flex align-items-center gap-2 text-muted">
                         <div class="spinner-border spinner-border-sm text-info" role="status"></div>
                         <span>Awaiting trip progress...</span>
                     </div>
+                    {% endif %}
                 </div>
             </section>
             <section class="driver-side-card card glass-panel border-info driver-route-path-card">
                 <h5 class="text-white border-bottom border-secondary pb-2">Route Path Sequence</h5>
                 <div id="dvr-route-sequence-container" class="driver-card-body driver-route-scroll">
+                    {% if has_assigned_bus and driver_route_points %}
+                    <div class="route-timeline">
+                        {% for stop in driver_route_points %}
+                        <div class="timeline-stop {% if loop.first %}stop-current{% else %}stop-upcoming{% endif %}{% if loop.last %} stop-final{% endif %}">
+                            <span class="stop-name">
+                                {% if loop.first %}&#9654; {% else %}&#9675; {% endif %}
+                                {{ stop.name }}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
                     <div class="d-flex align-items-center gap-2 text-muted">
                         <div class="spinner-border spinner-border-sm text-info" role="status"></div>
                         <span>Awaiting stop sequence...</span>
                     </div>
+                    {% endif %}
                 </div>
             </section>
         </aside>
@@ -211,11 +327,17 @@ let driverTripState = "{{ driver_trip_state }}";
 let driverGpsWatchId = null;
 let driverGpsInterval = null;
 let driverLatestPosition = null;
+let isGpsBroadcasting = false;
+let lastTelemetrySnapshot = null;
+let telemetryFailureCount = 0;
+let telemetryRequestInFlight = false;
+let telemetrySequence = 0;
+let latestAppliedSequence = 0;
 const driverInitialContext = {{ driver_initial_context|tojson }};
 const driverInitialStops = {{ driver_route_points|tojson }};
 
 function isDriverTripActive() {
-    return driverTripState === 'ACTIVE';
+    return driverTripState === 'RUNNING' || driverTripState === 'RETURN_RUNNING' || driverTripState === 'ACTIVE';
 }
 
 function setTripState(state) {
@@ -228,12 +350,17 @@ function formatDriverStateLabel(state) {
         ACTIVE: 'Active',
         READY: 'Not Started',
         NOT_STARTED: 'Not Started',
+        WAITING_TO_DEPART: 'Waiting to Depart',
+        RUNNING: 'Running',
+        RETURN_RUNNING: 'Return Running',
         RETURN_READY: 'Return Trip Ready',
         COMPLETED: 'Trip Completed',
+        RETURN_COMPLETED: 'Return Completed',
         OFFLINE: 'Offline'
     };
     return labels[state] || String(state || 'OFFLINE').replace(/_/g, ' ');
 }
+
 
 function escapeDriverText(value) {
     return String(value ?? '--').replace(/[&<>"']/g, char => ({
@@ -247,17 +374,18 @@ function escapeDriverText(value) {
 
 function renderTripOperationsPanel(container, status) {
     if (!container) return;
-    const field = (label, value) => `
+    const field = (label, value, isHtml = false) => `
         <div class="telemetry-field">
             <span class="telemetry-label">${escapeDriverText(label)}</span>
-            <span class="telemetry-value">${escapeDriverText(value)}</span>
+            <span class="telemetry-value">${isHtml ? value : escapeDriverText(value)}</span>
         </div>`;
+    const routeHtml = status.routeCode ? `<div class="text-info fw-bold">${escapeDriverText(status.routeCode)}</div><div class="text-white-50 small">${escapeDriverText(status.routeName)}</div>` : escapeDriverText(status.route || '--');
     container.innerHTML = `
         <div class="telemetry-layout">
             <section class="telemetry-section">
                 <div class="telemetry-section-title">Trip Status</div>
                 ${field('Bus Number', status.busNumber)}
-                ${field('Route', status.route)}
+                ${field('Route', routeHtml, true)}
                 ${field('Direction', status.direction)}
                 ${field('Bus Status', status.busStatus)}
                 ${field('Trip Status', status.tripStatus)}
@@ -372,11 +500,12 @@ function updateDriverControls() {
     const statusPanel = document.getElementById('driver-trip-status-panel');
     const active = isDriverTripActive();
     const returnReady = driverTripState === 'RETURN_READY';
+    const isCompleted = driverTripState === 'COMPLETED' || driverTripState === 'RETURN_COMPLETED';
     if (stateBadge) {
         stateBadge.textContent = formatDriverStateLabel(driverTripState);
-        stateBadge.className = `badge ${active ? 'bg-success' : returnReady ? 'bg-info text-dark' : driverTripState === 'COMPLETED' ? 'bg-secondary' : 'bg-warning text-dark'}`;
+        stateBadge.className = `badge ${active ? 'bg-success' : returnReady ? 'bg-info text-dark' : isCompleted ? 'bg-secondary' : 'bg-warning text-dark'}`;
     }
-    if (startBtn) startBtn.classList.toggle('d-none', active || returnReady);
+    if (startBtn) startBtn.classList.toggle('d-none', active || returnReady || isCompleted);
     if (returnBtn) returnBtn.classList.toggle('d-none', !returnReady);
     if (delayBtn) delayBtn.disabled = !active;
     if (occupancyBtn) occupancyBtn.disabled = !active;
@@ -443,7 +572,12 @@ function driverTelemetryField(label, value) {
     return `<div class="telemetry-field"><span class="telemetry-label">${escapeDriverText(label)}</span><span class="telemetry-value">${escapeDriverText(displayValue)}</span></div>`;
 }
 
-function renderDriverRouteSequence(container, stops, completedStops = 0, activeStopIndex = 0, includeSchedule = false) {
+function driverTelemetryHtmlField(label, value) {
+    const displayValue = value === null || value === undefined || value === '' ? '--' : value;
+    return `<div class="telemetry-field"><span class="telemetry-label">${escapeDriverText(label)}</span><span class="telemetry-value">${displayValue}</span></div>`;
+}
+
+function renderDriverRouteSequence(container, stops, completedStops = 0, activeStopIndex = 0, includeSchedule = false, tripCompleted = false) {
     if (!container) return;
     if (!Array.isArray(stops) || !stops.length) {
         container.innerHTML = '<div class="text-muted small">Route path sequence unavailable.</div>';
@@ -453,11 +587,25 @@ function renderDriverRouteSequence(container, stops, completedStops = 0, activeS
     container.innerHTML = `
         <div class="route-timeline">
             ${stops.map((stop, index) => {
-                const stateClass = index < completedStops
-                    ? 'stop-completed'
-                    : index === activeStopIndex
-                        ? 'stop-current'
-                        : 'stop-upcoming';
+                let marker = '○';
+                let stateClass = 'stop-upcoming';
+                
+                if (tripCompleted) {
+                    marker = '✔';
+                    stateClass = 'stop-completed';
+                } else if (index < completedStops) {
+                    marker = '✔';
+                    stateClass = 'stop-completed';
+                } else if (index === activeStopIndex) {
+                    marker = '▶';
+                    stateClass = 'stop-current';
+                }
+
+                let nameText = stop.name || stop.stop_name || '--';
+                if (index === totalStops - 1) {
+                    nameText += ' (Destination)';
+                }
+
                 const scheduledTime = stop.scheduled_time || stop.arrival_time || stop.departure_time || '--';
                 const actualTime = stop.actual_time || '--';
                 const meta = includeSchedule ? `
@@ -467,14 +615,14 @@ function renderDriverRouteSequence(container, stops, completedStops = 0, activeS
                     </div>` : '';
                 return `
                     <div class="timeline-stop ${stateClass}${index === totalStops - 1 ? ' stop-final' : ''}">
-                        <span class="stop-name">${escapeDriverText(stop.name || stop.stop_name || '--')}</span>
+                        <span class="stop-name">${marker} ${escapeDriverText(nameText)}</span>
                         ${meta}
                     </div>
                 `;
             }).join('')}
         </div>
     `;
-}
+};
 
 function renderOfflineDriverDashboard() {
     const telemetryContainer = document.getElementById('dvr-telemetry-container');
@@ -495,7 +643,7 @@ function renderOfflineDriverDashboard() {
                     <div class="telemetry-section-title">Bus Information</div>
                     ${driverTelemetryField('Bus Number', context.busNumber)}
                     ${driverTelemetryField('Driver ID', context.driverCode)}
-                    ${driverTelemetryField('Route Number', context.routeCode)}
+                    ${driverTelemetryHtmlField('Route', `<div class="text-info fw-bold">${escapeDriverText(context.routeCode)}</div><div class="text-white-50 small">${escapeDriverText(context.routeName)}</div>`)}
                     ${driverTelemetryField('Trip ID', context.tripId)}
                     ${driverTelemetryField('Direction', context.direction)}
                     ${driverTelemetryField('Bus Status', 'OFFLINE')}
@@ -522,7 +670,7 @@ function renderOfflineDriverDashboard() {
                     <div class="telemetry-section-title">Live Tracking</div>
                     ${driverTelemetryField('Speed', '--')}
                     ${driverTelemetryField('Covered Distance', '0 km')}
-                    ${driverTelemetryField('Remaining Distance', '0 km')}
+                    ${driverTelemetryField('Remaining Distance', '--')}
                     ${driverTelemetryField('GPS Status', 'OFFLINE')}
                     ${driverTelemetryField('Occupancy', '--')}
                     ${driverTelemetryField('ETA', '--')}
@@ -535,7 +683,8 @@ function renderOfflineDriverDashboard() {
     if (tripStatusPanel) {
         renderTripOperationsPanel(tripStatusPanel, {
             busNumber: context.busNumber,
-            route: context.routeName,
+            routeCode: context.routeCode,
+            routeName: context.routeName,
             direction: context.direction,
             busStatus: 'OFFLINE',
             tripStatus: formatDriverStateLabel(driverTripState),
@@ -587,11 +736,18 @@ updateTelemetry = async function() {
     const hasAssignedBus = {{ 'true' if has_assigned_bus else 'false' }};
     if (!hasAssignedBus) return;
 
+    if (telemetryRequestInFlight) return;
+    telemetryRequestInFlight = true;
+    const sequence = ++telemetrySequence;
+
     const telemetryContainer = document.getElementById('dvr-telemetry-container');
     const tripSummaryContainer = document.getElementById('dvr-trip-summary-container');
     const routeSequenceContainer = document.getElementById('dvr-route-sequence-container');
     const tripStatusPanel = document.getElementById('driver-trip-status-panel');
-    if (!telemetryContainer || !tripSummaryContainer || !routeSequenceContainer) return;
+    if (!telemetryContainer || !tripSummaryContainer || !routeSequenceContainer) {
+        telemetryRequestInFlight = false;
+        return;
+    }
 
     const safe = (value) => String(value ?? '--').replace(/[&<>"']/g, (char) => ({
         '&': '&amp;',
@@ -609,149 +765,223 @@ updateTelemetry = async function() {
         return `${safe(value)}${suffix}`;
     };
     const etaText = (bus, value) => {
-        if (bus && (bus.service_status === 'completed' || bus.trip_status === 'COMPLETED')) return 'Offline';
+        if (bus && (bus.service_status === 'completed' || bus.trip_status === 'COMPLETED' || bus.trip_status === 'RETURN_COMPLETED')) return 'Completed';
+        if (bus && bus.trip_status === 'WAITING_TO_DEPART') return '--';
         if (bus && bus.eta_label) return bus.eta_label;
-        return value === null || value === undefined ? 'Calculating...' : `${value} min`;
+        return value === null || value === undefined ? '--' : `${value} min`;
     };
     const telemetryField = (label, value) => {
         const displayValue = value === null || value === undefined || value === '' ? '--' : value;
         return `<div class="telemetry-field"><span class="telemetry-label">${safe(label)}</span><span class="telemetry-value">${safe(displayValue)}</span></div>`;
     };
+    const telemetryHtmlField = (label, value) => {
+        const displayValue = value === null || value === undefined || value === '' ? '--' : value;
+        return `<div class="telemetry-field"><span class="telemetry-label">${safe(label)}</span><span class="telemetry-value">${displayValue}</span></div>`;
+    };
+
+    let busDataToRender = null;
 
     try {
         const res = await fetch('/api/buses/live');
         if (!res.ok) throw new Error("Telemetry API unavailable");
         const data = await res.json();
+
+        if (sequence < latestAppliedSequence) {
+            return;
+        }
+        latestAppliedSequence = sequence;
         
         const assignedBusId = {{ assigned_bus.id if assigned_bus else 'null' }};
         const bus = (data.buses || []).find(b => Number(b.bus_id) === Number(assignedBusId));
 
         if (!bus) {
+            throw new Error("Assigned bus not found in telemetry");
+        }
+
+        // Snapshot Identity Validation: verify that the identifiers still match the cached snapshot
+        if (lastTelemetrySnapshot) {
+            const match = Number(lastTelemetrySnapshot.trip_id) === Number(bus.trip_id) &&
+                          Number(lastTelemetrySnapshot.route_id) === Number(bus.route_id) &&
+                          Number(lastTelemetrySnapshot.bus_id) === Number(bus.bus_id);
+            if (!match) {
+                console.info("Telemetry assignment change detected. Invalidating cached telemetry.");
+                lastTelemetrySnapshot = null;
+            }
+        }
+
+        lastTelemetrySnapshot = bus;
+        telemetryFailureCount = 0;
+        busDataToRender = bus;
+    } catch (e) {
+        console.warn("Polling telemetry failed:", e);
+        
+        if (sequence < latestAppliedSequence) {
+            return;
+        }
+        latestAppliedSequence = sequence;
+
+        telemetryFailureCount++;
+
+        if (lastTelemetrySnapshot) {
+            busDataToRender = lastTelemetrySnapshot;
+        } else {
             renderOfflineDriverDashboard();
             updateDriverControls();
             return;
         }
-
-        const stops = Array.isArray(bus.stops) ? bus.stops : [];
-        const totalStops = stops.length;
-        const progressNumber = Math.max(0, Math.min(100, numberValue(bus.trip_progress)));
-        const progressPct = progressNumber.toFixed(progressNumber >= 10 ? 1 : 2);
-        const completedStops = Math.min(totalStops, Math.max(0, Math.floor(numberValue(bus.completed_stops))));
-        const remainingStops = Math.max(0, totalStops - completedStops);
-        const tripCompleted = bus.service_status === 'completed' || bus.trip_status === 'COMPLETED';
-        const tripState = bus.trip_status || (tripCompleted ? 'COMPLETED' : 'ACTIVE');
-        const serviceStatus = bus.bus_status || (bus.is_live_gps ? 'LIVE' : 'OFFLINE');
-        const delayLabel = bus.current_delay_label || `${bus.current_delay_minutes || 0} min`;
-        const updatedEta = bus.updated_eta_minutes ?? bus.eta_minutes;
-        const firstStop = stops[0] || {};
-        const actualDeparture = bus.actual_departure_time || firstStop.actual_time || firstStop.expected_time || '--';
-        const actualArrival = bus.actual_arrival_time || bus.completed_at || '--';
-        const assignedDriver = bus.assigned_driver_id || bus.assigned_driver_code || bus.driver_id || '--';
-        const reverseTripActive = ['backward', 'reverse'].includes(String(bus.direction || '').toLowerCase());
-        const directionLabel = reverseTripActive ? 'Reverse' : 'Forward';
-        const occupancyText = bus.occupancy_pct === null || bus.occupancy_pct === undefined
-            ? '--'
-            : `${bus.occupancy_level ? String(bus.occupancy_level).replace(/^./, c => c.toUpperCase()) : 'Occupancy'} (${bus.occupancy_pct}%)`;
-        if (tripCompleted) {
-            stopDriverGpsBroadcast();
-            setTripState('RETURN_READY');
-        } else {
-            setTripState('ACTIVE');
-        }
-
-        telemetryContainer.innerHTML = `
-            <div class="telemetry-layout">
-                <section class="telemetry-section">
-                    <div class="telemetry-section-title">Bus Information</div>
-                    ${telemetryField('Bus Number', bus.bus_number)}
-                    ${telemetryField('Driver ID', assignedDriver)}
-                    ${telemetryField('Route Number', bus.route_code)}
-                    ${telemetryField('Trip ID', bus.trip_id)}
-                    ${telemetryField('Direction', directionLabel)}
-                    ${telemetryField('Bus Status', serviceStatus)}
-                </section>
-                <section class="telemetry-section">
-                    <div class="telemetry-section-title">Route Information</div>
-                    ${telemetryField('Origin', bus.source_stop)}
-                    ${telemetryField('Destination', bus.destination_stop)}
-                    ${telemetryField('Current Stop', bus.current_stop)}
-                    ${telemetryField('Next Stop', bus.next_stop)}
-                    ${telemetryField('Total Stops', totalStops || '--')}
-                    ${telemetryField('Completed Stops', totalStops ? completedStops : '--')}
-                    ${telemetryField('Remaining Stops', totalStops ? remainingStops : '--')}
-                </section>
-                <section class="telemetry-section">
-                    <div class="telemetry-section-title">Journey Information</div>
-                    ${telemetryField('Scheduled Departure', bus.departure_time)}
-                    ${telemetryField('Actual Departure', actualDeparture)}
-                    ${telemetryField('Scheduled Arrival', bus.arrival_time)}
-                    ${telemetryField('Actual Arrival', actualArrival)}
-                    ${telemetryField('Current Delay', delayLabel)}
-                </section>
-                <section class="telemetry-section">
-                    <div class="telemetry-section-title">Live Tracking</div>
-                    ${telemetryField('Speed', valueOrDash(bus.speed, ' km/h'))}
-                    ${telemetryField('Covered Distance', valueOrDash(bus.distance_covered_km, ' km'))}
-                    ${telemetryField('Remaining Distance', valueOrDash(bus.distance_remaining_km, ' km'))}
-                    ${telemetryField('GPS Status', bus.gps_status || (bus.is_live_gps ? 'LIVE GPS' : 'Offline'))}
-                    ${telemetryField('Occupancy', occupancyText)}
-                    ${telemetryField('ETA', etaText(bus, updatedEta))}
-                    ${telemetryField('Progress', `${progressPct}%`)}
-                </section>
-            </div>
-        `;
-        if (tripStatusPanel) {
-            tripStatusPanel.innerHTML = `
-                <div class="telemetry-layout">
-                    <section class="telemetry-section">
-                        <div class="telemetry-section-title">Trip Status</div>
-                        ${telemetryField('Bus Number', bus.bus_number)}
-                        ${telemetryField('Route', bus.route_name)}
-                        ${telemetryField('Direction', directionLabel)}
-                        ${telemetryField('Bus Status', serviceStatus)}
-                        ${telemetryField('Trip Status', tripCompleted ? 'Trip Completed' : tripState)}
-                        ${telemetryField('Current Stop', bus.current_stop)}
-                        ${telemetryField('Next Stop', bus.next_stop)}
-                        ${telemetryField('Trip Progress', `${progressPct}%`)}
-                        ${telemetryField('GPS Status', bus.gps_status || (bus.is_live_gps ? 'LIVE GPS' : 'Offline'))}
-                    </section>
-                </div>
-            `;
-        }
-
-        tripSummaryContainer.innerHTML = `
-            <div class="trip-summary-panel">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="text-muted small fw-bold text-uppercase">Trip Progress</span>
-                    <span class="text-info fw-bold">${progressPct}%</span>
-                </div>
-                <div class="trip-progress-track mb-3">
-                    <div class="trip-progress-fill" style="width:${progressNumber}%;"></div>
-                </div>
-                <div class="trip-summary-metrics">
-                    <div class="trip-summary-metric">
-                        <small class="text-muted d-block">Completed Stops</small>
-                        <strong class="text-white">${totalStops ? completedStops : '--'}</strong>
-                    </div>
-                    <div class="trip-summary-metric">
-                        <small class="text-muted d-block">Remaining Stops</small>
-                        <strong class="text-white">${totalStops ? remainingStops : '--'}</strong>
-                    </div>
-                    <div class="trip-summary-metric">
-                        <small class="text-muted d-block">Distance Remaining</small>
-                        <strong class="text-white">${valueOrDash(bus.distance_remaining_km, ' km')}</strong>
-                    </div>
-                    <div class="trip-summary-metric">
-                        <small class="text-muted d-block">ETA</small>
-                        <strong class="text-white">${safe(etaText(bus, updatedEta))}</strong>
-                    </div>
-                </div>
-            </div>
-        `;
-        renderDriverRouteSequence(routeSequenceContainer, stops, completedStops, Math.min(totalStops - 1, numberValue(bus.active_stop_index, completedStops)), true);
-    } catch (e) {
-        console.error(e);
+    } finally {
+        telemetryRequestInFlight = false;
     }
+
+    // Handle Connection Alert Banner
+    let connAlert = document.getElementById('connection-lost-alert');
+    if (telemetryFailureCount >= 5) {
+        if (!connAlert) {
+            connAlert = document.createElement('div');
+            connAlert.id = 'connection-lost-alert';
+            connAlert.className = 'alert alert-danger bg-dark border-danger text-danger mb-4 fade-up-1 text-center';
+            connAlert.style.fontSize = '1.05rem';
+            connAlert.style.boxShadow = '0 8px 15px rgba(255, 93, 108, 0.15)';
+            connAlert.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-2 animate-pulse"></i><strong>Live connection temporarily unavailable.</strong> Retrying automatically...';
+            const shell = document.querySelector('.driver-dashboard-shell');
+            if (shell) {
+                const busSection = document.getElementById('assigned-bus-section');
+                shell.insertBefore(connAlert, busSection);
+            }
+        }
+    } else {
+        if (connAlert) {
+            connAlert.remove();
+        }
+    }
+
+    const bus = busDataToRender;
+    const stops = Array.isArray(bus.stops) ? bus.stops : [];
+    const totalStops = stops.length;
+    const progressNumber = Math.max(0, Math.min(100, numberValue(bus.trip_progress)));
+    const progressPct = progressNumber.toFixed(progressNumber >= 10 ? 1 : 2);
+    const completedStops = Math.min(totalStops, Math.max(0, Math.floor(numberValue(bus.completed_stops))));
+    const remainingStops = Math.max(0, totalStops - completedStops);
+    const tripCompleted = bus.service_status === 'completed' || bus.trip_status === 'COMPLETED' || bus.trip_status === 'RETURN_COMPLETED';
+    const tripState = bus.trip_status || (tripCompleted ? 'COMPLETED' : 'ACTIVE');
+    const serviceStatus = bus.bus_status || (bus.is_live_gps ? 'LIVE' : 'OFFLINE');
+    const delayLabel = bus.current_delay_label || `${bus.current_delay_minutes || 0} min`;
+    const updatedEta = bus.updated_eta_minutes ?? bus.eta_minutes;
+    const firstStop = stops[0] || {};
+    const actualDeparture = bus.actual_departure_time || firstStop.actual_time || firstStop.expected_time || '--';
+    const actualArrival = bus.actual_arrival_time || bus.completed_at || '--';
+    const assignedDriver = bus.assigned_driver_id || bus.assigned_driver_code || bus.driver_id || '--';
+    const reverseTripActive = ['backward', 'reverse'].includes(String(bus.direction || '').toLowerCase());
+    const directionLabel = reverseTripActive ? 'Reverse' : 'Forward';
+    const occupancyText = bus.occupancy_pct === null || bus.occupancy_pct === undefined
+        ? '--'
+        : `${bus.occupancy_level ? String(bus.occupancy_level).replace(/^./, c => c.toUpperCase()) : 'Occupancy'} (${bus.occupancy_pct}%)`;
+    
+    if (bus.trip_status === 'RETURN_COMPLETED') {
+        stopDriverGpsBroadcast();
+        setTripState('RETURN_COMPLETED');
+    } else if (tripCompleted) {
+        stopDriverGpsBroadcast();
+        setTripState('RETURN_READY');
+    } else {
+        if (['COMPLETED', 'RETURN_COMPLETED', 'RETURN_READY'].includes(bus.trip_status)) {
+            setTripState(bus.trip_status);
+        } else if (bus.trip_status === 'WAITING_TO_DEPART') {
+            if (!isDriverTripActive()) {
+                setTripState('WAITING_TO_DEPART');
+            }
+        } else {
+            setTripState(bus.trip_status || 'ACTIVE');
+        }
+    }
+
+    telemetryContainer.innerHTML = `
+        <div class="telemetry-layout">
+            <section class="telemetry-section">
+                <div class="telemetry-section-title">Bus Information</div>
+                ${telemetryField('Bus Number', bus.bus_number)}
+                ${telemetryField('Driver ID', assignedDriver)}
+                ${telemetryHtmlField('Route', `<div class="text-info fw-bold">${safe(bus.route_code)}</div><div class="text-white-50 small">${safe(bus.route_name)}</div>`)}
+                ${telemetryField('Trip ID', bus.trip_id)}
+                ${telemetryField('Direction', directionLabel)}
+                ${telemetryField('Bus Status', serviceStatus)}
+            </section>
+            <section class="telemetry-section">
+                <div class="telemetry-section-title">Route Information</div>
+                ${telemetryField('Origin', bus.source_stop)}
+                ${telemetryField('Destination', bus.destination_stop)}
+                ${telemetryField('Current Stop', bus.current_stop)}
+                ${telemetryField('Next Stop', bus.next_stop)}
+                ${telemetryField('Total Stops', totalStops || '--')}
+                ${telemetryField('Completed Stops', totalStops ? completedStops : '--')}
+                ${telemetryField('Remaining Stops', totalStops ? remainingStops : '--')}
+            </section>
+            <section class="telemetry-section">
+                <div class="telemetry-section-title">Journey Information</div>
+                ${telemetryField('Scheduled Departure', bus.departure_time)}
+                ${telemetryField('Actual Departure', actualDeparture)}
+                ${telemetryField('Scheduled Arrival', bus.arrival_time)}
+                ${telemetryField('Actual Arrival', actualArrival)}
+                ${telemetryField('Current Delay', delayLabel)}
+            </section>
+            <section class="telemetry-section">
+                <div class="telemetry-section-title">Live Tracking</div>
+                ${telemetryField('Speed', valueOrDash(bus.speed, ' km/h'))}
+                ${telemetryField('Covered Distance', valueOrDash(bus.distance_covered_km, ' km'))}
+                ${telemetryField('Remaining Distance', valueOrDash(bus.distance_remaining_km, ' km'))}
+                ${telemetryField('GPS Status', bus.gps_status || (bus.is_live_gps ? 'LIVE GPS' : 'Offline'))}
+                ${telemetryField('Occupancy', occupancyText)}
+                ${telemetryField('ETA', etaText(bus, updatedEta))}
+                ${telemetryField('Progress', `${progressPct}%`)}
+            </section>
+        </div>
+    `;
+
+    if (tripStatusPanel) {
+        renderTripOperationsPanel(tripStatusPanel, {
+            busNumber: bus.bus_number,
+            routeCode: bus.route_code,
+            routeName: bus.route_name,
+            direction: directionLabel,
+            busStatus: serviceStatus,
+            tripStatus: formatDriverStateLabel(tripState),
+            gpsStatus: bus.gps_status || (bus.is_live_gps ? 'LIVE GPS' : 'Offline'),
+            currentStop: bus.current_stop,
+            nextStop: bus.next_stop,
+            tripProgress: `${progressPct}%`
+        });
+    }
+
+    tripSummaryContainer.innerHTML = `
+        <div class="trip-summary-panel">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted small fw-bold text-uppercase">Trip Progress</span>
+                <span class="text-info fw-bold">${progressPct}%</span>
+            </div>
+            <div class="trip-progress-track mb-3">
+                <div class="trip-progress-fill" style="width:${progressNumber}%;"></div>
+            </div>
+            <div class="trip-summary-metrics">
+                <div class="trip-summary-metric">
+                    <small class="text-muted d-block">Completed Stops</small>
+                    <strong class="text-white">${totalStops ? completedStops : '--'}</strong>
+                </div>
+                <div class="trip-summary-metric">
+                    <small class="text-muted d-block">Remaining Stops</small>
+                    <strong class="text-white">${totalStops ? remainingStops : '--'}</strong>
+                </div>
+                <div class="trip-summary-metric">
+                    <small class="text-muted d-block">Distance Remaining</small>
+                    <strong class="text-white">${valueOrDash(bus.distance_remaining_km, ' km')}</strong>
+                </div>
+                <div class="trip-summary-metric">
+                    <small class="text-muted d-block">ETA</small>
+                    <strong class="text-white">${safe(etaText(bus, updatedEta))}</strong>
+                </div>
+            </div>
+        </div>
+    `;
+    renderDriverRouteSequence(routeSequenceContainer, stops, completedStops, Math.min(totalStops - 1, numberValue(bus.active_stop_index, completedStops)), true, tripCompleted);
 };
 
 async function loadDriverLostFound() {
@@ -886,7 +1116,7 @@ async function updateDriverLnfItem(id) {
 updateTelemetry();
 loadDriverLostFound();
 
-const telemetryInterval = setInterval(updateTelemetry, 2000);
+const telemetryInterval = setInterval(updateTelemetry, 1000);
 const lnfInterval = setInterval(loadDriverLostFound, 30000);
 
 // Stop intervals when leaving the page
@@ -917,6 +1147,7 @@ function updateGpsBadge(isSuccess, message) {
 }
 
 function stopDriverGpsBroadcast() {
+    isGpsBroadcasting = false;
     if (driverGpsWatchId !== null && navigator.geolocation) {
         navigator.geolocation.clearWatch(driverGpsWatchId);
     }
@@ -928,7 +1159,7 @@ function stopDriverGpsBroadcast() {
 }
 
 async function sendDriverGpsPosition(position) {
-    if (!position || !isDriverTripActive()) return;
+    if (!position || !isGpsBroadcasting) return;
     const coords = position.coords || {};
     const body = {
         lat: coords.latitude,
@@ -955,7 +1186,8 @@ async function sendDriverGpsPosition(position) {
 
 function startDriverGpsBroadcast(initialPosition = null) {
     const hasAssignedBus = {{ 'true' if has_assigned_bus else 'false' }};
-    if (!hasAssignedBus || !isDriverTripActive()) return;
+    if (!hasAssignedBus) return;
+    isGpsBroadcasting = true;
     if (!("geolocation" in navigator)) {
         document.getElementById('gps-error-modal').style.display = 'flex';
         return;
@@ -986,7 +1218,7 @@ function startDriverGpsBroadcast(initialPosition = null) {
     );
 
     driverGpsInterval = setInterval(() => {
-        if (!isDriverTripActive()) {
+        if (!isGpsBroadcasting) {
             stopDriverGpsBroadcast();
             return;
         }

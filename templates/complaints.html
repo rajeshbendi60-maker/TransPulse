@@ -99,6 +99,14 @@
                             <option value="">Select Route...</option>
                         </select>
                     </div>
+                    <div class="col-12 d-none" id="complaint-assignment-context">
+                        <div class="p-3 rounded border border-secondary bg-dark bg-opacity-50 small">
+                            <span class="text-muted me-3">Origin: <strong class="text-white" data-complaint-origin>--</strong></span>
+                            <span class="text-muted me-3">Destination: <strong class="text-white" data-complaint-destination>--</strong></span>
+                            <span class="text-muted me-3">Driver: <strong class="text-info" data-complaint-driver>--</strong></span>
+                            <span class="text-muted">Trip: <strong class="text-warning" data-complaint-trip>--</strong></span>
+                        </div>
+                    </div>
                     {% endif %}
 
                     <div class="col-md-12 d-none" id="custom-type-group">
@@ -234,6 +242,15 @@ let itemToDeleteId = null;
 let complaintBuses = [];
 let complaintRoutes = [];
 
+function escapeComplaintText(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function complaintRouteOptionLabel(route) {
     const code = route.route_code || 'Route';
     const name = route.route_name || route.name || '';
@@ -248,7 +265,7 @@ async function loadComplaintSelectors() {
 
     try {
         const [busRes, routeRes] = await Promise.all([
-            fetch('/api/buses/live'),
+            fetch('/api/complaints/buses'),
             fetch('/api/routes/live')
         ]);
         const busData = busRes.ok ? await busRes.json() : {};
@@ -261,17 +278,19 @@ async function loadComplaintSelectors() {
                 routeMap.set(String(b.route_id), {
                     route_id: b.route_id,
                     route_code: b.route_code,
-                    route_name: b.route_name
+                    route_name: b.route_name,
+                    source_stop: b.origin,
+                    destination_stop: b.destination
                 });
             }
         });
         complaintRoutes = Array.from(routeMap.values());
 
         busSelect.innerHTML = '<option value="">Select Bus...</option>' + complaintBuses
-            .map(b => `<option value="${b.bus_number}" data-route-id="${b.route_id || ''}">${b.bus_number}</option>`)
+            .map(b => `<option value="${escapeComplaintText(b.bus_number)}" data-route-id="${escapeComplaintText(b.route_id || '')}" data-origin="${escapeComplaintText(b.origin || '')}" data-destination="${escapeComplaintText(b.destination || '')}" data-driver="${escapeComplaintText(b.driver_code || b.driver_name || '')}" data-trip="${escapeComplaintText(b.trip_id || '')}">${escapeComplaintText(b.bus_number)} - ${escapeComplaintText(b.registration_number)} (${escapeComplaintText(b.status || 'Active')})</option>`)
             .join('');
         routeSelect.innerHTML = '<option value="">Select Route...</option>' + complaintRoutes
-            .map(r => `<option value="${r.route_id}">${complaintRouteOptionLabel(r)}</option>`)
+            .map(r => `<option value="${escapeComplaintText(r.route_id)}">${escapeComplaintText(complaintRouteOptionLabel(r))}</option>`)
             .join('');
     } catch(e) {
         console.error(e);
@@ -285,6 +304,20 @@ function syncComplaintRouteToBus() {
     const selected = busSelect.options[busSelect.selectedIndex];
     const routeId = selected ? selected.dataset.routeId : '';
     if (routeId) routeSelect.value = routeId;
+    const contextPanel = document.getElementById('complaint-assignment-context');
+    if (!contextPanel || !selected || !selected.value) {
+        if (contextPanel) contextPanel.classList.add('d-none');
+        return;
+    }
+    const setText = (selector, value) => {
+        const el = contextPanel.querySelector(selector);
+        if (el) el.textContent = value || '--';
+    };
+    setText('[data-complaint-origin]', selected.dataset.origin);
+    setText('[data-complaint-destination]', selected.dataset.destination);
+    setText('[data-complaint-driver]', selected.dataset.driver);
+    setText('[data-complaint-trip]', selected.dataset.trip);
+    contextPanel.classList.remove('d-none');
 }
 
 function loadComplaints(view = 'active', targetId = 'complaints-list') {
@@ -405,6 +438,7 @@ window.triggerComplaintFormPrepopulation = function(c) {
         const routeSelect = document.getElementById('complaint-route-id');
         if (busSelect) busSelect.value = c.bus_number || '';
         if (routeSelect) routeSelect.value = c.route_id || '';
+        syncComplaintRouteToBus();
     }
     const imageData = document.getElementById('complaint-image-data');
     const imagePreview = document.getElementById('complaint-image-preview');
@@ -438,6 +472,8 @@ window.resetFormState = function() {
         imagePreview.removeAttribute('src');
         imagePreview.classList.add('d-none');
     }
+    const contextPanel = document.getElementById('complaint-assignment-context');
+    if (contextPanel) contextPanel.classList.add('d-none');
 };
 
 // NEW: Opens custom modal instead of native confirm()

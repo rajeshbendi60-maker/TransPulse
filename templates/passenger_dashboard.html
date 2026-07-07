@@ -436,7 +436,10 @@
         document.body.classList.add('modal-open');
         document.getElementById('routeDetailsModal').style.display = 'flex';
         
-        document.getElementById('route-modal-title').innerHTML = `${originName} <span class="text-muted fw-light mx-2">→</span> ${destName}`;
+        document.getElementById('route-modal-title').innerHTML = `
+            <div class="text-info fw-bold">${routeCode}</div>
+            <div class="text-white-50 small mt-1">${originName} ➜ ${destName}</div>
+        `;
         
         const busesContainer = document.getElementById('route-modal-buses');
         const stopsContainer = document.getElementById('route-modal-stops');
@@ -461,16 +464,24 @@
             }
             
             if(activeBuses.length > 0) {
-                busesContainer.innerHTML = activeBuses.map(b => `
-                    <div class="d-flex justify-content-between align-items-center p-3 mb-2" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(52,210,255,0.15); border-radius: 12px;">
-                        <div>
-                            <h6 class="text-white fw-bold mb-0">${b.bus_number}</h6>
-                            <small class="text-muted">${b.current_stop || '--'} → ${b.next_stop || '--'}</small>
-                            <small class="text-muted d-block">Delay: <span class="text-warning">${b.current_delay_label || '0 min'}</span> | ETA: <span class="text-info">${b.updated_eta_minutes || b.eta_minutes || 0} min</span></small>
+                busesContainer.innerHTML = activeBuses.map(b => {
+                    let trackBtn = '';
+                    if (b.trip_status === 'WAITING_TO_DEPART') {
+                        trackBtn = `<button class="btn btn-sm btn-info fw-bold text-dark" disabled title="Tracking will be available once the driver starts the trip.">📍 Track</button>`;
+                    } else {
+                        trackBtn = `<a href="/tracking/${encodeURIComponent(b.bus_number)}?source=routes" class="btn btn-sm btn-info fw-bold text-dark">📍 Track</a>`;
+                    }
+                    return `
+                        <div class="d-flex justify-content-between align-items-center p-3 mb-2" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(52,210,255,0.15); border-radius: 12px;">
+                            <div>
+                                <h6 class="text-white fw-bold mb-0">${b.bus_number}</h6>
+                                <small class="text-muted">${b.current_stop || '--'} ➜ ${b.next_stop || '--'}</small>
+                                <small class="text-muted d-block">Delay: <span class="text-warning">${b.current_delay_label || '0 min'}</span> | ETA: <span class="text-info">${b.updated_eta_minutes || b.eta_minutes || 0} min</span></small>
+                            </div>
+                            ${trackBtn}
                         </div>
-                        <a href="/tracking/${encodeURIComponent(b.bus_number)}?source=routes" class="btn btn-sm btn-info fw-bold text-dark">📍 Track</a>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             } else {
                 busesContainer.innerHTML = '<span class="text-muted small">No active buses currently transmitting telemetry.</span>';
             }

@@ -137,10 +137,7 @@
 
     // Page visibility handler
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            console.log('Page is hidden');
-        } else {
-            console.log('Page is visible, refreshing data...');
+        if (!document.hidden) {
             // Emit refresh event for dashboards
             window.dispatchEvent(new Event('page-visible'));
         }

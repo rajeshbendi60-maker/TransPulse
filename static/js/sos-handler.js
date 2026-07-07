@@ -155,16 +155,21 @@ window.SOSHandler = {
 
         clearInterval(this.countdownInterval);
         const reasonEl = document.getElementById('sos-reason');
-        const reason = reasonEl ? reasonEl.value : 'Emergency reported by passenger';
+        const reason = reasonEl && reasonEl.value ? reasonEl.value : 'Other Emergency';
         const busIdEl = document.getElementById('active-bus-id');
         const busId = busIdEl ? busIdEl.value : null;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || window.TransPulseCSRF || '';
         
         fetch('/api/sos/trigger', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''},
-            body: JSON.stringify({ bus_id: busId, reason: reason, severity: 'critical' })
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({ bus_id: busId, emergency_type: reason, severity: 'critical' })
         })
-        .then(r => r.json())
+        .then(async r => {
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || 'Unable to send SOS alert.');
+            return data;
+        })
         .then(data => {
             this.isSubmitting = false;
             this.cancelSOS();
@@ -259,7 +264,7 @@ window.AdminSOS = {
                     this.renderAlerts([]);
                     return;
                 }
-                const hasActiveAlert = alerts.some(a => ['active', 'new'].includes((a.status || 'NEW').toLowerCase()));
+                const hasActiveAlert = alerts.length > 0;
                 if (hasActiveAlert) this.startAlarm();
                 else this.stopAlarm();
 
@@ -311,7 +316,7 @@ window.AdminSOS = {
 
     alertFromNotification: function(notification) {
         const message = notification.message || '';
-        const match = message.match(/\[SOS[^\]]*\]\s*([^:]+):\s*(.*?)(?:\s+[—-]\s+passenger\s+(.+?)\s+needs|\s*$)/i);
+        const match = message.match(/\[SOS[^\]]*\]\s*([^:]+):\s*(.*?)(?:\s+(?:-|\u2014)\s+passenger\s+(.+?)\s+needs|\s*$)/i);
         return {
             id: `notification-${notification.id}`,
             passenger_name: (match && match[3]) || 'Passenger',
@@ -331,11 +336,12 @@ window.AdminSOS = {
         const modalEl = document.getElementById('sosEmergencyModal');
         if (!body || !modalEl) return;
 
+        const reporterLabel = a.reporter_role === 'driver' ? 'Driver' : 'Passenger';
         body.innerHTML = `
-            <p><strong>Passenger:</strong> ${a.passenger_name}</p>
-            <p><strong>Bus:</strong> ${a.bus_number}</p>
-            <p><strong>Route:</strong> ${a.route_name}</p>
-            <p><strong>Issue:</strong> ${a.reason}</p>
+            <p><strong>${this.escapeHtml(reporterLabel)}:</strong> ${this.escapeHtml(a.passenger_name || 'Unknown')}</p>
+            <p><strong>Bus:</strong> ${this.escapeHtml(a.bus_number || 'Unknown')}</p>
+            <p><strong>Route:</strong> ${this.escapeHtml(a.route_name || 'Unknown')}</p>
+            <p><strong>Issue:</strong> ${this.escapeHtml(a.reason || 'Emergency')}</p>
         `;
         
         const ackBtn = document.getElementById('modal-ack-btn');
@@ -360,13 +366,14 @@ window.AdminSOS = {
     },
 
     updateStatus: function(id, status) {
-        if (status === 'acknowledged') this.stopAlarm();
+        const alertId = String(id).replace('notification-', '');
         const rawId = String(id);
-        if (rawId.startsWith('notification-')) {
-            const notificationId = rawId.replace('notification-', '');
-            fetch(`/api/notifications/${notificationId}/read`, {
+        if (status === 'acknowledged' || rawId.startsWith('notification-')) {
+            fetch(`/api/sos/driver/acknowledge/${alertId}`, {
                 method: 'POST',
-                headers: {'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''}
+                headers: {
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                }
             }).finally(() => {
                 this.hideModal();
                 this.closeDetailModal();
@@ -374,10 +381,13 @@ window.AdminSOS = {
             });
             return;
         }
-        fetch(`/api/admin/sos/${id}/status`, {
+        fetch(`/api/sos/resolve/${alertId}`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''},
-            body: JSON.stringify({ status: status })
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            },
+            body: JSON.stringify({ resolution_notes: 'Resolved by Admin' })
         }).then(() => {
             this.hideModal(); 
             this.closeDetailModal();
@@ -457,8 +467,8 @@ window.AdminSOS = {
         if (ref) ref.textContent = `SOS-${String(a.id).padStart(5, '0')}`;
         if (body) {
             body.innerHTML = `
-                <div class="mb-2"><span class="text-muted">Passenger Name:</span> <span class="text-white fw-bold">${this.escapeHtml(a.passenger_name || 'Unknown')}</span></div>
-                <div class="mb-2"><span class="text-muted">Passenger ID:</span> <span class="text-white">${this.escapeHtml(a.passenger_id || '--')}</span></div>
+                <div class="mb-2"><span class="text-muted">${a.reporter_role === 'driver' ? 'Driver Name' : 'Passenger Name'}:</span> <span class="text-white fw-bold">${this.escapeHtml(a.passenger_name || 'Unknown')}</span></div>
+                <div class="mb-2"><span class="text-muted">${a.reporter_role === 'driver' ? 'Driver ID' : 'Passenger ID'}:</span> <span class="text-white">${this.escapeHtml(a.passenger_id || '--')}</span></div>
                 <div class="mb-2"><span class="text-muted">Bus ID:</span> <span class="text-white fw-bold">${this.escapeHtml(a.bus_number || 'Unknown')}</span></div>
                 <div class="mb-2"><span class="text-muted">Emergency Type:</span> <span class="text-danger fw-bold">${this.escapeHtml(a.emergency_type || a.reason || 'Emergency')}</span></div>
                 <div class="mb-2"><span class="text-muted">Time:</span> <span class="text-white">${this.escapeHtml(this.formatAlertDateTime(a.triggered_at))}</span></div>
@@ -493,7 +503,7 @@ window.AdminSOS = {
         
         if (alerts.length === 0) {
             const emptyMessage = container.dataset.emptyMessage || 'Fleet Secure. No active SOS.';
-            container.innerHTML = `<div class="text-center py-4" style="color: #22d39a; font-weight: 600;">${emptyMessage}</div>`;
+            container.innerHTML = `<div class="text-center py-4" style="color: #22d39a; font-weight: 600;">${this.escapeHtml(emptyMessage)}</div>`;
             return;
         }
 
@@ -526,7 +536,7 @@ window.AdminSOS = {
                             <span class="badge ${statusBadge}">${this.escapeHtml(status)}</span>
                         </div>
                         <div class="small" style="color:#d9e8ff;">
-                            <div><span class="text-muted">Passenger:</span> <span class="text-white fw-bold">${this.escapeHtml(a.passenger_name || 'Unknown')}</span></div>
+                            <div><span class="text-muted">${a.reporter_role === 'driver' ? 'Driver' : 'Passenger'}:</span> <span class="text-white fw-bold">${this.escapeHtml(a.passenger_name || 'Unknown')}</span></div>
                             <div class="text-white fw-semibold mt-1">${this.escapeHtml(a.reason || 'Emergency')}</div>
                             <div class="text-muted mt-1">${this.escapeHtml(this.formatAlertTime(a.triggered_at))}</div>
                             <div class="mt-2"><span class="text-muted">Status</span><br><span class="${statusTextClass} fw-bold">${this.escapeHtml(status)}</span></div>

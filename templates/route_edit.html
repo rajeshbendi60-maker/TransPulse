@@ -8,6 +8,7 @@
     <div class="card shadow-sm border-0">
         <div class="card-body">
             <form method="post" action="{{ url_for('edit_route', route_id=route.id) }}" class="row g-3">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="col-md-3">
                     <label class="form-label">Route Code</label>
                     <input class="form-control" name="route_code" value="{{ route.route_code }}" placeholder="e.g. 01004" required>

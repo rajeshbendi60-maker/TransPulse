@@ -64,5 +64,10 @@ class RoadGeometryCache(db.Model):
         nullable=False
     )
 
+    __table_args__ = (
+        db.Index("idx_road_geometry_route_shape", "route_id", "shape_id"),
+        db.Index("idx_road_geometry_status_updated", "status", "updated_at"),
+    )
+
     def __repr__(self):
         return f"<RoadGeometryCache {self.cache_key}>"
