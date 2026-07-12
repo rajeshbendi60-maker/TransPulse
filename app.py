@@ -1,4 +1,8 @@
-from datetime import datetime, timedelta, timezone, UTC
+from datetime import datetime, timedelta, timezone
+try:
+    from datetime import UTC
+except ImportError:
+    UTC = timezone.utc
 from functools import wraps
 from typing import Optional
 import logging
