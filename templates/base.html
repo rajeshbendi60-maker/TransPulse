@@ -28,7 +28,7 @@
     {% if current_user.is_authenticated %}
         <div class="app-shell">
             <aside class="sidebar d-none d-lg-flex">
-                <div class="w-100">
+                <div class="w-100 d-flex flex-column h-100">
                     <a class="brand tp-logo-lockup text-decoration-none mb-4" href="{{ url_for('index') }}">
                         {% include "_logo_icon.html" %}
                         <span>
@@ -55,7 +55,7 @@
                         <a class="sidebar-link" href="{{ url_for('notifications_center') }}">Notifications</a>
                     </div>
 
-                    <form action="{{ url_for('logout_page') }}" method="post" class="mt-4">
+                    <form action="{{ url_for('logout_page') }}" method="post" class="mt-auto pb-2">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-accent w-100" type="submit">Logout</button>
                     </form>

@@ -13,7 +13,6 @@ import hashlib
 import random
 import markdown
 from email.message import EmailMessage
-from types import SimpleNamespace
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -37,7 +36,6 @@ except ImportError:  # pragma: no cover - exercised only when optional dependenc
 from config import Config
 from models import db, login_manager
 from models.bus import Bus
-from models.feedback import Feedback
 from models.notification import Notification
 from models.route import Route
 from models.stop import Stop, StopTime
@@ -65,12 +63,55 @@ SOS_EMERGENCY_TYPES = {
 }
 
 LIVE_GPS_DATA = {}
+BUS_COMPLETED_TRIPS = {}
 LIVE_GPS_BREADCRUMBS = {}
 DRIVER_RUNTIME_SESSIONS = {}
 BUS_DELAY_DATA = {}
 BUS_SIMULATION_STATE = {}
 PASSENGER_TRACKING_SESSIONS = {}
 _MAP_DEFAULT_CENTER = None
+
+# Route Deviation Threshold Constants with configuration capability
+ROUTE_DEVIATION_THRESHOLD_METERS = 200.0
+ROUTE_DEVIATION_HEADING_THRESHOLD_DEGREES = 50.0
+ROUTE_DEVIATION_MIN_METERS = 40.0
+
+def _bearing_diff(b1: float, b2: float) -> float:
+    """Return the absolute modular difference between two bearings in degrees."""
+    if b1 is None or b2 is None:
+        return 0.0
+    diff = abs(float(b1) - float(b2)) % 360
+    return min(diff, 360 - diff)
+
+def _parse_time_str(t_str: str) -> Optional[int]:
+    """Parse scheduled time format 'HH:MM AM/PM' or 'HH:MM' into integer minutes since midnight."""
+    if not t_str or t_str == "--":
+        return None
+    m = re.match(r"^(\d{1,2}):(\d{2})\s*([AP]M)?$", str(t_str).strip(), re.IGNORECASE)
+    if not m:
+        return None
+    h = int(m.group(1))
+    m_val = int(m.group(2))
+    suffix = m.group(3)
+    if suffix:
+        suffix = suffix.upper()
+        if h == 12:
+            h = 0
+        if suffix == "PM":
+            h += 12
+    return h * 60 + m_val
+
+
+def _clear_diversion_cache(trip_id: int) -> None:
+    """Purge dynamic diversion cache entries for a given trip from persistent cache."""
+    try:
+        prefix = f"div_{trip_id}_"
+        RoadGeometryCache.query.filter(RoadGeometryCache.cache_key.like(f"{prefix}%")).delete(synchronize_session=False)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.warning("[DIVERSION] Failed to clear diversion cache for trip %s: %s", trip_id, exc)
+
 
 _FLEET_SNAPSHOT_CACHE = None
 _FLEET_SNAPSHOT_CACHE_TIME = 0.0
@@ -162,12 +203,6 @@ def _admin_transpulse_id_for_user(user_id: int) -> str:
     return f"ADM-TP{user_id:02d}"
 
 
-def _resolve_transpulse_id(raw: str, role: str) -> str:
-    if role == "driver":
-        return _normalize_driver_code(raw)
-    if role == "admin":
-        return _normalize_admin_transpulse_id(raw)
-    return (raw or "").strip()
 
 
 SHARED_DRIVER_EMAIL = "driver@transpulse.com"
@@ -286,6 +321,8 @@ def _driver_display_fields(bus: Optional[Bus]) -> tuple:
 
 def _occupancy_level_for_percentage(percentage: float) -> str:
     pct = max(0, min(100, int(round(percentage or 0))))
+    if pct == 0:
+        return "Empty"
     if pct >= 91:
         return "Full"
     if pct >= 71:
@@ -295,37 +332,17 @@ def _occupancy_level_for_percentage(percentage: float) -> str:
     return "Low"
 
 
-def _simulated_occupancy_percentage(bus: Optional[Bus]) -> int:
+
+
+def _latest_recorded_occupancy_for_bus(bus: Optional[Bus]) -> tuple[int, str]:
     if not bus:
-        return 43
-    seed = f"{bus.id}:{bus.bus_number}:{bus.registration_number}"
-    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
-    return 15 + (int(digest[:8], 16) % 71)
-
-
-def _display_occupancy_for_bus(bus: Optional[Bus]) -> tuple[int, str]:
-    pct = _simulated_occupancy_percentage(bus)
-    try:
-        if bus:
-            occ = BusOccupancy.query.filter_by(bus_id=bus.id).order_by(BusOccupancy.recorded_at.desc()).first()
-            if occ:
-                pct = int(round(float(occ.occupancy_percentage or 0)))
-                if pct <= 0 and occ.total_seats:
-                    pct = int(round((float(occ.occupied_seats or 0) / float(occ.total_seats)) * 100))
-                if pct <= 0:
-                    pct = _simulated_occupancy_percentage(bus)
-    except Exception:
-        pass
-    pct = max(0, min(100, pct))
-    return pct, _occupancy_level_for_percentage(pct)
-
-
-def _latest_recorded_occupancy_for_bus(bus: Optional[Bus]) -> tuple[Optional[int], Optional[str]]:
-    if not bus:
-        return None, None
-    occ = BusOccupancy.query.filter_by(bus_id=bus.id).order_by(BusOccupancy.recorded_at.desc()).first()
+        return 0, "Empty"
+    trip = _active_trip_for_bus(bus)
+    if not trip:
+        return 0, "Empty"
+    occ = BusOccupancy.query.filter_by(bus_id=bus.id, trip_id=trip.id).order_by(BusOccupancy.recorded_at.desc()).first()
     if not occ:
-        return None, None
+        return 0, "Empty"
     try:
         pct = int(round(float(occ.occupancy_percentage or 0)))
     except (TypeError, ValueError):
@@ -337,10 +354,10 @@ def _latest_recorded_occupancy_for_bus(bus: Optional[Bus]) -> tuple[Optional[int
     return pct, level
 
 
-def _display_occupancy_for_bus_at(bus: Optional[Bus], occupancy_offset: int = 0) -> tuple[int, str]:
-    pct, _ = _display_occupancy_for_bus(bus)
-    pct = max(5, min(100, pct + int(occupancy_offset or 0)))
-    return pct, _occupancy_level_for_percentage(pct)
+def _display_occupancy_for_bus(bus: Optional[Bus]) -> tuple[int, str]:
+    return _latest_recorded_occupancy_for_bus(bus)
+
+
 
 
 def _validate_driver_code_input(raw: str) -> tuple:
@@ -1706,37 +1723,8 @@ def _gtfs_backed_trip_for_route(route_id: Optional[int], reverse: bool = False) 
     return best["trip"]
 
 
-def _first_gtfs_backed_trip() -> Optional[Trip]:
-    candidates = (
-        Trip.query
-        .filter(Trip.bus_id.is_(None), Trip.shape_id.isnot(None))
-        .order_by(Trip.id.asc())
-        .all()
-    )
-    for trip in candidates:
-        stop_times_count = StopTime.query.filter_by(trip_id=trip.id).count()
-        shape_points_count = Shape.query.filter_by(shape_id=trip.shape_id).count()
-        if stop_times_count > 0 and shape_points_count > 0:
-            return trip
-    return None
 
 
-def _gtfs_backed_route_ids() -> set:
-    shape_ids = {
-        row[0]
-        for row in Shape.query.with_entities(Shape.shape_id).distinct().all()
-        if row[0]
-    }
-    if not shape_ids:
-        return set()
-    rows = (
-        db.session.query(Trip.route_id)
-        .join(StopTime, StopTime.trip_id == Trip.id)
-        .filter(Trip.shape_id.in_(shape_ids))
-        .group_by(Trip.route_id)
-        .all()
-    )
-    return {row[0] for row in rows}
 
 
 def _bus_chain_debug(bus: Bus) -> dict:
@@ -1775,55 +1763,6 @@ def _bus_chain_debug(bus: Bus) -> dict:
     }
 
 
-def _repair_active_bus_gtfs_links(allow_fallback: bool = False) -> list:
-    repairs = []
-    for bus in Bus.query.filter_by(is_active=True).all():
-        before = _bus_chain_debug(bus)
-        gtfs_trip = _gtfs_backed_trip_for_route(bus.route_id)
-        repair_mode = "same_route"
-        if not gtfs_trip:
-            repairs.append({
-                "bus_number": bus.bus_number,
-                "repaired": False,
-                "reason": "No GTFS-backed trip found for current route",
-                "before": before,
-            })
-            continue
-
-        bus.route_id = gtfs_trip.route_id
-        route = db.session.get(Route, gtfs_trip.route_id)
-        if route:
-            route.is_operational = True
-
-        active_trip = _active_trip_for_bus(bus)
-        if not active_trip:
-            active_trip = Trip(
-                bus_id=bus.id,
-                route_id=gtfs_trip.route_id,
-                shape_id=gtfs_trip.shape_id,
-                start_time=datetime.now(UTC),
-                status="active",
-            )
-            db.session.add(active_trip)
-        else:
-            active_trip.route_id = gtfs_trip.route_id
-            active_trip.shape_id = gtfs_trip.shape_id
-
-        db.session.flush()
-        StopTime.query.filter_by(trip_id=active_trip.id).delete(synchronize_session=False)
-        _copy_stop_times_from_template(active_trip, gtfs_trip)
-        db.session.flush()
-
-        after = _bus_chain_debug(bus)
-        repairs.append({
-            "bus_number": bus.bus_number,
-            "repaired": after["geometry_available"],
-            "mode": repair_mode,
-            "gtfs_trip_id": gtfs_trip.id,
-            "before": before,
-            "after": after,
-        })
-    return repairs
 
 
 def _route_has_geometry(route: Route, trip=None) -> bool:
@@ -2046,6 +1985,12 @@ def _request_wants_json() -> bool:
         or request.accept_mimetypes.best == "application/json"
     )
 
+def _coordinate(raw_value):
+    try:
+        return float(raw_value) if raw_value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     if lat1 is None or lng1 is None or lat2 is None or lng2 is None: return 0.0
     radius = 6371.0
@@ -2157,19 +2102,55 @@ def _osrm_route_for_stop_sequence(points: list) -> list:
             f"{OSRM_BASE_URL}/route/v1/driving/{coordinates}"
             "?overview=full&geometries=geojson&steps=false"
         )
-        request_object = Request(url, headers={"User-Agent": "TransPulse/1.0"})
-        with urlopen(request_object, timeout=OSRM_TIMEOUT_SECONDS) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        try:
+            request_object = Request(url, headers={"User-Agent": "TransPulse/1.0"})
+            with urlopen(request_object, timeout=OSRM_TIMEOUT_SECONDS) as response:
+                payload = json.loads(response.read().decode("utf-8"))
 
-        route = (payload.get("routes") or [None])[0]
-        coordinates_out = ((route or {}).get("geometry") or {}).get("coordinates") or []
-        segment = [
-            {"lat": float(latitude), "lng": float(longitude)}
-            for longitude, latitude in coordinates_out
-            if latitude is not None and longitude is not None
-        ]
-        if len(segment) < 2:
-            raise ValueError("OSRM returned no usable road geometry")
+            route = (payload.get("routes") or [None])[0]
+            coordinates_out = ((route or {}).get("geometry") or {}).get("coordinates") or []
+            segment = [
+                {"lat": float(latitude), "lng": float(longitude)}
+                for longitude, latitude in coordinates_out
+                if latitude is not None and longitude is not None
+            ]
+            if len(segment) < 2:
+                raise ValueError("OSRM returned no usable road geometry")
+        except Exception as exc:
+            logger.warning("[OSRM] Chunk query failed, falling back to leg-by-leg: %s", exc)
+            segment = []
+            for i in range(len(waypoint_chunk) - 1):
+                p1 = waypoint_chunk[i]
+                p2 = waypoint_chunk[i + 1]
+                leg_coords = f"{float(p1['lng']):.6f},{float(p1['lat']):.6f};{float(p2['lng']):.6f},{float(p2['lat']):.6f}"
+                leg_url = (
+                    f"{OSRM_BASE_URL}/route/v1/driving/{leg_coords}"
+                    "?overview=full&geometries=geojson&steps=false"
+                )
+                leg_segment = []
+                try:
+                    leg_request = Request(leg_url, headers={"User-Agent": "TransPulse/1.0"})
+                    with urlopen(leg_request, timeout=OSRM_TIMEOUT_SECONDS) as response:
+                        leg_payload = json.loads(response.read().decode("utf-8"))
+                    leg_route = (leg_payload.get("routes") or [None])[0]
+                    leg_coords_out = ((leg_route or {}).get("geometry") or {}).get("coordinates") or []
+                    leg_segment = [
+                        {"lat": float(latitude), "lng": float(longitude)}
+                        for longitude, latitude in leg_coords_out
+                        if latitude is not None and longitude is not None
+                    ]
+                except Exception as leg_exc:
+                    logger.warning("[OSRM] Leg query failed between %s and %s: %s", p1, p2, leg_exc)
+
+                if len(leg_segment) < 2:
+                    leg_segment = [
+                        {"lat": float(p1["lat"]), "lng": float(p1["lng"])},
+                        {"lat": float(p2["lat"]), "lng": float(p2["lng"])},
+                    ]
+
+                if segment and leg_segment[0] == segment[-1]:
+                    leg_segment = leg_segment[1:]
+                segment.extend(leg_segment)
 
         if path and segment[0] == path[-1]:
             segment = segment[1:]
@@ -2228,22 +2209,6 @@ def _display_geometry_for_map(route: Route, trip, points: list, shape_path: list
     """Return a rendering-only geometry, never changing GTFS or tracking paths."""
     gtfs_points = len(shape_path) if shape_path else 0
     stop_points = len(points) if points else 0
-
-    # 1. Check if GTFS shapes exist and are sufficiently detailed
-    if shape_path and _gtfs_shape_has_sufficient_detail(points, shape_path):
-        source = "gtfs"
-        display_path = shape_path
-        display_points_cnt = len(display_path)
-        logger.info(
-            "[GEOMETRY] source=%s gtfs_points=%s display_points=%s stop_points=%s",
-            source, gtfs_points, display_points_cnt, stop_points
-        )
-        return {
-            "path": display_path,
-            "leg_end_indexes": _path_indexes_for_stops(points, display_path),
-            "source": source,
-            "generated_point_count": 0,
-        }
 
     # If GTFS shapes are unavailable or simplified (stop-to-stop straight lines), 
     # check cache or generate using OSRM.
@@ -2344,8 +2309,43 @@ def _display_geometry_for_map(route: Route, trip, points: list, shape_path: list
                 _cache_road_geometry_failure(
                     cache_entry, cache_key, stop_signature, route, trip, error
                 )
+                try:
+                    other_cache = RoadGeometryCache.query.filter_by(route_id=route.id, status="ready").first()
+                    if other_cache:
+                        cached_path, cached_leg_indexes = _decode_cached_road_geometry(other_cache)
+                        if len(cached_path) >= 2 and len(cached_leg_indexes) == len(points):
+                            source = "road_cache"
+                            display_points_cnt = len(cached_path)
+                            logger.info(
+                                "[GEOMETRY] fallback_source=%s gtfs_points=%s display_points=%s stop_points=%s",
+                                source, gtfs_points, display_points_cnt, stop_points
+                            )
+                            return {
+                                "path": cached_path,
+                                "leg_end_indexes": cached_leg_indexes,
+                                "source": source,
+                                "generated_point_count": len(cached_path),
+                            }
+                except Exception as fallback_exc:
+                    logger.warning("[GEOMETRY] Fallback cache lookup failed: %s", fallback_exc)
 
-    # 4. Fallback to stop coordinates (stops)
+    # 4. Check if GTFS shapes exist and are sufficiently detailed as a fallback
+    if shape_path and _gtfs_shape_has_sufficient_detail(points, shape_path):
+        source = "gtfs"
+        display_path = shape_path
+        display_points_cnt = len(display_path)
+        logger.info(
+            "[GEOMETRY] fallback_source=%s gtfs_points=%s display_points=%s stop_points=%s",
+            source, gtfs_points, display_points_cnt, stop_points
+        )
+        return {
+            "path": display_path,
+            "leg_end_indexes": _path_indexes_for_stops(points, display_path),
+            "source": source,
+            "generated_point_count": 0,
+        }
+
+    # 5. Fallback to stop coordinates (stops)
     fallback_path = shape_path if len(shape_path) >= 2 else [{"lat": p["lat"], "lng": p["lng"]} for p in points]
     source = "stops"
     display_points_cnt = len(fallback_path)
@@ -2402,13 +2402,37 @@ def _route_points_for_assigned_trip(route: Route, trip) -> list:
             "lng": float(stop.stop_lon),
             "stop_order": st.stop_sequence,
         })
+
+    # Reverse if direction is backward and points are in forward order
+    direction_id = getattr(trip, "direction_id", 0)
+    is_return = (direction_id == 1 or getattr(trip, "status", "") in ("return_ready", "return_running", "return_completed"))
+    if is_return and points:
+        forward_stops = Stop.query.filter_by(route_id=route.id).order_by(Stop.stop_order.asc()).all()
+        if forward_stops and points[0]["name"] == forward_stops[0].stop_name:
+            points = list(reversed(points))
+            for idx, pt in enumerate(points):
+                pt["stop_order"] = idx + 1
+
     return points if len(points) >= 2 else []
+
 
 
 def _route_geometry_path_for_assigned_trip(trip) -> list:
     """Live tracking shape: assigned trip shape only, never stop or route fallback."""
     shape_path = _shape_path_for_trip(trip)
-    return shape_path if len(shape_path) >= 2 else []
+    if not shape_path or len(shape_path) < 2:
+        return shape_path if shape_path else []
+    if trip:
+        stop_times = _ordered_stop_times_for_trip(trip.id)
+        valid_stops = [st.stop for st in stop_times if st.stop and st.stop.stop_lat is not None and st.stop.stop_lon is not None]
+        if valid_stops:
+            first_lat = float(valid_stops[0].stop_lat)
+            first_lon = float(valid_stops[0].stop_lon)
+            dist_start = _haversine_km(first_lat, first_lon, shape_path[0]["lat"], shape_path[0]["lng"])
+            dist_end = _haversine_km(first_lat, first_lon, shape_path[-1]["lat"], shape_path[-1]["lng"])
+            if dist_end < dist_start:
+                return list(reversed(shape_path))
+    return shape_path
 
 
 def _ensure_trip_shape_from_stop_times(trip) -> bool:
@@ -2746,40 +2770,6 @@ def _reset_bus_simulation_state(bus_id: Optional[int], route_id: Optional[int] =
     }
 
 
-def _bus_simulation_profile(bus: Bus, trip, route: Route, now_seconds: float) -> dict:
-    bus_id = int(getattr(bus, "id", 0) or 0)
-    seed = _simulation_seed(bus, trip, route)
-    trip_id = getattr(trip, "id", None) if trip else None
-    route_id = getattr(route, "id", None)
-    persisted_started_at = _persistent_trip_started_at(trip)
-    state = BUS_SIMULATION_STATE.get(bus_id)
-    if (
-        not state
-        or state.get("route_id") != route_id
-        or state.get("trip_id") != trip_id
-    ):
-        _reset_bus_simulation_state(bus_id, route_id, trip_id, persisted_started_at or now_seconds)
-        state = BUS_SIMULATION_STATE[bus_id]
-
-    if persisted_started_at:
-        state["started_at"] = persisted_started_at
-    state["timestamp"] = now_seconds
-    elapsed = max(0.0, now_seconds - float(state.get("started_at") or now_seconds))
-    base_speed = 30.0 + (seed % 29)
-    cruise_speed = max(24.0, min(62.0, base_speed + (((seed >> 9) % 9) - 4) * 0.7))
-    wave = math.sin((elapsed / (17.0 + (seed % 11))) + ((seed % 360) * math.pi / 180.0)) * 5.5
-    step = (((int(elapsed // 7) + (seed % 13)) % 7) - 3) * 0.65
-    live_speed = max(18.0, min(68.0, cruise_speed + wave + step))
-    occupancy_wave = int(round(math.sin((elapsed / (45.0 + (seed % 17))) + seed) * 6))
-
-    return {
-        "seed": seed,
-        "started_at": float(state.get("started_at") or now_seconds),
-        "elapsed_seconds": elapsed,
-        "cruise_speed": cruise_speed,
-        "live_speed": live_speed,
-        "occupancy_offset": occupancy_wave,
-    }
 
 
 def _tracking_geometry_for_route(route: Route, trip, points: list, shape_path: list) -> dict:
@@ -2802,151 +2792,12 @@ def _tracking_geometry_for_route(route: Route, trip, points: list, shape_path: l
     }
 
 
-def _build_journey_legs(points: list, shape_path: list, avg_speed: float = 50.0) -> list:
-    """Travel legs between consecutive GTFS stops along full shape geometry."""
-    legs = []
-    if len(points) < 2 or len(shape_path) < 2:
-        return legs
-
-    shape_stop_indices = _path_indexes_for_stops(points, shape_path)
-    if len(shape_stop_indices) != len(points):
-        return legs
-    if len(shape_path) > len(points):
-        for i in range(1, len(shape_stop_indices) - 1):
-            min_index = shape_stop_indices[i - 1] + 1
-            max_index = len(shape_path) - 1 - (len(shape_stop_indices) - 1 - i)
-            shape_stop_indices[i] = max(min_index, min(shape_stop_indices[i], max_index))
-        shape_stop_indices[-1] = len(shape_path) - 1
-
-    for i in range(len(points) - 1):
-        start_idx = shape_stop_indices[i]
-        end_idx = shape_stop_indices[i + 1]
-        segment = shape_path[start_idx:end_idx + 1]
-        if len(segment) < 2 and start_idx < len(shape_path) - 1:
-            segment = shape_path[start_idx:start_idx + 2]
-        elif len(segment) < 2 and start_idx > 0:
-            segment = shape_path[start_idx - 1:start_idx + 1]
-        if len(segment) < 2:
-            continue
-        dist = _path_segment_distance(segment)
-        duration = max(15, int((dist / avg_speed) * 3600))
-        legs.append({
-            "segment": segment,
-            "duration": duration,
-            "distance_km": dist,
-            "from_idx": i,
-            "to_idx": i + 1,
-        })
-    return legs
 
 
-def _build_journey_phases(legs: list, stop_count: int) -> list:
-    STOP_WAIT = 5
-    TERMINAL_WAIT = 300
-    phases = []
-    route_distance_km = 0.0
-    for leg in legs:
-        leg_distance_km = leg.get("distance_km", 0.0)
-        phases.append({
-            "type": "travel",
-            "segment": leg["segment"],
-            "duration": leg["duration"],
-            "distance_start_km": route_distance_km,
-            "distance_km": leg_distance_km,
-            "from_idx": leg["from_idx"],
-            "to_idx": leg["to_idx"],
-        })
-        route_distance_km += leg_distance_km
-        arrival_point = leg["segment"][-1]
-        if leg["to_idx"] == stop_count - 1:
-            phases.append({
-                "type": "terminal",
-                "stop_idx": leg["to_idx"],
-                "duration": TERMINAL_WAIT,
-                "route_distance_km": route_distance_km,
-                "position": arrival_point,
-            })
-        else:
-            phases.append({
-                "type": "at_stop",
-                "stop_idx": leg["to_idx"],
-                "duration": STOP_WAIT,
-                "route_distance_km": route_distance_km,
-                "position": arrival_point,
-            })
-    return phases
 
 
-def _resolve_phase_state(phases: list, display_points: list, cycle_offset: float) -> dict:
-    elapsed = cycle_offset
-    for phase in phases:
-        if elapsed < phase["duration"]:
-            if phase["type"] == "travel":
-                progress = elapsed / phase["duration"] if phase["duration"] else 0.0
-                lat, lng, bearing, path_idx = _position_on_path(phase["segment"], progress)
-                shape_point = phase["segment"][path_idx]
-                distance_start_km = phase.get("distance_start_km", 0.0)
-                route_distance_km = distance_start_km + (phase.get("distance_km", 0.0) * progress)
-                return {
-                    "phase": "travel",
-                    "lat": lat,
-                    "lng": lng,
-                    "bearing": bearing,
-                    "shape_point_index": shape_point.get("shape_index"),
-                    "current_stop_idx": phase["from_idx"],
-                    "next_stop_idx": phase["to_idx"],
-                    "progress": progress,
-                    "route_distance_km": route_distance_km,
-                    "phase_elapsed": elapsed,
-                    "phase_duration": phase["duration"],
-                    "status": "IN PROGRESS",
-                }
-            stop_idx = phase["stop_idx"]
-            pt = phase["position"]
-            status = "ARRIVED TERMINAL" if phase["type"] == "terminal" else "AT BUS STAND"
-            next_idx = min(stop_idx + 1, len(display_points) - 1)
-            prev_idx = max(stop_idx - 1, 0)
-            if phase["type"] == "terminal":
-                bearing = _bearing_between_points(display_points[prev_idx], display_points[stop_idx])
-            elif next_idx > stop_idx:
-                bearing = _bearing_between_points(display_points[stop_idx], display_points[next_idx])
-            else:
-                bearing = _bearing_between_points(display_points[prev_idx], display_points[stop_idx])
-            return {
-                "phase": phase["type"],
-                "lat": pt["lat"],
-                "lng": pt["lng"],
-                "bearing": bearing,
-                "shape_point_index": pt.get("shape_index"),
-                "current_stop_idx": stop_idx,
-                "next_stop_idx": next_idx,
-                "progress": 1.0 if stop_idx == len(display_points) - 1 else stop_idx / max(1, len(display_points) - 1),
-                "route_distance_km": phase.get("route_distance_km", 0.0),
-                "phase_elapsed": elapsed,
-                "phase_duration": phase["duration"],
-                "status": status,
-            }
-        elapsed -= phase["duration"]
-
-    last = display_points[-1]
-    return {
-        "phase": "terminal",
-        "lat": phases[-1]["position"]["lat"],
-        "lng": phases[-1]["position"]["lng"],
-        "bearing": _bearing_between_points(display_points[-2], display_points[-1]) if len(display_points) >= 2 else 0.0,
-        "shape_point_index": phases[-1]["position"].get("shape_index"),
-        "current_stop_idx": len(display_points) - 1,
-        "next_stop_idx": len(display_points) - 1,
-        "progress": 1.0,
-        "route_distance_km": phases[-1].get("route_distance_km", 0.0),
-        "phase_elapsed": phases[-1].get("duration", 0),
-        "phase_duration": phases[-1].get("duration", 0),
-        "status": "ARRIVED TERMINAL",
-    }
 
 
-def _phase_list_duration(phases: list) -> int:
-    return sum(p["duration"] for p in phases)
 
 
 def _route_geometry_path(route, trip=None) -> list:
@@ -2955,7 +2806,7 @@ def _route_geometry_path(route, trip=None) -> list:
     if not route:
         return []
     trip = _resolve_trip_for_route(route, trip)
-    shape_path = _shape_path_for_trip(trip) if trip else []
+    shape_path = _route_geometry_path_for_assigned_trip(trip) if trip else []
     if shape_path:
         return shape_path
     points = _route_points_for(route, trip)
@@ -3071,27 +2922,38 @@ def _driver_dashboard_trip_for_bus(bus: Optional[Bus]) -> Optional[Trip]:
         return active_trip
     if not bus.route_id:
         return None
-    trip = (
-        Trip.query.filter(
-            Trip.bus_id == bus.id,
-            Trip.route_id == bus.route_id,
-            Trip.status.in_(("active", "in_progress", "return_ready", "assigned", "ready", "scheduled"))
+
+    in_cooldown = False
+    if bus.id in BUS_COMPLETED_TRIPS:
+        elapsed = time.time() - BUS_COMPLETED_TRIPS[bus.id]
+        if elapsed < 15.0:
+            in_cooldown = True
+        else:
+            BUS_COMPLETED_TRIPS.pop(bus.id, None)
+
+    if not in_cooldown:
+        trip = (
+            Trip.query.filter(
+                Trip.bus_id == bus.id,
+                Trip.route_id == bus.route_id,
+                Trip.status.in_(("active", "in_progress", "return_ready", "assigned", "ready", "scheduled"))
+            )
+            .order_by(
+                case(
+                    (Trip.status.in_(ACTIVE_TRIP_STATUSES), 0),
+                    (Trip.status == "return_ready", 1),
+                    (Trip.status == "assigned", 2),
+                    (Trip.status.in_(("ready", "scheduled")), 3),
+                    else_=3,
+                ),
+                Trip.created_at.desc(),
+                Trip.id.desc(),
+            )
+            .first()
         )
-        .order_by(
-            case(
-                (Trip.status.in_(ACTIVE_TRIP_STATUSES), 0),
-                (Trip.status == "return_ready", 1),
-                (Trip.status == "assigned", 2),
-                (Trip.status.in_(("ready", "scheduled")), 3),
-                else_=3,
-            ),
-            Trip.created_at.desc(),
-            Trip.id.desc(),
-        )
-        .first()
-    )
-    if trip:
-        return trip
+        if trip:
+            return trip
+
     return (
         Trip.query.filter(
             Trip.bus_id == bus.id,
@@ -3103,31 +2965,42 @@ def _driver_dashboard_trip_for_bus(bus: Optional[Bus]) -> Optional[Trip]:
     )
 
 
+def _is_tracking_available(trip_status: str, gps_status: str) -> bool:
+    running_states = {"RUNNING", "RETURN_RUNNING", "active", "in_progress"}
+    return (trip_status in running_states and gps_status in ("Online", "LIVE GPS"))
+
+
 def _trip_state_label(trip: Optional[Trip], bus: Optional[Bus] = None) -> str:
     if not trip:
         return "OFFLINE"
     status = (trip.status or "").strip().lower()
-    if status in ACTIVE_TRIP_STATUSES or status == "running":
+    
+    # Active / Running states
+    if status in {"active", "in_progress", "running"} or status in ACTIVE_TRIP_STATUSES:
         if getattr(trip, "direction_id", 0) == 1:
             return "RETURN_RUNNING"
         return "RUNNING"
+        
+    # Return ready state
     if status == "return_ready":
         return "RETURN_READY"
-    if status in {"assigned", "ready", "scheduled", "waiting_to_depart"}:
-        return "WAITING_TO_DEPART"
-    if status == "completed":
+        
+    # Completed states
+    if status in {"completed", "return_completed", "arrived_destination", "waiting_for_next_assignment"}:
         if getattr(trip, "direction_id", 0) == 1:
             return "RETURN_COMPLETED"
         return "COMPLETED"
-    if status == "return_completed":
-        return "RETURN_COMPLETED"
-    if status == "waiting_for_next_assignment":
-        return "WAITING_FOR_NEXT_ASSIGNMENT"
-    if status == "arrived_destination":
-        return "ARRIVED_DESTINATION"
+        
+    # WAITING_TO_DEPART states
+    if status in {"assigned", "ready", "scheduled", "waiting_to_depart"}:
+        return "WAITING_TO_DEPART"
+        
+    # Fallback checking bus activity
     if bus and not bus.is_active:
         return "OFFLINE"
-    return status.upper() or "OFFLINE"
+        
+    return "WAITING_TO_DEPART"
+
 
 
 
@@ -3144,11 +3017,8 @@ def _copy_gtfs_trip_metadata(target_trip: Trip, template_trip: Optional[Trip]) -
     if not target_trip or not template_trip:
         return
     target_trip.shape_id = getattr(template_trip, "shape_id", None) or target_trip.shape_id
-    target_trip.direction_id = (
-        getattr(template_trip, "direction_id", None)
-        if getattr(template_trip, "direction_id", None) is not None
-        else target_trip.direction_id
-    )
+    if target_trip.direction_id is None:
+        target_trip.direction_id = getattr(template_trip, "direction_id", None)
     target_trip.service_id = getattr(template_trip, "service_id", None) or target_trip.service_id
     target_trip.trip_headsign = getattr(template_trip, "trip_headsign", None) or target_trip.trip_headsign
     target_trip.trip_short_name = getattr(template_trip, "trip_short_name", None) or target_trip.trip_short_name
@@ -3162,6 +3032,8 @@ def _ensure_assigned_trip_gtfs_metadata(bus: Optional[Bus], trip: Optional[Trip]
         return None
     reverse = getattr(trip, "direction_id", 0) == 1
     template_trip = _gtfs_backed_trip_for_route(trip.route_id, reverse=reverse)
+    if template_trip and template_trip.direction_id is not None and int(template_trip.direction_id) != (1 if reverse else 0):
+        template_trip = None
     if template_trip:
         _copy_gtfs_trip_metadata(trip, template_trip)
         if StopTime.query.filter_by(trip_id=trip.id).count() < 2:
@@ -3317,6 +3189,8 @@ def _prepare_return_trip(bus: Bus, completed_trip: Trip) -> Trip:
 
     direction = 0 if getattr(completed_trip, "direction_id", 0) == 1 else 1
     target_template = _gtfs_backed_trip_for_route(completed_trip.route_id, reverse=(direction == 1))
+    if target_template and target_template.direction_id is not None and int(target_template.direction_id) != direction:
+        target_template = None
 
     if existing:
         existing_first = (
@@ -3429,7 +3303,29 @@ def _repair_live_trip_stop_times_from_gtfs() -> list:
     return repairs
 
 
-def _start_driver_trip(bus: Bus, requested_return: bool = False) -> Trip:
+def _compute_return_trip_start_indexes(lat: float, lon: float, trip, route) -> tuple[int, int]:
+    pts = _route_points_for_assigned_trip(route, trip) if route else []
+    route_path = _route_geometry_path_for_assigned_trip(trip)
+    start_stop_idx = 0
+    start_shape_idx = 0
+    if lat is not None and lon is not None and pts:
+        min_dist = float('inf')
+        for i, pt in enumerate(pts):
+            try:
+                d = _haversine_km(lat, lon, pt["lat"], pt["lng"])
+                if d < min_dist:
+                    min_dist = d
+                    start_stop_idx = i
+            except (KeyError, TypeError):
+                continue
+                
+    if lat is not None and lon is not None and route_path:
+        start_shape_idx = _nearest_route_index(lat, lon, route_path)
+        
+    return start_stop_idx, start_shape_idx
+
+
+def _start_driver_trip(bus: Bus, requested_return: bool = False, start_lat: float = None, start_lon: float = None) -> Trip:
     if not bus.route_id:
         raise ValueError("Assigned bus has no route.")
 
@@ -3504,6 +3400,10 @@ def _start_driver_trip(bus: Bus, requested_return: bool = False) -> Trip:
         logger.debug("Reason for Selection: %s", selection_reason)
         logger.debug("=========================================")
 
+    old_gps = LIVE_GPS_DATA.get(bus.id, {})
+    old_lat = old_gps.get("lat")
+    old_lon = old_gps.get("lon")
+    
     _complete_active_trips(bus.id, exclude_trip_id=trip.id)
     trip.status = "active"
     trip.start_time = datetime.now(UTC)
@@ -3511,7 +3411,37 @@ def _start_driver_trip(bus: Bus, requested_return: bool = False) -> Trip:
     route = db.session.get(Route, trip.route_id)
     _validate_driver_start_trip_gtfs(bus, trip)
     bus.is_active = True
-    LIVE_GPS_DATA.pop(bus.id, None)
+    LIVE_GPS_DATA[bus.id] = {
+        "timestamp": time.time(),
+        "trip_id": trip.id,
+        "route_id": trip.route_id,
+        "speed": 0.0,
+        "bearing": 0.0,
+        "distance_covered_km": 0.0,
+        "gps_delta_km": 0.0,
+        "elapsed_seconds": 0.0,
+        "current_stop_index": 0,
+        "completed_stops": 0,
+        "max_path_index": 0,
+        "at_stop": True,
+    }
+    
+    if start_lat is None or start_lon is None:
+        if old_lat is not None and old_lon is not None:
+            start_lat, start_lon = old_lat, old_lon
+
+    if requested_return and start_lat is not None and start_lon is not None:
+        s_idx, sh_idx = _compute_return_trip_start_indexes(start_lat, start_lon, trip, route)
+        LIVE_GPS_DATA[bus.id]["return_start_stop_index"] = s_idx
+        LIVE_GPS_DATA[bus.id]["return_start_shape_index"] = sh_idx
+    elif start_lat is None and pts:
+        start_lat, start_lon = pts[0]["lat"], pts[0]["lng"]
+        
+    LIVE_GPS_DATA[bus.id].update({
+        "lat": start_lat,
+        "lon": start_lon
+    })
+
     LIVE_GPS_BREADCRUMBS.pop(bus.id, None)
     BUS_DELAY_DATA.pop(bus.id, None)
     runtime = _activate_driver_runtime_session(bus, trip)
@@ -3529,11 +3459,12 @@ def _end_driver_trip(bus: Bus) -> tuple[Trip, Trip]:
         raise ValueError("No active trip to end.")
     if getattr(trip, "direction_id", 0) == 1:
         trip.status = "return_completed"
+        LIVE_GPS_DATA.pop(bus.id, None)
     else:
         trip.status = "completed"
+    
     trip.end_time = datetime.now(UTC)
     bus.is_active = False
-    LIVE_GPS_DATA.pop(bus.id, None)
     LIVE_GPS_BREADCRUMBS.pop(bus.id, None)
     BUS_DELAY_DATA.pop(bus.id, None)
     _complete_driver_runtime_session(bus, trip)
@@ -3593,22 +3524,6 @@ def _validate_data_integrity() -> list:
         logger.info("[DATA_INTEGRITY] All FK references validated OK")
     return issues
 
-def _get_active_subscriptions_cache():
-    cache = []
-    try:
-        rows = (
-            db.session.query(Subscription.user_id, Stop.route_id, Stop.stop_name)
-            .join(Stop, Stop.id == Subscription.stop_id)
-            .filter(Subscription.active.is_(True))
-            .all()
-        )
-        cache = [
-            {"user_id": user_id, "route_id": route_id, "stop_name": stop_name}
-            for user_id, route_id, stop_name in rows
-        ]
-    except Exception:
-        db.session.rollback()
-    return cache
 
 
 def _cleanup_tracking_sessions(now: Optional[float] = None) -> None:
@@ -3786,6 +3701,14 @@ def _queue_meaningful_delay_notifications(bus_data: dict, route: Optional[Route]
             message=message,
         ))
 
+    db.session.add(Notification(
+        target_role="admin",
+        trip_id=getattr(trip, "id", None) if trip else None,
+        message=message,
+        related_bus_id=bus_id,
+        related_route_id=route_id
+    ))
+
     if entry:
         entry["last_notification_delay_minutes"] = delay_minutes
         entry["last_notification_reason"] = reason
@@ -3829,6 +3752,104 @@ def _nearest_route_index(lat: float, lon: float, points: list) -> int:
     return nearest_idx
 
 
+def _project_point_onto_segment(lat: float, lon: float, path: list, nearest_idx: int) -> dict:
+    """Return a {lat, lng} point projected onto the nearest path segment.
+
+    This ensures the completed/remaining split lands exactly beneath the
+    vehicle marker rather than at the nearest discrete path vertex.
+    """
+    if not path or nearest_idx >= len(path) - 1:
+        return {"lat": lat, "lng": lon}
+
+    p1 = path[nearest_idx]
+    p2 = path[nearest_idx + 1]
+    try:
+        ax, ay = float(p1["lat"]), float(p1["lng"])
+        bx, by = float(p2["lat"]), float(p2["lng"])
+        dx, dy = bx - ax, by - ay
+        len_sq = dx * dx + dy * dy
+        if len_sq < 1e-18:
+            return {"lat": lat, "lng": lon}
+        t = max(0.0, min(1.0, ((lat - ax) * dx + (lon - ay) * dy) / len_sq))
+        return {"lat": ax + t * dx, "lng": ay + t * dy}
+    except (TypeError, ValueError, KeyError):
+        return {"lat": lat, "lng": lon}
+
+
+def _build_geometry_sections(
+    lat: float,
+    lon: float,
+    route_path: list,
+    nearest_idx: int,
+    is_diverged: bool,
+    diversion_road: list,
+    original_path: list,
+) -> dict:
+    """Compute four geometry sections for full-journey rendering.
+
+    Returns a dict with keys: completed, planned, dynamic, remaining.
+
+    completed  – Travelled portion (gray)
+    planned    – Bypassed original route during diversion (light-blue, dashed)
+    dynamic    – Actual diversion path (orange)
+    remaining  – Remaining official route (cyan)
+    """
+    if not route_path or len(route_path) < 2:
+        return {"completed": [], "planned": [], "dynamic": [], "remaining": route_path or []}
+
+    # Interpolate projected split point exactly under the marker
+    projected = _project_point_onto_segment(lat, lon, route_path, nearest_idx)
+    split_idx = nearest_idx
+
+    completed_geom: list = route_path[:split_idx + 1] + [projected]
+    remaining_geom: list = [projected] + route_path[split_idx + 1:]
+
+    dynamic_geom: list = []
+    planned_geom: list = []
+
+    if is_diverged and diversion_road and len(diversion_road) >= 2:
+        dynamic_geom = diversion_road
+
+        # Compute the bypassed planned segment using the original GTFS path
+        if original_path and len(original_path) >= 2:
+            try:
+                div_start_pt = diversion_road[0]
+                div_start_idx = _nearest_route_index(
+                    float(div_start_pt.get("lat")),
+                    float(div_start_pt.get("lng")),
+                    original_path,
+                )
+                div_end_pt = diversion_road[-1]
+                div_end_idx = _nearest_route_index(
+                    float(div_end_pt.get("lat", lat)),
+                    float(div_end_pt.get("lng", lon)),
+                    original_path,
+                )
+                
+                # New simplified standard for Frontend: 
+                # completed = path up to diversion
+                # remaining = active diversion path
+                completed_geom = original_path[:div_start_idx + 1]
+                remaining_geom = diversion_road
+                
+                # Legacy compatibility
+                if div_end_idx > div_start_idx:
+                    planned_geom = original_path[div_start_idx:div_end_idx + 1]
+                elif div_end_idx == div_start_idx:
+                    planned_geom = [original_path[div_start_idx]]
+            except (TypeError, ValueError, KeyError):
+                planned_geom = []
+
+    return {
+        "completed": completed_geom,
+        "planned":   planned_geom,
+        "dynamic":   dynamic_geom,
+        "remaining": remaining_geom,
+    }
+
+
+
+
 def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], message: str,
                                        gps: Optional[dict] = None) -> dict:
     if not isinstance(gps, dict):
@@ -3852,7 +3873,7 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
         except (TypeError, ValueError, OverflowError, OSError):
             pass
 
-    return {
+    res = {
         "bus_id": bus.id,
         "bus_number": bus.bus_number,
         "registration_number": bus.registration_number,
@@ -3873,7 +3894,8 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
         "service_status": "validation_error",
         "bus_status": "ACTIVE" if bus.is_active else "OFFLINE",
         "trip_status": _trip_state_label(trip, bus),
-        "gps_status": "LIVE GPS" if gps_is_valid else "GPS Off",
+        "gps_status": "Online" if gps_is_valid else "Offline",
+        "tracking_available": False,
         "speed": None,
         "occupancy_pct": occ_pct,
         "occupancy_level": occ_level,
@@ -3933,17 +3955,225 @@ def _live_tracking_validation_snapshot(bus: Bus, trip, route: Optional[Route], m
         "next_stop_expected_time": "Scheduled",
         "display_schedule_stops": [],
     }
+    return _enrich_snapshot_with_defaults(res, bus)
+
+
+def _format_eta_display(bus_data: dict) -> str:
+    trip_status = (bus_data.get("trip_status") or "").upper()
+    status = (bus_data.get("status") or "").upper()
+    
+    # 1. Finished states
+    if trip_status in ("COMPLETED", "RETURN_COMPLETED", "ARRIVED_DESTINATION") or status in ("COMPLETED", "RETURN_COMPLETED"):
+        return "Arrived"
+        
+    # 2. Waiting states
+    if trip_status in ("WAITING_TO_DEPART", "RETURN_READY", "OFFLINE") or status == "OFFLINE":
+        return "Waiting to Depart"
+        
+    # 3. Active running state
+    eta_mins = bus_data.get("eta_minutes")
+    if eta_mins is None:
+        eta_mins = bus_data.get("updated_eta_minutes") or bus_data.get("base_eta_minutes")
+        
+    if eta_mins is None:
+        if trip_status in ("RUNNING", "RETURN_RUNNING"):
+            return "Calculating..."
+        return "Waiting to Depart"
+        
+    try:
+        eta_mins = int(eta_mins)
+    except (TypeError, ValueError):
+        return "Calculating..."
+        
+    if eta_mins <= 0:
+        return "Arrived"
+        
+    if eta_mins >= 60:
+        h = eta_mins // 60
+        m = eta_mins % 60
+        if m > 0:
+            return f"{h} hr {m} min"
+        else:
+            return f"{h} hr"
+    else:
+        return f"{eta_mins} min"
+
+
+def _enrich_snapshot_with_defaults(bus_data: dict, bus: Bus) -> dict:
+    if not isinstance(bus_data, dict):
+        bus_data = {}
+    
+    # Resolve driver_code and driver_name
+    driver_code = (
+        bus_data.get("assigned_driver_code") or 
+        bus_data.get("driver_id") or 
+        getattr(bus, "assigned_driver_code", None) or 
+        "--"
+    )
+    driver_name = (
+        bus_data.get("assigned_driver_name") or 
+        bus_data.get("driver_name") or 
+        getattr(bus, "assigned_driver_name", None) or 
+        driver_code
+    )
+
+    # Defaults mapping
+    defaults = {
+        "tracking_available": False,
+        "gps_status": "Offline",
+        "trip_status": "OFFLINE",
+        "direction_id": 0,
+        "current_lat": None,
+        "current_lon": None,
+        "display_path": [],
+        "display_geometry_source": "unavailable",
+        "stops": [],
+        "current_stop_index": 0,
+        "completed_stops": 0,
+        "remaining_stops": 0,
+        "progress": 0.0,
+        "trip_progress": 0.0,
+        "distance_remaining": 0.0,
+        "distance_remaining_km": 0.0,
+        "eta_minutes": 0,
+        "vehicle_id": bus.bus_number,
+        "bus_number": bus.bus_number,
+        "driver_code": driver_code,
+        "driver_name": driver_name,
+        "status": "Offline",
+        "speed": 0.0,
+        "is_live_gps": False,
+        "geometry_sections": {"completed": [], "planned": [], "dynamic": [], "remaining": []}
+    }
+
+    # Apply defaults if missing or None
+    for key, def_val in defaults.items():
+        if key not in bus_data or bus_data[key] is None:
+            bus_data[key] = def_val
+
+    # Resolve coordinates defaults to origin stop if None
+    if bus_data.get("current_lat") is None:
+        if bus_data.get("stops"):
+            bus_data["current_lat"] = bus_data["stops"][0].get("lat")
+        else:
+            bus_data["current_lat"] = 0.0
+
+    if bus_data.get("current_lon") is None:
+        if bus_data.get("stops"):
+            bus_data["current_lon"] = bus_data["stops"][0].get("lng")
+        else:
+            bus_data["current_lon"] = 0.0
+
+    # Ensure compatibility mappings
+    bus_data["progress"] = bus_data["trip_progress"]
+    bus_data["distance_remaining"] = bus_data["distance_remaining_km"]
+    bus_data["vehicle_id"] = bus_data["bus_number"]
+    bus_data["driver_code"] = driver_code
+    bus_data["driver_name"] = driver_name
+    bus_data["current_speed"] = bus_data["speed"]
+    
+    bearing = bus_data.get("bearing")
+    if bearing is None:
+        bearing = bus_data.get("heading")
+    if bearing is None:
+        bearing = 0.0
+    bus_data["current_heading"] = bearing
+
+    # Route status mapping: ON_ROUTE, DYNAMIC_ROUTE, ROAD_GEOMETRY_UNAVAILABLE, RETURN_ROUTE, OFFLINE
+    is_offline = (bus_data.get("trip_status") == "OFFLINE" or bus_data.get("status") == "Offline" or not bus_data.get("tracking_available"))
+    is_return = (bus_data.get("direction") == "backward" or bus_data.get("trip_status") in ("RETURN_READY", "RETURN_RUNNING", "RETURN_COMPLETED"))
+    is_diverged = bus_data.get("is_diverged", False) or (bus_data.get("display_geometry_source") == "dynamic_diversion")
+    geometry_unavail = (bus_data.get("display_geometry_source") == "unavailable" or not bus_data.get("display_path"))
+    
+    if is_offline:
+        bus_data["route_status"] = "OFFLINE"
+    elif is_diverged:
+        bus_data["route_status"] = "DYNAMIC_ROUTE"
+    elif is_return:
+        bus_data["route_status"] = "RETURN_ROUTE"
+    elif geometry_unavail:
+        bus_data["route_status"] = "ROAD_GEOMETRY_UNAVAILABLE"
+    else:
+        bus_data["route_status"] = "ON_ROUTE"
+
+    # ETA Confidence mapping
+    confidence = 100
+    delay_mins = abs(int(bus_data.get("current_delay_minutes") or 0))
+    confidence -= min(25, delay_mins * 1.5)
+    
+    if bus_data.get("gps_status", "Offline") == "Offline":
+        confidence -= 40
+    if is_diverged:
+        confidence -= 15
+        
+    rem_km = bus_data.get("distance_remaining_km") or 0.0
+    try:
+        rem_km = float(rem_km)
+    except (TypeError, ValueError):
+        rem_km = 0.0
+    if rem_km > 50.0:
+        confidence -= 10
+        
+    bus_data["eta_confidence"] = max(10, min(100, int(confidence)))
+    bus_data["eta_display"] = _format_eta_display(bus_data)
+
+    return bus_data
+
+
+
+def _calculate_realistic_eta(remaining_km: float, speed_to_use: float, delay_minutes: int, scheduled_remaining: float,
+                             traffic_factor: float = 1.0, weather_factor: float = 1.0) -> int:
+    """Calculate the realistic ETA in minutes using a weighted formula.
+    Supports future expansion for traffic_factor, weather_factor, etc."""
+    travel_time_by_speed = (remaining_km / speed_to_use) * 60.0 if speed_to_use > 0 else 0.0
+    adjusted_travel_time = travel_time_by_speed * traffic_factor * weather_factor
+    base_eta = 0.8 * adjusted_travel_time + 0.2 * scheduled_remaining
+    return max(1, int(math.ceil(base_eta + delay_minutes)))
 
 
 def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = None) -> dict:
     if not isinstance(gps, dict):
         gps = {}
+        
+    def _optional_float(*keys):
+        if not gps:
+            return None
+        for key in keys:
+            value = gps.get(key)
+            if value is None:
+                continue
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+        return None
+
     points = _route_points_for_assigned_trip(route, trip)
     route_path = _route_geometry_path_for_assigned_trip(trip)
+    display_geometry = {"path": route_path, "source": "gtfs", "generated_point_count": 0}
     validation_error = _assigned_trip_validation_error(route, trip, points, route_path)
     if validation_error:
         return _live_tracking_validation_snapshot(bus, trip, route, validation_error, gps)
     direction = "backward" if getattr(trip, "direction_id", 0) == 1 else "forward"
+    is_return = getattr(trip, "direction_id", 0) == 1
+
+    if is_return and points and route_path:
+        start_stop_idx = gps.get("return_start_stop_index")
+        start_shape_idx = gps.get("return_start_shape_index")
+        if start_stop_idx is None or start_shape_idx is None:
+            # Deterministic Runtime Cache Safety Recomputation
+            calc_lat = gps.get("lat")
+            calc_lon = gps.get("lon")
+            if calc_lat is not None and calc_lon is not None:
+                try:
+                    s_idx, sh_idx = _compute_return_trip_start_indexes(float(calc_lat), float(calc_lon), trip, route)
+                    gps["return_start_stop_index"] = s_idx
+                    gps["return_start_shape_index"] = sh_idx
+                    start_stop_idx, start_shape_idx = s_idx, sh_idx
+                except (ValueError, TypeError):
+                    start_stop_idx, start_shape_idx = 0, 0
+            else:
+                start_stop_idx, start_shape_idx = 0, 0
 
     default_lat = points[0]["lat"] if points else 0.0
     default_lon = points[0]["lng"] if points else 0.0
@@ -3981,7 +4211,7 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
         dist_end = _haversine_km(points[0]["lat"], points[0]["lng"], route_path[-1]["lat"], route_path[-1]["lng"])
         if dist_end < dist_start:
             route_path = list(reversed(route_path))
-    display_geometry = _display_geometry_for_map(route, trip, points, route_path)
+
     try:
         covered_km = float(gps.get("distance_covered_km") or 0.0)
     except (TypeError, ValueError):
@@ -3990,6 +4220,20 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
     
     movement_begun = covered_km > 0.001 or has_gps_coordinates
 
+    # Speed extraction & smoothing rolling average
+    live_speed = _optional_float("speed", "velocity")
+    bearing = _optional_float("bearing", "heading", "course")
+    
+    recent_speeds = gps.setdefault("recent_speeds", [])
+    if live_speed is not None:
+        recent_speeds.append(live_speed)
+    if len(recent_speeds) > 10:
+        recent_speeds = recent_speeds[-10:]
+    elif not recent_speeds:
+        recent_speeds.append(0.0)
+    avg_live_speed = sum(recent_speeds) / len(recent_speeds)
+
+    # Initial stop state values
     if not movement_begun:
         if points and not has_gps_coordinates:
             lat = points[0]["lat"]
@@ -3999,34 +4243,178 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
         current_stop_idx = 0
         next_stop_idx = min(1, len(points) - 1) if points else 0
         completed_stops = 0
-        remaining_km = "--"
+        remaining_km = 0.0
         trip_progress = 0.0
         delay_minutes = 0
-        live_speed = 0.0
         eta_minutes = None
         eta_label = "--"
         active_stop_index = 0
+        is_diverged = False
+        display_geometry_source = "gtfs"
     else:
         path_index = _nearest_route_index(lat, lon, route_path)
         try:
             max_path_index_val = gps.get("max_path_index")
-            max_path_index = int(max_path_index_val) if max_path_index_val is not None else path_index
+            if max_path_index_val is not None:
+                max_path_index = int(max_path_index_val)
+            else:
+                max_path_index = path_index
         except (TypeError, ValueError):
             max_path_index = path_index
             
-        if points and route_path:
-            stop_path_indexes = _path_indexes_for_stops(points, route_path)
-            current_stop_idx = 0
-            for i, path_idx in enumerate(stop_path_indexes):
-                if max_path_index >= path_idx:
-                    current_stop_idx = i
-                else:
-                    break
-        else:
-            current_stop_idx = 0
+        nearest_stop_idx = 0
+        min_dist = float('inf')
+        if points:
+            for idx, pt in enumerate(points):
+                dist = _haversine_km(lat, lon, pt["lat"], pt["lng"])
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_stop_idx = idx
 
-        next_stop_idx = min(current_stop_idx + 1, len(points) - 1) if points else 0
+        prev_stop_idx = int(gps.get("current_stop_index") or 0) if gps else 0
+        current_stop_idx = max(prev_stop_idx, nearest_stop_idx) if gps else nearest_stop_idx
         completed_stops = current_stop_idx
+        next_stop_idx = min(current_stop_idx + 1, len(points) - 1) if points else 0
+
+        # State lock filtering for deviation/recovery
+        dev_count = int(gps.get("deviation_count") or 0)
+        rec_count = int(gps.get("recovery_count") or 0)
+        currently_diverged = bool(gps.get("is_diverged", False))
+        
+        is_diverged = currently_diverged
+        display_geometry_source = "gtfs"
+        original_gtfs_path: list = []  # saved for geometry_sections
+        
+        if has_gps_coordinates and route_path and points:
+            threshold_meters = current_app.config.get("ROUTE_DEVIATION_THRESHOLD_METERS", ROUTE_DEVIATION_THRESHOLD_METERS)
+            heading_threshold = current_app.config.get("ROUTE_DEVIATION_HEADING_THRESHOLD_DEGREES", ROUTE_DEVIATION_HEADING_THRESHOLD_DEGREES)
+            min_deviation_meters = current_app.config.get("ROUTE_DEVIATION_MIN_METERS", ROUTE_DEVIATION_MIN_METERS)
+            
+            threshold_km = threshold_meters / 1000.0
+            min_deviation_km = min_deviation_meters / 1000.0
+            
+            nearest_idx = _nearest_route_index(lat, lon, route_path)
+            dist_to_route = _haversine_km(lat, lon, route_path[nearest_idx]["lat"], route_path[nearest_idx]["lng"])
+            
+            deviating_now = False
+            if dist_to_route > threshold_km:
+                deviating_now = True
+            elif dist_to_route > min_deviation_km and bearing is not None:
+                if nearest_idx < len(route_path) - 1:
+                    p1 = route_path[nearest_idx]
+                    p2 = route_path[nearest_idx + 1]
+                    route_bearing = _bearing_between_points(p1, p2)
+                    if _bearing_diff(bearing, route_bearing) > heading_threshold:
+                        deviating_now = True
+                        
+            if deviating_now:
+                dev_count += 1
+                rec_count = max(0, rec_count - 1)
+            else:
+                rec_count += 1
+                dev_count = max(0, dev_count - 1)
+                
+            if dev_count >= 3:
+                is_diverged = True
+            elif rec_count >= 3:
+                is_diverged = False
+                
+            # Corridor rejoining route recovery
+            if is_diverged:
+                original_route_path = _route_geometry_path_for_assigned_trip(trip)
+                if original_route_path:
+                    if direction == "backward":
+                        original_route_path = list(reversed(original_route_path))
+                    
+                    # Upgrade straight-line GTFS shape to OSRM geometry
+                    original_display = _display_geometry_for_map(route, trip, points, original_route_path)
+                    original_route_path = original_display.get("path") or original_route_path
+                    
+                    original_gtfs_path = original_route_path  # save for geometry_sections
+                    orig_nearest_idx = _nearest_route_index(lat, lon, original_route_path)
+                    dist_to_original = _haversine_km(lat, lon, original_route_path[orig_nearest_idx]["lat"], original_route_path[orig_nearest_idx]["lng"])
+                    if dist_to_original < 0.10:
+                        is_diverged = False
+                        dev_count = 0
+                        rec_count = 3
+                        _clear_diversion_cache(trip.id)
+                        
+            gps["deviation_count"] = dev_count
+            gps["recovery_count"] = rec_count
+            gps["is_diverged"] = is_diverged
+            # Write deviation state back into LIVE_GPS_DATA so it persists
+            # across polls (fresh_gps_packet returns a shallow copy).
+            if bus.id in LIVE_GPS_DATA:
+                LIVE_GPS_DATA[bus.id]["deviation_count"] = dev_count
+                LIVE_GPS_DATA[bus.id]["recovery_count"] = rec_count
+                LIVE_GPS_DATA[bus.id]["is_diverged"] = is_diverged
+
+
+        # Persistent database cache OSRM diversion routing
+        if is_diverged and has_gps_coordinates and points:
+            cache_key = hashlib.md5(f"div_{route.id}_{direction}_{next_stop_idx}".encode("utf-8")).hexdigest()
+            cache_entry = RoadGeometryCache.query.filter_by(cache_key=cache_key).first()
+            
+            upcoming_stops = points[next_stop_idx:] if next_stop_idx < len(points) else [points[-1]]
+            waypoints = [{"lat": lat, "lng": lon}] + upcoming_stops
+            stop_signature = hashlib.md5(str(waypoints).encode("utf-8")).hexdigest()
+            
+            diversion_road = None
+            if cache_entry and cache_entry.status == "ready" and cache_entry.geometry_json:
+                try:
+                    diversion_road = json.loads(cache_entry.geometry_json)
+                except Exception:
+                    pass
+                    
+            if diversion_road and len(diversion_road) >= 2:
+                path_idx = _nearest_route_index(lat, lon, diversion_road)
+                route_path = [{"lat": lat, "lng": lon}] + diversion_road[path_idx:]
+                display_geometry_source = "dynamic_diversion"
+            else:
+                try:
+                    diversion_road = _osrm_route_for_stop_sequence(waypoints)
+                    if diversion_road and len(diversion_road) >= 2:
+                        if not cache_entry:
+                            cache_entry = RoadGeometryCache(
+                                cache_key=cache_key,
+                                route_id=route.id,
+                                shape_id=getattr(trip, "shape_id", None),
+                                stop_signature=stop_signature,
+                                geometry_json=json.dumps(diversion_road, separators=(",", ":")),
+                                status="ready"
+                            )
+                            db.session.add(cache_entry)
+                        else:
+                            cache_entry.status = "ready"
+                            cache_entry.geometry_json = json.dumps(diversion_road, separators=(",", ":"))
+                            cache_entry.stop_signature = stop_signature
+                        
+                        try:
+                            db.session.commit()
+                        except Exception:
+                            db.session.rollback()
+                            
+                        route_path = diversion_road
+                        display_geometry_source = "dynamic_diversion"
+                except Exception as exc:
+                    logger.warning("[DIVERSION] OSRM generation failed: %s", exc)
+
+        # Resolve normal geometry if not diverged
+        if not is_diverged:
+            display_geometry = _display_geometry_for_map(route, trip, points, route_path)
+            route_path = display_geometry.get("path") or route_path
+            display_geometry_source = display_geometry.get("source")
+        else:
+            display_geometry = {
+                "path": route_path,
+                "source": display_geometry_source,
+                "generated_point_count": len(route_path)
+            }
+            
+        # Clean up straight line fallbacks
+        if display_geometry_source == "stops":
+            display_geometry_source = "unavailable"
+            route_path = []
 
     at_stop_val = gps.get("at_stop", False)
     if isinstance(at_stop_val, str):
@@ -4068,63 +4456,91 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
             "delay_status": scheduled.get("delay_status", "ON TIME"),
         })
 
-    def _optional_float(*keys):
-        if not gps:
-            return None
-        for key in keys:
-            value = gps.get(key)
-            if value is None:
-                continue
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                continue
-        return None
-
     shape_id = getattr(trip, "shape_id", None) if trip else None
     
     if movement_begun:
         delay_minutes = int(schedule_payload.get("current_delay_minutes") or 0)
-        live_speed = _optional_float("speed", "velocity")
-        remaining_km = _path_segment_distance(route_path[max_path_index:]) if route_path and max_path_index < len(route_path) else 0.0
-        total_dist = _path_segment_distance(route_path)
-        travelled_dist = _path_segment_distance(route_path[:max_path_index + 1]) if route_path else 0.0
+        
+        # Remaining Distance calculation using actual road geometry or stop sequence fallback
+        remaining_km = 0.0
+        if route_path and max_path_index < len(route_path):
+            remaining_km = _path_segment_distance(route_path[max_path_index:])
+        else:
+            remaining_stops = points[current_stop_idx:]
+            if len(remaining_stops) >= 2:
+                for idx in range(len(remaining_stops) - 1):
+                    remaining_km += _haversine_km(
+                        remaining_stops[idx]["lat"], remaining_stops[idx]["lng"],
+                        remaining_stops[idx+1]["lat"], remaining_stops[idx+1]["lng"]
+                    )
+                    
+        total_dist = _path_segment_distance(route_path) if route_path else 0.0
+        if total_dist == 0.0:
+            total_dist = remaining_km
+        travelled_dist = max(0.0, total_dist - remaining_km)
         trip_progress = (travelled_dist / total_dist * 100.0) if total_dist > 0.0 else 0.0
         
-        speed_to_use = max(5.0, live_speed) if live_speed is not None else 25.0
-        travel_time_by_speed = (remaining_km / speed_to_use) * 60.0
-
-        dest_sched = points[-1].get("scheduled_time") or (schedule_stops[-1].get("scheduled_time") if (len(points) - 1) < len(schedule_stops) else "--")
-        curr_sched = points[current_stop_idx].get("scheduled_time") or (schedule_stops[current_stop_idx].get("scheduled_time") if current_stop_idx < len(schedule_stops) else "--")
+        # Dynamic Speed calculation using smoothed average speed
+        journey_duration_minutes = schedule_payload.get("journey_duration_minutes")
+        scheduled_speed = (total_dist / (float(journey_duration_minutes or 60.0) / 60.0)) if (total_dist > 0.0) else 35.0
+        scheduled_speed = max(15.0, min(80.0, scheduled_speed))
+        historical_avg = 35.0
+        speed_to_use = (0.5 * avg_live_speed) + (0.3 * historical_avg) + (0.2 * scheduled_speed)
         
-        def parse_time_str(t_str: str) -> Optional[int]:
-            if not t_str or t_str == "--":
-                return None
-            m = re.match(r"^(\d{1,2}):(\d{2})\s*([AP]M)?$", str(t_str).strip(), re.IGNORECASE)
-            if not m:
-                return None
-            h = int(m.group(1))
-            m_val = int(m.group(2))
-            suffix = m.group(3)
-            if suffix:
-                suffix = suffix.upper()
-                if h == 12:
-                    h = 0
-                if suffix == "PM":
-                    h += 12
-            return h * 60 + m_val
-
-        dest_mins = parse_time_str(dest_sched)
-        curr_mins = parse_time_str(curr_sched)
-        if dest_mins is not None and curr_mins is not None:
-            scheduled_remaining = float(max(0, dest_mins - curr_mins))
-        else:
-            journey_mins = float(route.journey_duration_minutes or 60.0)
-            progress_ratio = float(current_stop_idx) / float(max(1, len(points) - 1))
-            scheduled_remaining = (1.0 - progress_ratio) * journey_mins
-
-        base_eta = 0.7 * travel_time_by_speed + 0.3 * scheduled_remaining
-        eta_minutes = max(1, int(math.ceil(base_eta + delay_minutes)))
+        # Stabilized ETA calculation (prevents oscillation)
+        recalculate = True
+        last_eta = gps.get("last_calculated_eta")
+        last_lat = gps.get("last_calculated_eta_lat")
+        last_lon = gps.get("last_calculated_eta_lon")
+        last_speed = gps.get("last_calculated_eta_speed")
+        last_stop = gps.get("last_calculated_eta_stop")
+        last_delay = gps.get("last_calculated_eta_delay")
+        last_div = gps.get("last_calculated_eta_diverged")
+        last_ts = gps.get("last_calculated_eta_ts")
+        
+        if (last_eta is not None and 
+            last_lat is not None and 
+            last_lon is not None and 
+            last_ts is not None):
+            
+            dist_moved = _haversine_km(lat, lon, last_lat, last_lon)
+            speed_diff = abs((live_speed or 0.0) - (last_speed or 0.0))
+            time_elapsed = now_seconds - last_ts
+            
+            if (dist_moved < 0.05 and 
+                speed_diff < 10.0 and 
+                last_stop == current_stop_idx and 
+                last_delay == delay_minutes and 
+                last_div == is_diverged and 
+                time_elapsed < 30.0):
+                recalculate = False
+                minutes_elapsed = int(time_elapsed // 60)
+                eta_minutes = max(1, last_eta - minutes_elapsed)
+                
+        if recalculate:
+            dest_sched = points[-1].get("scheduled_time") or (schedule_stops[-1].get("scheduled_time") if (len(points) - 1) < len(schedule_stops) else "--")
+            curr_sched = points[current_stop_idx].get("scheduled_time") or (schedule_stops[current_stop_idx].get("scheduled_time") if current_stop_idx < len(schedule_stops) else "--")
+            dest_mins = _parse_time_str(dest_sched)
+            curr_mins = _parse_time_str(curr_sched)
+            if dest_mins is not None and curr_mins is not None:
+                scheduled_remaining = float(max(0, dest_mins - curr_mins))
+            else:
+                journey_mins = float(journey_duration_minutes or 60.0)
+                progress_ratio = float(current_stop_idx) / float(max(1, len(points) - 1))
+                scheduled_remaining = (1.0 - progress_ratio) * journey_mins
+                
+            eta_minutes = _calculate_realistic_eta(remaining_km, speed_to_use, delay_minutes, scheduled_remaining)
+            
+            # Save calculations to gps dictionary state
+            gps["last_calculated_eta"] = eta_minutes
+            gps["last_calculated_eta_lat"] = lat
+            gps["last_calculated_eta_lon"] = lon
+            gps["last_calculated_eta_speed"] = live_speed
+            gps["last_calculated_eta_stop"] = current_stop_idx
+            gps["last_calculated_eta_delay"] = delay_minutes
+            gps["last_calculated_eta_diverged"] = is_diverged
+            gps["last_calculated_eta_ts"] = now_seconds
+            
         eta_label = f"{eta_minutes} min"
         active_stop_index = min(current_stop_idx, max(0, len(points) - 1)) if points else 0
 
@@ -4135,24 +4551,61 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
         except (TypeError, ValueError, OverflowError, OSError):
             pass
 
-    return {
+    # Build four-section geometry for full-journey rendering (Google Maps style)
+    # Uses the fully resolved route_path and diversion_road after all geometry
+    # decisions have been made.  Additive only – nothing upstream is changed.
+    _diversion_road_for_sections: list = diversion_road if (is_diverged and isinstance(diversion_road, list)) else []
+    if has_gps_coordinates and route_path and len(route_path) >= 2 and movement_begun:
+        _split_idx = _nearest_route_index(lat, lon, route_path)
+        geometry_sections = _build_geometry_sections(
+            lat,
+            lon,
+            route_path,
+            _split_idx,
+            is_diverged,
+            _diversion_road_for_sections,
+            original_gtfs_path,
+        )
+    elif route_path and len(route_path) >= 2:
+        # Trip not yet started or no GPS – entire route is "remaining"
+        geometry_sections = {
+            "completed": [],
+            "planned":   [],
+            "dynamic":   [],
+            "remaining": route_path,
+        }
+    else:
+        geometry_sections = {"completed": [], "planned": [], "dynamic": [], "remaining": []}
+        
+    route_source_name = route.origin or "--"
+    route_dest_name = route.destination or "--"
+    
+    if is_return:
+        route_source_name, route_dest_name = route_dest_name, route_source_name
+        route_name_out = f"{route_source_name} - {route_dest_name}"
+    else:
+        route_name_out = route.name or "Tracking Active"
+
+    res = {
         "bus_id": bus.id,
         "bus_number": bus.bus_number,
         "registration_number": bus.registration_number,
         "driver_id": driver_code_out,
         "driver_name": driver_name_out,
+        "is_diverged": is_diverged,
         "assigned_driver_id": bus.assigned_driver_id,
         "assigned_driver_code": driver_code_out,
         "assigned_driver_name": driver_name_out,
         "sos_active": False,
         "route_id": route.id,
         "route_code": route.route_code or "BUS-RT",
-        "route_name": route.name or "Tracking Active",
+        "route_name": route_name_out,
         "status": _trip_state_label(trip, bus),
         "service_status": "gps_lost" if is_gps_lost else ("delayed" if delay_minutes > 0 else "on_time"),
         "bus_status": "Running",
         "trip_status": _trip_state_label(trip, bus),
         "gps_status": "Offline" if is_gps_lost else "Online",
+        "tracking_available": _is_tracking_available(_trip_state_label(trip, bus), "Offline" if is_gps_lost else "Online"),
         "speed": live_speed,
         "occupancy_pct": occ_pct,
         "occupancy_level": occ_level,
@@ -4162,9 +4615,9 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
         "remaining_stops": max(0, len(points) - completed_stops),
         "active_stop_index": active_stop_index,
         "trip_progress": round(trip_progress, 3),
-        "source_stop": points[0]["name"] if points else (route.origin or "--"),
-        "destination_stop": points[-1]["name"] if points else (route.destination or "--"),
-        "current_stop": f"{points[current_stop_idx]['name']} (Arrived)" if points and at_stop else (points[current_stop_idx]["name"] if points else "--"),
+        "source_stop": points[0]["name"] if points else route_source_name,
+        "destination_stop": route_dest_name,
+        "current_stop": f"{points[current_stop_idx]['name']} (Arrived)" if points and at_stop and not (gps and gps.get("distance_covered_km", 0.0) == 0.0) else (points[current_stop_idx]["name"] if points else "--"),
         "next_stop": points[next_stop_idx]["name"] if points else "--",
         "distance_remaining_km": round(remaining_km, 2) if isinstance(remaining_km, (int, float)) else remaining_km,
         "distance_covered_km": round(covered_km, 2),
@@ -4193,33 +4646,73 @@ def _real_gps_bus_snapshot(bus: Bus, trip, route: Route, gps: Optional[dict] = N
         "stops": stop_payload,
         "geometry_available": True,
         "geometry_message": None,
+        "geometry_sections": geometry_sections,
         "trip_id": trip.id if trip and getattr(trip, "id", None) else None,
         "actual_departure_time": trip.start_time.strftime("%H:%M") if trip and trip.start_time else "--",
         "actual_arrival_time": trip.end_time.strftime("%H:%M") if trip and trip.end_time else "--",
         **schedule_payload,
     }
+    return _enrich_snapshot_with_defaults(res, bus)
 
 
 def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
+    if trip.end_time:
+        if trip.end_time.tzinfo is None:
+            et_aware = trip.end_time.replace(tzinfo=UTC)
+        else:
+            et_aware = trip.end_time
+        ist_offset = timezone(timedelta(hours=5, minutes=30))
+        et_ist = et_aware.astimezone(ist_offset)
+        arrival_time_str = et_ist.strftime("%I:%M %p")
+    else:
+        arrival_time_str = "--"
+
     points = _route_points_for_assigned_trip(route, trip)
     route_path = _route_geometry_path_for_assigned_trip(trip)
     validation_error = _assigned_trip_validation_error(route, trip, points, route_path)
+    
+    has_return_ready_trip = Trip.query.filter_by(
+        bus_id=bus.id,
+        route_id=route.id,
+        status="return_ready"
+    ).first() is not None
+
     if validation_error:
         completed_message = f"Trip Completed. {validation_error}"
         snapshot = _live_tracking_validation_snapshot(bus, trip, route, completed_message, None)
+        direction_id_err = getattr(trip, "direction_id", 0) if trip else 0
+        status_err = "RETURN_COMPLETED" if direction_id_err == 1 else "COMPLETED"
         snapshot.update({
-            "status": "Trip Completed",
+            "status": status_err,
             "service_status": "completed",
             "bus_status": "OFFLINE",
-            "trip_status": "COMPLETED",
+            "trip_status": status_err,
+            "direction_id": direction_id_err,
             "gps_status": "Offline",
-            "eta_label": "Offline",
+            "eta_label": "Completed",
             "geometry_message": completed_message,
             "validation_error": validation_error,
             "gps_timestamp": trip.end_time.isoformat() if trip.end_time else snapshot.get("gps_timestamp"),
             "completed_at": trip.end_time.isoformat() if trip.end_time else None,
+            "trip_progress": 100,
+            "completed_stops": len(points) if points else 0,
+            "remaining_stops": 0,
+            "current_stop_index": max(0, len(points) - 1) if points else 0,
+            "at_stop": True,
+            "arrival_time": arrival_time_str,
+            "updated_arrival_time": arrival_time_str,
+            "current_stop": points[-1]["name"] if points else (route.destination or "--"),
+            "next_stop": "—",
+            "return_trip_ready": has_return_ready_trip,
+            "geometry_sections": {
+                "completed": [],  # Route unavailable, but trip is completed
+                "planned": [],
+                "dynamic": [],
+                "remaining": [],
+            },
         })
         return snapshot
+
     direction = "backward" if getattr(trip, "direction_id", 0) == 1 else "forward"
     if direction == "backward":
         route_path = list(reversed(route_path))
@@ -4244,15 +4737,22 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
     stop_payload = []
     for idx, point in enumerate(points):
         scheduled = schedule_stops[idx] if idx < len(schedule_stops) else {}
+        
+        arr_t = scheduled.get("arrival_time", "--")
+        act_t = scheduled.get("actual_time", "--")
+        if idx == len(points) - 1:
+            arr_t = arrival_time_str
+            act_t = arrival_time_str
+            
         stop_payload.append({
             "name": point["name"],
             "lat": point["lat"],
             "lng": point["lng"],
             "stop_order": idx + 1,
-            "arrival_time": scheduled.get("arrival_time", "--"),
+            "arrival_time": arr_t,
             "departure_time": scheduled.get("departure_time", "--"),
             "scheduled_time": scheduled.get("scheduled_time", "--"),
-            "actual_time": scheduled.get("actual_time", "--"),
+            "actual_time": act_t,
             "expected_time": scheduled.get("expected_time", "--"),
             "delay_minutes": scheduled.get("delay_minutes", 0),
             "delay_label": scheduled.get("delay_label", "0 min"),
@@ -4264,8 +4764,16 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
     path_distance_km = _path_segment_distance(route_path) if len(route_path) >= 2 else 0.0
     shape_id = getattr(trip, "shape_id", None) if trip else None
     status_str = "RETURN_COMPLETED" if (trip and (trip.status == "return_completed" or direction == "backward")) else "COMPLETED"
+    direction_id_val = getattr(trip, "direction_id", 0) if trip else 0
 
-    return {
+    route_name_out = route.name or "Tracking Completed"
+    if getattr(trip, "direction_id", 0) == 1 or getattr(trip, "status", "") in ("return_ready", "return_running", "return_completed"):
+        if points and len(points) >= 2:
+            route_name_out = f"{points[0]['name']} - {points[-1]['name']}"
+        elif route.destination and route.origin:
+            route_name_out = f"{route.destination} - {route.origin}"
+
+    res = {
         "bus_id": bus.id,
         "bus_number": bus.bus_number,
         "registration_number": bus.registration_number,
@@ -4277,47 +4785,34 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
         "sos_active": False,
         "route_id": route.id,
         "route_code": route.route_code or "BUS-RT",
-        "route_name": route.name or "Tracking Completed",
+        "route_name": route_name_out,
         "status": status_str,
         "service_status": "completed",
         "bus_status": "OFFLINE",
         "trip_status": status_str,
         "gps_status": "Offline",
+        "tracking_available": False,
         "speed": 0,
         "occupancy_pct": occ_pct,
         "occupancy_level": occ_level,
         "direction": direction,
+        "direction_id": direction_id_val,
         "current_stop_index": final_idx,
         "completed_stops": len(points),
         "remaining_stops": 0,
         "trip_progress": 100,
         "source_stop": points[0]["name"] if points else (route.origin or "--"),
         "destination_stop": points[-1]["name"] if points else (route.destination or "--"),
-        "current_stop": final_point["name"] if final_point else "--",
-        "next_stop": "--",
+        "current_stop": points[-1]["name"] if points else (route.destination or "--"),
+        "next_stop": "—",
+        "return_trip_ready": has_return_ready_trip,
         "distance_remaining_km": 0,
         "distance_covered_km": round(path_distance_km, 2),
         "eta_minutes": 0,
         "base_eta_minutes": 0,
         "updated_eta_minutes": 0,
         "next_stop_eta_minutes": 0,
-        "eta_label": "Completed",
-        "bearing": 0,
-        "current_lat": final_point["lat"] if final_point else None,
-        "current_lon": final_point["lng"] if final_point else None,
-        "display_current_lat": final_point["lat"] if final_point else None,
-        "display_current_lon": final_point["lng"] if final_point else None,
-        "is_live_gps": False,
-        "gps_timestamp": trip.end_time.isoformat() if trip.end_time else None,
-        "completed_at": trip.end_time.isoformat() if trip.end_time else None,
-        "shape_id": shape_id,
-        "shape_point_count": len(route_path),
-        "shape_points_db": _shape_point_count_db(shape_id),
-        "shape_points_api": len(route_path),
-        "points_removed": max(0, _shape_point_count_db(shape_id) - len(route_path)),
-        "shape_point_index": len(route_path) - 1 if route_path else None,
-        "movement_state": "completed",
-        "path": route_path,
+        "eta_label": "Arrived",
         "bearing": 0,
         "current_lat": final_point["lat"] if final_point else None,
         "current_lon": final_point["lng"] if final_point else None,
@@ -4342,8 +4837,24 @@ def _completed_trip_snapshot(bus: Bus, trip: Trip, route: Route) -> dict:
         "geometry_available": True,
         "geometry_message": None,
         "trip_id": trip.id if trip and getattr(trip, "id", None) else None,
+        # Completed trip geometry: entire route is 'completed' (rendered gray)
+        "geometry_sections": {
+            "completed": route_path,
+            "planned": [],
+            "dynamic": [],
+            "remaining": [],
+        },
         **schedule_payload,
+        "arrival_time": arrival_time_str,
+        "updated_arrival_time": arrival_time_str,
+        "current_stop_index": final_idx,
+        "completed_stops": len(points),
+        "remaining_stops": 0,
+        "trip_progress": 100,
+        "at_stop": True,
+        "gps_status": "Offline",
     }
+    return _enrich_snapshot_with_defaults(res, bus)
 
 
 def _planned_assignment_snapshot(bus: Bus, trip, route: Route, now_seconds: Optional[float] = None,
@@ -4401,20 +4912,17 @@ def _planned_assignment_snapshot(bus: Bus, trip, route: Route, now_seconds: Opti
     duration_minutes = schedule_payload.get("journey_duration_minutes")
     eta_label = _duration_label(duration_minutes) if duration_minutes is not None else schedule_payload.get("journey_duration", "--")
     trip_state = _trip_state_label(trip, bus)
-    bus_status = "Running" if active_without_gps else "Offline"
-    gps_status = "Online" if active_without_gps else "Offline"
-    gps_state_val = "ACTIVE" if active_without_gps else "OFFLINE"
-    if active_without_gps:
-        status_label = "Return Running" if (trip and getattr(trip, "direction_id", 0) == 1) else "Running"
-    else:
-        status_label = "Waiting to Depart"
+    bus_status = "Offline"
+    gps_status = "Offline"
+    gps_state_val = "OFFLINE"
+    status_label = "Waiting to Depart"
     
     current_lat = points[0]["lat"] if (points and active_without_gps) else None
     current_lon = points[0]["lng"] if (points and active_without_gps) else None
 
     runtime = _runtime_state_for_bus(bus.id)
     now_iso = datetime.fromtimestamp(now_seconds, UTC).isoformat()
-    return {
+    res = {
         "bus_id": bus.id,
         "bus_number": bus.bus_number,
         "registration_number": bus.registration_number,
@@ -4436,10 +4944,12 @@ def _planned_assignment_snapshot(bus: Bus, trip, route: Route, now_seconds: Opti
         "bus_status": bus_status,
         "trip_status": trip_state,
         "gps_status": gps_status,
+        "tracking_available": False,
         "speed": 0,
         "occupancy_pct": occ_pct,
         "occupancy_level": occ_level,
         "direction": direction,
+        "direction_id": getattr(trip, "direction_id", 0) if trip else 0,
         "current_stop_index": 0,
         "completed_stops": 0,
         "remaining_stops": len(points),
@@ -4484,8 +4994,16 @@ def _planned_assignment_snapshot(bus: Bus, trip, route: Route, now_seconds: Opti
         "geometry_message": None if display_path and points else "Assigned route geometry is not available.",
         "trip_id": getattr(trip, "id", None) if trip else None,
         "assigned": True,
+        # Planned snapshot: entire route is 'remaining' (rendered cyan)
+        "geometry_sections": {
+            "completed": [],
+            "planned": [],
+            "dynamic": [],
+            "remaining": display_path,
+        },
         **schedule_payload,
     }
+    return _enrich_snapshot_with_defaults(res, bus)
 
 
 def _log_fleet_exclusion(bus: Optional[Bus], reason: str, trip=None, route: Optional[Route] = None) -> None:
@@ -5209,15 +5727,26 @@ def register_routes(app: Flask) -> None:
 
             if new_route_id is not None:
                 try:
-                    bus.route_id = new_route_id
-                    bus.is_active = False
-                    _complete_active_trips(bus.id)
-                    _retire_pending_assignment_trips(bus.id)
-                    _create_trip_for_bus(bus, new_route_id)
-                    _mark_route_operational(new_route_id)
-                    LIVE_GPS_DATA.pop(bus.id, None)
-                    LIVE_GPS_BREADCRUMBS.pop(bus.id, None)
-                    BUS_DELAY_DATA.pop(bus.id, None)
+                    if bus.route_id != new_route_id:
+                        bus.route_id = new_route_id
+                        bus.is_active = False
+                        _complete_active_trips(bus.id)
+                        _retire_pending_assignment_trips(bus.id)
+                        _create_trip_for_bus(bus, new_route_id)
+                        _mark_route_operational(new_route_id)
+                        LIVE_GPS_DATA.pop(bus.id, None)
+                        LIVE_GPS_BREADCRUMBS.pop(bus.id, None)
+                        BUS_DELAY_DATA.pop(bus.id, None)
+                        
+                        db.session.add(Notification(
+                            title="Route Assignment Updated",
+                            type="admin",
+                            priority="info",
+                            target_role="admin",
+                            message=f"Bus {bus.bus_number} assigned to a new route.",
+                            related_bus_id=bus.id,
+                            related_route_id=new_route_id
+                        ))
                 except ValueError as exc:
                     db.session.rollback()
                     flash(str(exc), "danger")
@@ -5410,15 +5939,14 @@ def register_routes(app: Flask) -> None:
                 "direction": direction_label,
                 "busStatus": "OFFLINE",
                 "gpsStatus": "OFFLINE",
+                # For return trips, endpoints are already reversed in driver_route_points
                 "sourceStop": (
-                    assigned_route.origin
-                    if assigned_route and assigned_route.origin
-                    else (driver_route_points[0]["name"] if driver_route_points else "--")
+                    driver_route_points[0]["name"] if driver_route_points
+                    else (assigned_route.origin if assigned_route else "--")
                 ),
                 "destinationStop": (
-                    assigned_route.destination
-                    if assigned_route and assigned_route.destination
-                    else (driver_route_points[-1]["name"] if driver_route_points else "--")
+                    driver_route_points[-1]["name"] if driver_route_points
+                    else (assigned_route.destination if assigned_route else "--")
                 ),
                 "currentStop": driver_route_points[0]["name"] if driver_route_points else "--",
                 "nextStop": driver_route_points[1]["name"] if len(driver_route_points) > 1 else "--",
@@ -5475,6 +6003,11 @@ def register_routes(app: Flask) -> None:
             return jsonify({"success": False, "error": "No assigned bus"}), 404
         data = request.get_json(silent=True) or {}
         requested_return = bool(data.get("return_trip"))
+        try:
+            start_lat = float(data.get("lat")) if data.get("lat") is not None else None
+            start_lon = float(data.get("lon")) if data.get("lon") is not None else None
+        except (TypeError, ValueError):
+            start_lat, start_lon = None, None
 
         # Duplicate / Conflict checks
         active_trip = _active_trip_for_bus(assigned_bus)
@@ -5510,9 +6043,24 @@ def register_routes(app: Flask) -> None:
         try:
             trip = _start_driver_trip(
                 assigned_bus,
-                requested_return=requested_return
+                requested_return=requested_return,
+                start_lat=start_lat,
+                start_lon=start_lon
             )
+            
+            trip_type = "return trip" if requested_return else "forward trip"
+            db.session.add(Notification(
+                title="Trip Started",
+                type="system",
+                priority="info",
+                target_role="admin",
+                message=f"Bus {assigned_bus.bus_number} has started its {trip_type}.",
+                related_bus_id=assigned_bus.id,
+                trip_id=trip.id
+            ))
+            
             db.session.commit()
+            BUS_COMPLETED_TRIPS.pop(assigned_bus.id, None)
             _invalidate_fleet_snapshot_cache()
             _live_fleet_snapshot()
             return jsonify({
@@ -5547,7 +6095,19 @@ def register_routes(app: Flask) -> None:
 
         try:
             completed_trip, return_trip = _end_driver_trip(assigned_bus)
+            
+            db.session.add(Notification(
+                title="Trip Ended",
+                type="system",
+                priority="info",
+                target_role="admin",
+                message=f"Bus {assigned_bus.bus_number} has ended its trip.",
+                related_bus_id=assigned_bus.id,
+                trip_id=completed_trip.id
+            ))
+            
             db.session.commit()
+            BUS_COMPLETED_TRIPS[assigned_bus.id] = time.time()
             _invalidate_fleet_snapshot_cache()
             _live_fleet_snapshot()
             next_state = _trip_state_label(return_trip, assigned_bus) if return_trip else "OFFLINE"
@@ -5692,36 +6252,26 @@ def register_routes(app: Flask) -> None:
         elif max_path_index - current_path_index > reversal_threshold:
             max_path_index = current_path_index
 
-        # Projection-based Stop Selection
-        if route_points and route_path:
-            stop_path_indexes = _path_indexes_for_stops(route_points, route_path)
-            current_stop_index = 0
-            for i, path_idx in enumerate(stop_path_indexes):
-                if max_path_index >= path_idx:
-                    current_stop_index = i
-                else:
-                    break
-        else:
-            current_stop_index = 0
-
-        # One-time GPS synchronization on Start Trip
-        if not same_trip and route_points:
-            completed_stops = current_stop_index
-
-        at_stop = bool(previous.get("at_stop", False)) if same_trip else False
+        # Compute nearest stop index
+        nearest_stop_idx = 0
+        min_dist = float('inf')
         if route_points:
-            completed_stops = max(0, min(completed_stops, len(route_points)))
-            target_stop_index = completed_stops
-            if target_stop_index < len(route_points):
-                target = route_points[target_stop_index]
-                distance_to_target = _haversine_km(lat, lng, target["lat"], target["lng"])
-                stop_radius = current_app.config.get("STOP_RADIUS_KM", 0.03)
+            for idx, pt in enumerate(route_points):
+                dist = _haversine_km(lat, lng, pt["lat"], pt["lng"])
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_stop_idx = idx
 
-                if distance_to_target <= stop_radius:
-                    at_stop = True
-                elif at_stop and distance_to_target > stop_radius:
-                    completed_stops = min(len(route_points), completed_stops + 1)
-                    at_stop = False
+        # Monotonic constraint
+        prev_stop_idx = int(previous.get("current_stop_index") or 0) if same_trip else 0
+        current_stop_index = max(prev_stop_idx, nearest_stop_idx) if same_trip else nearest_stop_idx
+        completed_stops = current_stop_index
+
+        # Configurable stop radius check
+        stop_radius = current_app.config.get("STOP_RADIUS_KM", 0.03)
+        at_stop = False
+        if route_points and min_dist <= stop_radius:
+            at_stop = True
 
         bearing = None
         for key in ("bearing", "heading", "course"):
@@ -5733,7 +6283,7 @@ def register_routes(app: Flask) -> None:
             except (TypeError, ValueError):
                 bearing = None
 
-        LIVE_GPS_DATA[assigned_bus.id] = {
+        new_gps_data = {
             "lat": lat,
             "lon": lng,
             "timestamp": now_seconds,
@@ -5749,6 +6299,11 @@ def register_routes(app: Flask) -> None:
             "max_path_index": max_path_index,
             "at_stop": at_stop,
         }
+        if previous:
+            for k, v in previous.items():
+                if k not in new_gps_data:
+                    new_gps_data[k] = v
+        LIVE_GPS_DATA[assigned_bus.id] = new_gps_data
         breadcrumbs = LIVE_GPS_BREADCRUMBS.setdefault(assigned_bus.id, [])
         breadcrumbs.append({
             "lat": lat,
@@ -5769,6 +6324,21 @@ def register_routes(app: Flask) -> None:
             round((travelled_dist / total_dist) * 100.0, 3)
             if total_dist > 0.0 else 0.0
         )
+        if runtime.get("gps_state") == "OFF":
+            db.session.add(Notification(
+                title="GPS Online",
+                type="system",
+                priority="success",
+                target_role="admin",
+                message=f"Bus {assigned_bus.bus_number} GPS has come online.",
+                related_bus_id=assigned_bus.id,
+                trip_id=active_trip.id
+            ))
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
         runtime.update({
             "driver_location": {"lat": lat, "lng": lng},
             "bus_location": {"lat": lat, "lng": lng},
@@ -5800,6 +6370,19 @@ def register_routes(app: Flask) -> None:
         active_trip = _active_trip_for_bus(assigned_bus)
         if active_trip and assigned_bus.is_active:
             _mark_driver_runtime_gps_state(assigned_bus.id, "OFF")
+            db.session.add(Notification(
+                title="GPS Offline",
+                type="system",
+                priority="warning",
+                target_role="admin",
+                message=f"Bus {assigned_bus.bus_number} GPS has gone offline.",
+                related_bus_id=assigned_bus.id,
+                trip_id=active_trip.id
+            ))
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             _invalidate_fleet_snapshot_cache()
             return jsonify({
                 "success": True,
@@ -5815,6 +6398,22 @@ def register_routes(app: Flask) -> None:
             "bus_id": assigned_bus.id,
             "gps_enabled": False,
         }), 200
+
+    @app.route("/api/buses/route-info", methods=["GET"])
+    @login_required
+    def get_bus_route_info():
+        bus_number = request.args.get("bus_number", "").strip().upper()
+        if not bus_number:
+            return jsonify({"found": False})
+        bus = Bus.query.filter(or_(Bus.bus_number == bus_number, Bus.registration_number == bus_number)).first()
+        if bus and bus.route:
+            return jsonify({
+                "found": True,
+                "bus_number": bus.bus_number,
+                "route_id": bus.route_id,
+                "route_name": bus.route.name
+            })
+        return jsonify({"found": False})
 
 
     @app.route("/api/driver/report-delay", methods=["POST"])
@@ -5947,6 +6546,74 @@ def register_routes(app: Flask) -> None:
         else:
             back_url = url_for("passenger_dashboard")
         return render_template("tracking.html", bus_identifier=bus_id, back_url=back_url)
+
+    @app.route("/api/tracking/<bus_number>", methods=["GET"])
+    @login_required
+    def api_tracking_single_bus(bus_number):
+        def norm(val):
+            if not val:
+                return ""
+            return re.sub(r'[^a-zA-Z0-9]', '', str(val)).lower()
+
+        norm_target = norm(bus_number)
+        
+        # Look up the bus in the database
+        db_bus = Bus.query.filter(
+            (func.lower(Bus.bus_number) == bus_number.lower()) |
+            (func.lower(Bus.registration_number) == bus_number.lower()) |
+            (Bus.id == bus_number)
+        ).first()
+
+        if not db_bus:
+            all_buses = Bus.query.all()
+            for b in all_buses:
+                if (norm(b.id) == norm_target or 
+                    norm(b.bus_number) == norm_target or 
+                    norm(b.registration_number) == norm_target):
+                    db_bus = b
+                    break
+
+        if not db_bus:
+            return jsonify({"error": f"Bus {bus_number} not found"}), 404
+
+        # Search active trips first
+        trip = _active_trip_for_bus(db_bus)
+        if trip:
+            route = db.session.get(Route, trip.route_id)
+            real_gps = _fresh_gps_packet(db_bus.id, time.time())
+            if not real_gps:
+                real_gps = LIVE_GPS_DATA.get(db_bus.id)
+            snapshot = _real_gps_bus_snapshot(db_bus, trip, route, real_gps)
+        else:
+            # If inactive, look up the appropriate waiting or completed snapshot
+            trip = _driver_dashboard_trip_for_bus(db_bus)
+            route = db.session.get(Route, trip.route_id) if trip else None
+            if db_bus.route_id and not route:
+                route = db.session.get(Route, db_bus.route_id)
+
+            if trip and route:
+                if trip.status in ("completed", "return_completed"):
+                    snapshot = _completed_trip_snapshot(db_bus, trip, route)
+                else:
+                    snapshot = _planned_assignment_snapshot(db_bus, trip, route)
+            elif route:
+                snapshot = _planned_assignment_snapshot(db_bus, None, route)
+            else:
+                snapshot = {
+                    "bus_id": db_bus.id,
+                    "bus_number": db_bus.bus_number,
+                    "registration_number": db_bus.registration_number,
+                    "tracking_available": False,
+                    "gps_status": "Offline",
+                    "trip_status": "OFFLINE",
+                    "status": "Offline",
+                    "current_lat": None,
+                    "current_lon": None,
+                }
+                snapshot = _enrich_snapshot_with_defaults(snapshot, db_bus)
+
+        return jsonify(snapshot), 200
+
 
     @app.route("/api/tracking/completed/<bus_identifier>", methods=["GET"])
     @login_required
@@ -6147,7 +6814,8 @@ def register_routes(app: Flask) -> None:
     @login_required
     def api_notifications_read(notif_id):
         notif = db.get_or_404(Notification, notif_id)
-        if notif.recipient_id != current_user.id: return jsonify({"error": "Unauthorized"}), 403
+        if notif.recipient_id != current_user.id and notif.target_role != current_user.role:
+            return jsonify({"error": "Unauthorized"}), 403
         notif.is_read = True
         db.session.commit()
         return jsonify({"success": True}), 200
@@ -6401,6 +7069,8 @@ def register_routes(app: Flask) -> None:
                     if parsed_date:
                         item.incident_date = parsed_date
                     item.contact_phone = data.get("contact_number", item.contact_phone)
+                    if "evidence_image" in data:
+                        item.evidence_image = _clean_complaint_evidence_image(data.get("evidence_image"))
                     db.session.commit()
                     return jsonify({"message": "Success"}), 200
                 return jsonify({"error": "Unauthorized"}), 403
@@ -6422,15 +7092,6 @@ def register_routes(app: Flask) -> None:
                 if matched_bus.assigned_driver_code and shared_driver:
                     assigned_driver_id = shared_driver.id
 
-            if data.get("driver_id"):
-                matched_driver_bus = _bus_for_driver_code(data.get("driver_id"))
-                if matched_driver_bus and shared_driver and matched_bus is None:
-                    assigned_driver_id = shared_driver.id
-                    bus_id_val = matched_driver_bus.id
-                    matched_bus = matched_driver_bus
-                elif matched_bus and matched_bus.assigned_driver_code and shared_driver:
-                    assigned_driver_id = shared_driver.id
-
             if route_id_val is None and matched_bus and matched_bus.route_id:
                 route_id_val = matched_bus.route_id
 
@@ -6442,10 +7103,13 @@ def register_routes(app: Flask) -> None:
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 
+            evidence_image = _clean_complaint_evidence_image(data.get("evidence_image"))
+
             item = LostAndFound(
                 user_id=current_user.id,
                 item_name=data.get("item_category", "Unknown"),
                 description=desc,
+                evidence_image=evidence_image,
                 color=data.get("color", ""),
                 brand=data.get("brand", ""),
                 incident_date=incident_date,
@@ -6923,42 +7587,21 @@ def register_routes(app: Flask) -> None:
     def api_notifications_list():
         notifs = (
             Notification.query
-            .filter_by(recipient_id=current_user.id)
+            .filter(db.or_(Notification.recipient_id == current_user.id, Notification.target_role == current_user.role))
             .order_by(Notification.created_at.desc())
             .limit(100)
             .all()
         )
-        role = current_user.role
-        payload = []
-        for n in notifs:
-            category = _notification_category_for_role(role, n.message)
-            if not category:
-                continue
-            title = "Notification"
-            if n.message.startswith("["):
-                end = n.message.find("]")
-                if end > 1:
-                    title = n.message[1:end]
-            payload.append({
-                "id": n.id,
-                "title": title,
-                "message": n.message,
-                "category": category,
-                "is_read": n.is_read,
-                "timestamp": n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else "",
-                "priority": _notification_priority(category, n.message),
-            })
+        payload = [n.to_dict() for n in notifs]
         return jsonify({"notifications": payload})
 
     @app.route("/api/notifications/unread", methods=["GET"])
     @login_required
     def get_unread_notifications():
-        notifs = Notification.query.filter_by(recipient_id=current_user.id, is_read=False).all()
-        role = current_user.role
-        count = 0
-        for n in notifs:
-            if _notification_category_for_role(role, n.message):
-                count += 1
+        count = Notification.query.filter(
+            db.or_(Notification.recipient_id == current_user.id, Notification.target_role == current_user.role),
+            Notification.is_read == False
+        ).count()
         return jsonify({"unread_count": count})
 
     @app.route("/api/sos/trigger", methods=["POST"])
@@ -7014,11 +7657,6 @@ def register_routes(app: Flask) -> None:
                 if shared_driver:
                     driver_recipient_id = shared_driver.id
 
-        def _coordinate(raw_value):
-            try:
-                return float(raw_value) if raw_value not in (None, "") else None
-            except (TypeError, ValueError):
-                return None
         sos_msg = f"[SOS EMERGENCY] {bus_label}: {reason} - passenger {current_user.full_name} ({current_user.transpulse_id or current_user.id}) needs immediate assistance."
 
         sos = SOSAlert(
@@ -7067,11 +7705,6 @@ def register_routes(app: Flask) -> None:
 
         data = request.get_json(silent=True) or request.form.to_dict()
 
-        def _coordinate(raw_value):
-            try:
-                return float(raw_value) if raw_value not in (None, "") else None
-            except (TypeError, ValueError):
-                return None
 
         gps = _fresh_gps_packet(assigned_bus.id, time.time())
         latitude = _coordinate(data.get("latitude"))
@@ -7292,7 +7925,7 @@ def register_routes(app: Flask) -> None:
         return render_template("heatmap.html", heatmap_stats=heatmap_stats)
 
     @app.get("/heatmap/data")
-    @role_required("admin", "passenger")
+    @role_required("admin", "passenger", "driver")
     def heatmap_data_api():
         stops = db.session.query(Stop.stop_name, Stop.stop_lat, Stop.stop_lon, func.count(Stop.id).label('intensity')).filter(Stop.stop_lat.isnot(None)).group_by(Stop.stop_name, Stop.stop_lat, Stop.stop_lon).limit(200).all()
         return jsonify({"cities": [{"name": s[0], "lat": s[1], "lng": s[2], "intensity": min(1.0, s[3] * 0.15)} for s in stops]})
@@ -7344,4 +7977,6 @@ MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 3000))
+    app.run(host=host, port=port, debug=False)

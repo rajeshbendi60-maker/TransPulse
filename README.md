@@ -1,121 +1,166 @@
-# TransPulse
-**"The Pulse of Public Transportation"**
+# 🚌 TransPulse
+
+> **"The Pulse of Public Transportation"**
+
+TransPulse is a smart, production-grade public transportation management system designed to orchestrate the lifecycle of public transit. By unifying administrators, drivers, and passengers onto a single cohesive platform, TransPulse modernizes fleet management, enhances operational efficiency, and elevates the commuter experience through real-time telemetry and GTFS schedules data integration.
 
 ---
 
-## Project Overview
-TransPulse is an AI-powered smart public transportation management system designed to seamlessly orchestrate the lifecycle of public transit. By unifying administrators, drivers, and passengers onto a single cohesive platform, TransPulse modernizes fleet management, enhances operational efficiency, and elevates the commuter experience through real-time telemetry and data-driven insights.
+## ✨ Key Features
 
-## Problem Statement
-Traditional public transit systems suffer from opaque scheduling, unreliable ETAs, lack of dynamic occupancy tracking, and fragmented communication between drivers, fleet managers, and passengers. This leads to frustrated commuters and inefficient fleet utilization.
+### 📍 Centralized Live GPS Tracking
+- **Dynamic Tracking Visibility**: `tracking_available` flag ensures synchronized visibility. Commuters can only track active buses after a driver starts a trip.
+- **Offline Resilience**: Offline banners with automatic polling optimization and live recovery.
 
-## Motivation
-To build a state-of-the-art transit architecture that bridges the gap between raw GTFS static schedules and dynamic, real-world execution, ensuring every stakeholder has the right information at the exact right moment.
+### 🛑 Monotonic GTFS Stop Progression
+- **Precision Matching**: Real-time closest-stop matching using coordinate Haversine calculations.
+- **Timeline Jitter Elimination**: Strict monotonic progression constraint to filter out GPS signal drift.
+- **Configurable Radii**: Adjustable stop radius checkpoints (default 30m).
 
-## Objectives
-- Deliver accurate, real-time bus tracking and ETA predictions.
-- Provide a robust administrative suite for fleet and personnel management.
-- Empower drivers with an intuitive interface for route navigation and status reporting.
-- Enhance passenger confidence with live occupancy metrics and delay notifications.
+### ⏱️ Blended ETA Engine
+- **Smoothed Velocity Formula**: Integrates live speed, historical averages, and scheduled metrics for highly accurate ETA calculations.
+- **Smart Adjustments**: Factors in schedule delays and remaining segment distances.
 
-## Key Features
-- **Real-Time Tracking Engine:** Sub-second GPS telemetry via HTML5 Geolocation and Leaflet.
-- **Dynamic GTFS Parsing:** Automated ingestion and mapping of static transit data into actionable live routes.
-- **Intelligent Dashboards:** Tailored interfaces for Admins, Drivers, and Passengers.
-- **Occupancy & Delay Management:** Live reporting and automated timeline adjustments.
-- **Incident Management:** Integrated SOS alerts, Complaints, and Lost & Found systems.
+### 🔄 Return Journey Support
+- Automatically swaps origin/destination, reverses stop sequences, timeline progression, and map shapes when return trips commence.
 
-## System Architecture
+### 🗺️ Resilient Map Routing Hierarchy
+- Prioritizes GTFS shape rendering and backend road cache. Falls back to client-side OSRM queries or straight stop-to-stop lines during offline scenarios.
+
+### 👥 Interactive Role Dashboards
+- **Passenger**: Search routes, check schedules, view delay alerts, track buses, register complaints, and trigger SOS alerts.
+- **Driver**: Manage forward/return runs, report occupancy, inspect timelines, and view live traffic maps.
+- **Admin**: Dispatch buses, monitor fleet maps, resolve complaints, and manage emergency SOS signals.
+
+---
+
+## 🏛️ System Architecture
+
+```mermaid
+graph TD
+    subgraph Clients
+        DriverClient[Driver Dashboard]
+        PassengerClient[Passenger Portal]
+        AdminClient[Admin Command Center]
+    end
+
+    subgraph Backend [Flask Application]
+        API[REST APIs]
+        GPSEngine[Live Telemetry Engine]
+        RouteManager[GTFS / Route Management]
+    end
+
+    subgraph Storage
+        Cache[(Memory Cache - Live GPS)]
+        DB[(SQLite / PostgreSQL)]
+    end
+
+    DriverClient -->|Broadcasts GPS Coordinates| API
+    PassengerClient -->|Polling REST APIs| API
+    AdminClient -->|Polling REST APIs| API
+    
+    API <--> Cache
+    API --> GPSEngine
+    GPSEngine --> RouteManager
+    RouteManager --> DB
 ```
-Passenger Dashboard
-        ↓
-   Tracking API
-        ↓
-   Flask Backend
-        ↓
-    GTFS Engine
-        ↓
-    SQLAlchemy
-        ↓
- SQLite/PostgreSQL
-        ↓
-   Driver GPS
-        ↓
-   Leaflet Map
+
+---
+
+## 📂 Folder Structure
+
+```text
+TransPulse/
+├── app.py                      # Application entrypoint & REST API handlers
+├── config.py                   # Environment-specific configuration
+├── requirements.txt            # Python package dependencies
+├── render.yaml                 # Deployment specification
+├── README.md                   # Project overview & quickstart index
+├── docs/                       # Complete operational documentation
+├── models/                     # SQLAlchemy models
+├── static/                     # CSS overrides, scripts, map icons
+├── templates/                  # Jinja2 responsive templates
+├── gtfs_data/                  # Static GTFS schedules directory
+├── migrations/                 # Alembic DB migration files
+└── tests/                      # Automated unittest suites
 ```
 
-## Technology Stack
-- **Backend:** Python 3.10, Flask, Flask-SQLAlchemy, Flask-Login, Flask-Migrate
-- **Database:** SQLite (Development) / PostgreSQL (Production)
-- **Frontend:** HTML5, CSS3, Vanilla JavaScript, Bootstrap 5
-- **Mapping:** Leaflet.js, OpenStreetMap
-- **Deployment:** Gunicorn, Render
+---
 
-## Folder Structure
-- `app.py`: Core application entrypoint and route definitions.
-- `config.py`: Environment and application configuration.
-- `models/`: SQLAlchemy database models.
-- `templates/`: Jinja2 HTML templates.
-- `static/`: CSS, JS, and image assets.
-- `instance/`: Local database storage.
-- `gtfs_data/`: Directory for GTFS static files.
-- `migrations/`: Alembic database migration scripts.
-- `requirements.txt`: Python package dependencies.
-- `render.yaml`: Render deployment specification.
+## 🚀 Installation & Setup
 
-## Installation Guide
-1. **Clone the repository:** `git clone https://github.com/yourusername/transpulse.git`
-2. **Navigate to the directory:** `cd transpulse`
-3. **Create a virtual environment:** `python -m venv venv`
-4. **Activate the environment:** `source venv/bin/activate` (Linux/Mac) or `venv\Scripts\activate` (Windows)
-5. **Install dependencies:** `pip install -r requirements.txt`
+### Prerequisites
+- Python 3.10+
+- pip (Python Package Manager)
 
-## Configuration & Environment Variables
-Create a `.env` file or export the following:
-- `SECRET_KEY`: Cryptographic key for session security.
-- `FLASK_ENV`: Set to `production` or `development`.
-- `DATABASE_URL`: Connection string (defaults to local SQLite).
-- `MAIL_USERNAME` / `MAIL_PASSWORD`: Credentials for email notifications.
+### Step-by-Step Guide
 
-## Running Locally
-1. **Initialize Database:** `flask db upgrade`
-2. **Import GTFS Data:** `flask import-gtfs`
-3. **Start Server:** `python app.py` (Development) or `gunicorn app:app` (Production)
-4. **Access the App:** Open `http://localhost:5000`
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/transpulse.git
+   cd transpulse
+   ```
 
-## Admin, Driver, and Passenger Workflows
-Please see the respective guides:
-- [Admin Guide](ADMIN_GUIDE.md)
-- [Driver Guide](DRIVER_GUIDE.md)
-- [Passenger Guide](PASSENGER_GUIDE.md)
+2. **Setup virtual environment:**
+   ```bash
+   python -m venv .venv
+   ```
 
-## Deployment Guide
-Please see the [Deployment Guide](DEPLOYMENT.md) for Render instructions.
+3. **Activate the environment:**
+   - **Windows:** `.venv\Scripts\activate`
+   - **Linux/macOS:** `source .venv/bin/activate`
 
-## Security Features
-- **Role-Based Access Control (RBAC):** Strict isolation between Admin, Driver, and Passenger endpoints.
-- **Secure Sessions:** HTTPOnly and SameSite configured session cookies.
-- **Environment Isolation:** Sensitive keys and database URIs excluded from source control.
-- **Data Validation:** Strict payload validation and SQL injection prevention via SQLAlchemy ORM.
+4. **Install required packages:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Screenshots
-*(Placeholder for UI Screenshots)*
+5. **Configure Environment:**
+   Copy the example environment file and update it as needed:
+   ```bash
+   cp .env.example .env
+   ```
 
-## Known Limitations
-- Relying on mobile device GPS can introduce coordinate drift in dense urban environments (urban canyons).
-- OSRM route snapping requires active internet connectivity on the backend.
-- GTFS static files must be strictly formatted per the GTFS specification.
+6. **Initialize the Database:**
+   ```bash
+   flask db upgrade
+   ```
 
-## Future Enhancements
-- Push Notifications (FCM / Web Push)
-- Native Mobile Applications (iOS / Android)
-- Multi-State GTFS Integration
-- AI-Powered ETA Prediction Models
-- Machine Learning Occupancy Forecasting
-- Driver Behaviour Analytics
+7. **Ingest GTFS Schedules:**
+   ```bash
+   flask import-gtfs
+   ```
 
-## Contributors
-- Rajesh (Lead Software Engineer)
+8. **Start Development Server:**
+   ```bash
+   python app.py
+   ```
+   *Open [http://localhost:5000](http://localhost:5000) in your browser.*
 
-## License
-MIT License
+---
+
+## 📚 Documentation
+
+Dive deeper into TransPulse operations:
+
+- 📖 **[System Documentation Index](docs/README.md)**
+- 🛡️ **[Admin Operations Guide](docs/ADMIN_GUIDE.md)**
+- 🛞 **[Driver Operations Guide](docs/DRIVER_GUIDE.md)**
+- 🎒 **[Passenger User Guide](docs/PASSENGER_GUIDE.md)**
+- 🚀 **[Deployment Operations](docs/DEPLOYMENT.md)**
+- 🔌 **[API Documentation](docs/API_DOCUMENTATION.md)**
+- 📐 **[System Architecture](docs/ARCHITECTURE.md)**
+- 🗄️ **[Database Reference Schema](docs/DATABASE_SCHEMA.md)**
+
+---
+
+## 🔮 Future Enhancements
+- **FCM Push Alerts:** Real-time ETA updates and SOS event notifications.
+- **Machine Learning Analytics:** Advanced delay prediction modeling.
+- **GTFS Realtime Integration:** Syncing with external vehicle feeds.
+- **Driver Analytics Dashboard:** Monitoring and improving driving patterns.
+
+---
+
+## 📜 License
+Distributed under the **MIT License**. See `LICENSE` for details.

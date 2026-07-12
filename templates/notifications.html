@@ -27,11 +27,11 @@
     
     <div class="d-flex align-items-center mb-4 mt-3 fade-up">
         {% if current_user.role == "admin" %}
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% elif current_user.role == "driver" %}
-            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% else %}
-            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% endif %}
         <div>
             <h2 class="fw-bold mb-1 text-white">🔔 Notifications Center</h2>
@@ -269,10 +269,11 @@ async function loadNotifications() {
                     readList.innerHTML += card;
                 }
 
-                const cat = n.category || 'Passenger';
-                if (cat === 'System' && systemList) systemList.innerHTML += `<div class="small text-light border-bottom border-secondary pb-1">${safeMsg}</div>`;
-                if (cat === 'Passenger' && passengerList) passengerList.innerHTML += `<div class="small text-info border-bottom border-secondary pb-1">${safeMsg}</div>`;
-                if (cat === 'Driver' && driverList) driverList.innerHTML += `<div class="small text-primary border-bottom border-secondary pb-1">${safeMsg}</div>`;
+                const cat = n.type || 'system';
+                if (cat === 'system' && systemList) systemList.innerHTML += `<div class="small text-light border-bottom border-secondary pb-1">${safeMsg}</div>`;
+                if (cat === 'passenger' && passengerList) passengerList.innerHTML += `<div class="small text-info border-bottom border-secondary pb-1">${safeMsg}</div>`;
+                if (cat === 'driver' && driverList) driverList.innerHTML += `<div class="small text-primary border-bottom border-secondary pb-1">${safeMsg}</div>`;
+                if (cat === 'admin' && driverList) driverList.innerHTML += `<div class="small text-warning border-bottom border-secondary pb-1">${safeMsg}</div>`;
             });
         } else {
             unreadList.innerHTML = '<div class="text-center py-4 text-muted">No notifications for your role.</div>';
@@ -302,7 +303,8 @@ async function markAsRead(id) {
 document.addEventListener('DOMContentLoaded', () => {
     initAnnouncementForm();
     loadNotifications();
-    setInterval(loadNotifications, 30000); 
+    const intervalMs = userRole === 'passenger' ? 15000 : 10000;
+    setInterval(loadNotifications, intervalMs); 
 });
 </script>
 {% endblock %}

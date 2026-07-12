@@ -382,17 +382,22 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: var(--driver-card-gap);
-    align-items: start;
     margin-bottom: var(--driver-card-gap);
 }
 
-.driver-left-column,
-.driver-right-column {
+.driver-left-column {
     display: grid;
     grid-template-columns: 1fr;
     gap: var(--driver-card-gap);
     align-content: start;
     align-items: start;
+}
+
+.driver-right-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--driver-card-gap);
+    height: 100%;
 }
 
 .driver-card-body,
@@ -407,10 +412,13 @@
 .driver-route-path-card {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
 .driver-route-scroll {
-    max-height: 650px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-gutter: stable;
@@ -773,6 +781,15 @@
         position: sticky;
         top: 20px;
         align-self: start;
+        height: calc(100vh - 40px);
+        max-height: calc(100vh - 40px);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .driver-route-path-card {
+        flex: 1;
+        min-height: 0; /* Ensures flex container can shrink */
     }
 }
 
@@ -964,4 +981,129 @@
     background: transparent; 
     border: none; 
     transition: transform 0.3s linear; 
+}
+
+/* ==============================================================
+   GLOBAL DASHBOARD MOBILE RESPONSIVENESS ENHANCEMENTS
+   ============================================================== */
+
+/* 1. Navigation & Sidebar */
+@media (max-width: 991.98px) {
+    .offcanvas-collapse {
+        max-width: 80vw;
+    }
+    .navbar-collapse {
+        background: #040b18;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid rgba(52, 210, 255, 0.2);
+    }
+}
+
+/* 2. Admin & Driver KPI Grids */
+@media (max-width: 1400px) {
+    .driver-stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1200px) {
+    .telemetry-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .driver-ops-grid,
+    .feature-grid {
+        grid-template-columns: 1fr;
+    }
+    .admin-metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+}
+
+/* 3. Small Mobile Resets (<= 576px) */
+@media (max-width: 575.98px) {
+    .driver-stats-grid,
+    .driver-control-grid,
+    .driver-status-grid,
+    .admin-metrics-grid,
+    .telemetry-layout {
+        grid-template-columns: 1fr;
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .telemetry-field {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 8px 0;
+    }
+
+    .driver-card-body, .driver-side-card, .card-body {
+        padding: 12px;
+        overflow-x: hidden;
+    }
+
+    .driver-ui-btn {
+        width: 100%;
+        margin-bottom: 8px;
+    }
+
+    .driver-action-row {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .premium-action-banner {
+        padding: 15px;
+    }
+    
+    .timeline-stop {
+        padding-left: 18px;
+    }
+}
+
+/* 4. Tracking Page Adjustments */
+@media (max-width: 768px) {
+    #osm-map, .map-frame {
+        height: 50vh;
+        min-height: 350px;
+    }
+    .leaflet-control-container .leaflet-control {
+        transform: scale(0.85);
+        transform-origin: top right;
+    }
+}
+
+/* 5. Passenger Dashboard Adjustments */
+@media (max-width: 768px) {
+    .search-card, .route-card-interactive {
+        width: 100%;
+        margin-bottom: 1rem;
+        flex-direction: column;
+    }
+    .route-card-interactive > div {
+        text-align: center;
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    .route-card-interactive > div:last-child {
+        margin-bottom: 0;
+    }
+}
+
+/* 6. Admin Analytics Charts */
+@media (max-width: 991px) {
+    .chart-container, .chart-wrapper {
+        position: relative;
+        height: 300px;
+        width: 100%;
+        min-height: 300px;
+    }
 }

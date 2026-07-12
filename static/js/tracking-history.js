@@ -84,7 +84,7 @@ window.TransPulseTrackingHistory = {
         this.renderAll();
     },
 
-    renderPanel(panel) {
+    renderPanel(panel, statusMap = {}) {
         const body = panel.querySelector('[data-tracking-history-body]');
         const empty = panel.querySelector('[data-tracking-history-empty]');
         const tableWrap = panel.querySelector('[data-tracking-history-table]');
@@ -112,6 +112,14 @@ window.TransPulseTrackingHistory = {
             const trackedAt = this.escapeHtml(this.formatTime(record.trackedAt));
             const encodedBus = encodeURIComponent(record.busId || '');
 
+            const isAvailable = !!statusMap[String(record.busId || '').trim().toUpperCase()];
+            let viewBtnHtml = '';
+            if (!isAvailable) {
+                viewBtnHtml = `<button type="button" class="tracking-history-action" disabled title="Tracking will be available once the driver starts the trip.">View</button>`;
+            } else {
+                viewBtnHtml = `<a class="tracking-history-action" href="/tracking/${encodedBus}">View</a>`;
+            }
+
             return `
                 <tr>
                     <td class="fw-bold text-white">${busId}</td>
@@ -121,7 +129,7 @@ window.TransPulseTrackingHistory = {
                     <td><span class="tracking-status-badge ${this.statusClass(status)}">${statusText}</span></td>
                     <td>
                         <div class="d-flex flex-wrap gap-2">
-                            <a class="tracking-history-action" href="/tracking/${encodedBus}">View</a>
+                            ${viewBtnHtml}
                             <button type="button" class="tracking-history-action tracking-history-action-delete" data-delete-tracking-history="${busId}">Delete</button>
                         </div>
                     </td>
@@ -130,7 +138,25 @@ window.TransPulseTrackingHistory = {
     },
 
     renderAll() {
-        document.querySelectorAll('[data-tracking-history-panel]').forEach(panel => this.renderPanel(panel));
+        const panels = document.querySelectorAll('[data-tracking-history-panel]');
+        panels.forEach(panel => this.renderPanel(panel, {}));
+
+        fetch('/api/buses/live')
+            .then(res => res.ok ? res.json() : { buses: [] })
+            .then(data => {
+                const liveBuses = data.buses || [];
+                const statusMap = {};
+                liveBuses.forEach(b => {
+                    const busNo = String(b.bus_number || '').trim().toUpperCase();
+                    const busId = String(b.bus_id || '').trim().toUpperCase();
+                    statusMap[busNo] = b.tracking_available;
+                    statusMap[busId] = b.tracking_available;
+                });
+                panels.forEach(panel => this.renderPanel(panel, statusMap));
+            })
+            .catch(err => {
+                console.error("Failed to load live status map for history: ", err);
+            });
     },
 
     init() {

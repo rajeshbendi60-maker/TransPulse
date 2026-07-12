@@ -1,0 +1,11 @@
+{
+  "name": "transpulse",
+  "version": "1.0.0",
+  "description": "Andhra Pradesh Smart Mobility Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {}
+}

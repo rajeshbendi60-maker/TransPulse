@@ -12,6 +12,7 @@ class LostAndFound(db.Model):
     item_type = db.Column(db.String(50), nullable=False)  # lost, found
     item_name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=False)
+    evidence_image = db.Column(db.Text, nullable=True)
     
     color = db.Column(db.String(50), nullable=True)
     brand = db.Column(db.String(50), nullable=True)
@@ -47,6 +48,7 @@ class LostAndFound(db.Model):
             'item_type': self.item_type,
             'item_name': self.item_name,
             'description': self.description,
+            'evidence_image': self.evidence_image,
             'color': self.color,
             'brand': self.brand,
             'incident_date': self.incident_date.isoformat(),

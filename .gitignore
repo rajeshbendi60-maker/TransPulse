@@ -1,2 +1,12 @@
 __pycache__/
 *.py[cod]
+.venv/
+.idea/
+.agents/
+instance/*.db
+instance/*.sqlite
+.env
+.DS_Store
+*.pyc
+~$*
+*~

@@ -454,7 +454,11 @@ function requestDriverInitialPosition() {
 async function startDriverTrip(returnTrip) {
     try {
         const initialPosition = await requestDriverInitialPosition();
-        const payload = await postDriverAction('/api/driver/start-trip', { return_trip: !!returnTrip });
+        const payload = await postDriverAction('/api/driver/start-trip', { 
+            return_trip: !!returnTrip, 
+            lat: initialPosition.coords.latitude, 
+            lon: initialPosition.coords.longitude 
+        });
         setTripState(payload.trip_status || 'ACTIVE');
         startDriverGpsBroadcast(initialPosition);
         updateTelemetry();
@@ -893,6 +897,19 @@ updateTelemetry = async function() {
         } else {
             setTripState(bus.trip_status || 'ACTIVE');
         }
+    }
+
+    const isGpsOffline = bus.gps_status === 'Offline' || serviceStatus === 'offline' || serviceStatus === 'OFFLINE';
+
+    if (isGpsOffline) {
+        const offlineMsg = `<div class="p-4 text-center text-muted fw-bold">GPS is Offline. Waiting for the driver to start the trip.</div>`;
+        telemetryContainer.innerHTML = offlineMsg;
+        if (tripStatusPanel) {
+            tripStatusPanel.innerHTML = `<div class="p-3 text-center text-muted small fw-bold">GPS is Offline. Waiting for the driver to start the trip.</div>`;
+        }
+        tripSummaryContainer.innerHTML = offlineMsg;
+        routeSequenceContainer.innerHTML = offlineMsg;
+        return;
     }
 
     telemetryContainer.innerHTML = `

@@ -1,26 +1,31 @@
-# Deployment
+# TransPulse Deployment Guide
 
-## Required Environment
+TransPulse is configured to be deployed seamlessly onto cloud platforms like Render. This guide provides the necessary steps to deploy the application in a production environment.
 
-- `SECRET_KEY`
-- `DATABASE_URL`
-- `GOOGLE_CLIENT_ID`
-- `MAIL_USERNAME`
-- `MAIL_PASSWORD`
-- `RATELIMIT_STORAGE_URI`
-- `FLASK_ENV=production`
+## 1. GitHub Integration
+1. Ensure your local repository is pushed to a remote GitHub repository.
+2. The `render.yaml` blueprint is included in the root directory to automate the deployment process.
 
-## Steps
+## 2. Render Deployment
+1. Log in to your Render dashboard.
+2. Select **New** -> **Blueprint**.
+3. Connect your GitHub repository containing the TransPulse codebase.
+4. Render will automatically detect the `render.yaml` file and provision the necessary Web Service and PostgreSQL Database.
 
-1. Install dependencies from `requirements.txt`.
-2. Apply migrations or run the startup schema patch once against a backed-up database.
-3. Import GTFS data with `flask import-gtfs` or `python import_apsrtc_data.py`.
-4. Start with Gunicorn or the platform web command.
-5. Verify login, Google auth, password reset, driver GPS, passenger tracking, SOS, and admin dashboards.
+## 3. Environment Variables
+The following environment variables are securely managed. In Render, these can be set under the **Environment** tab of your Web Service:
+- `SECRET_KEY`: A cryptographically secure random string.
+- `FLASK_ENV`: Set this strictly to `production`.
+- `MAIL_USERNAME` / `MAIL_PASSWORD`: SMTP credentials for the system's automated email notifications.
+- *Note:* `DATABASE_URL` is automatically provisioned and injected by Render via the blueprint.
 
-## Notes
+## 4. Database Setup
+The blueprint automatically runs the `flask db upgrade` command during the build phase. This ensures your PostgreSQL schema is perfectly aligned with the SQLAlchemy models before the application boots.
 
-- Use HTTPS in production.
-- Use persistent rate-limit storage.
-- Use one shared live-state backend if running more than one worker.
-- See `ProductionConfiguration.md` and `MultiWorkerReadiness.md` for the final production configuration and scaling requirements.
+## 5. Static Files & Gunicorn
+TransPulse uses `gunicorn` as the production WSGI server. 
+- The Start Command defined in `render.yaml` is `gunicorn app:app`.
+- Static files (CSS, JS, Images, Leaflet assets) are served directly by the application and cached via the integrated ServiceWorker.
+
+## 6. HTTPS
+Render automatically provisions and manages SSL/TLS certificates for your application. The `config.py` intelligently detects the `production` environment and enforces secure, HTTPOnly cookies across the platform to leverage this secure layer.

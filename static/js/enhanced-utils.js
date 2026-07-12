@@ -1,5 +1,73 @@
 (function() {
     window.TransPulseUtils = {
+        escapeHtml: function(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        },
+
+        occupancyMeta: function(bus) {
+            const pct = Math.max(0, Math.min(100, Math.round(Number(bus && bus.occupancy_pct) || 0)));
+            const explicitLevel = String((bus && bus.occupancy_level) || '').trim().toUpperCase();
+            let level = ['LOW', 'MEDIUM', 'HIGH'].includes(explicitLevel) ? explicitLevel : 'LOW';
+            let color = '#22d39a';
+            if (!['LOW', 'MEDIUM', 'HIGH'].includes(explicitLevel)) {
+                if (pct >= 71) level = 'HIGH';
+                else if (pct >= 31) level = 'MEDIUM';
+            }
+            if (level === 'HIGH') {
+                level = 'HIGH';
+                color = '#ff9f43';
+            } else if (level === 'MEDIUM') {
+                level = 'MEDIUM';
+                color = '#f5b342';
+            }
+            return { pct, level, color };
+        },
+
+        busStatusMeta: function(bus) {
+            if (!bus) return { text: 'OFFLINE', badge: 'bg-secondary', live: 'OFFLINE' };
+            const tripStatus = String(bus.trip_status || '').toUpperCase();
+            const serviceStatus = String(bus.service_status || '').toLowerCase();
+            const gpsStatus = String(bus.gps_status || '').toLowerCase();
+
+            const completed = serviceStatus === 'completed' || tripStatus === 'COMPLETED' || tripStatus === 'RETURN_COMPLETED';
+            if (completed) {
+                return { text: 'Completed', badge: 'bg-secondary', live: 'OFFLINE' };
+            }
+
+            if (tripStatus === 'RUNNING' || tripStatus === 'RETURN_RUNNING' || bus.bus_status === 'Running') {
+                if (gpsStatus === 'offline' || serviceStatus === 'gps_lost' || bus.is_live_gps === false) {
+                    return { text: 'Running', badge: 'bg-warning text-dark', live: 'GPS Offline' };
+                }
+                return { text: 'Running', badge: 'bg-success', live: 'GPS Online' };
+            }
+
+            if (tripStatus === 'WAITING_TO_DEPART') {
+                return { text: 'Waiting to Depart', badge: 'bg-warning text-dark', live: 'GPS Offline' };
+            }
+
+            return { text: 'OFFLINE', badge: 'bg-secondary', live: 'OFFLINE' };
+        },
+
+        etaDisplay: function(bus) {
+            if (!bus) return '--';
+            const tripStatus = String(bus.trip_status || '').toUpperCase();
+            const serviceStatus = String(bus.service_status || '').toLowerCase();
+            const completed = serviceStatus === 'completed' || tripStatus === 'COMPLETED' || tripStatus === 'RETURN_COMPLETED';
+            if (completed) {
+                return 'Completed';
+            }
+            if (tripStatus === 'WAITING_TO_DEPART') return '--';
+            if (bus.eta_label) return bus.eta_label;
+            const eta = bus.updated_eta_minutes ?? bus.eta_minutes;
+            return eta === null || eta === undefined ? '--' : `${eta} min`;
+        },
+
         animateCounter: function(element, endValue, duration = 1500) {
             if (!element || !element.textContent) return;
             const startValue = 0;

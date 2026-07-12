@@ -10,13 +10,14 @@ window.TransportHeatmap = {
     },
     
     fetchDataAndInitMap: function() {
-        fetch('/heatmap/data')
-            .then(r => r.json())
-            .then(data => {
-                this.citiesData = data.cities || [];
-                this.initMap();
-            })
-            .catch(e => console.error("Heatmap Load Error:", e));
+        Promise.all([
+            fetch('/heatmap/data').then(r => r.ok ? r.json() : { cities: [] }).catch(() => ({ cities: [] })),
+            fetch('/api/routes/live').then(r => r.ok ? r.json() : { routes: [] }).catch(() => ({ routes: [] }))
+        ]).then(([heatmapData, liveRoutesData]) => {
+            this.citiesData = heatmapData.cities || [];
+            this.liveRoutes = liveRoutesData.routes || [];
+            this.initMap();
+        }).catch(e => console.error("Heatmap Load Error:", e));
     },
     
     initMap: function() {
@@ -27,7 +28,7 @@ window.TransportHeatmap = {
         }).setView([15.9129, 79.7400], 6);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors',
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
             maxZoom: 19
         }).addTo(this.map);
 
@@ -60,6 +61,43 @@ window.TransportHeatmap = {
                     <span style="font-weight:700;color:#0b1d36;">Density Score: ${city.intensity.toFixed(2)}</span>
                 </div>
             `);
+        });
+
+        // Draw solid colored route lines on main heatmap map
+        this.routesLayerGroup = L.layerGroup().addTo(this.map);
+        this.liveRoutes.forEach(route => {
+            const path = route.display_path || route.path || (route.stops ? route.stops.map(s => ({ lat: s.lat, lng: s.lng || s.lon })) : []);
+            if (path && path.length >= 2) {
+                let totalIntensity = 0;
+                let matchCount = 0;
+                if (route.stops && route.stops.length) {
+                    route.stops.forEach(s => {
+                        const match = this.citiesData.find(c => String(c.name).toLowerCase().trim() === String(s.name || s.stop_name).toLowerCase().trim());
+                        if (match) {
+                            totalIntensity += match.intensity || 0;
+                            matchCount++;
+                        }
+                    });
+                }
+                const avgIntensity = matchCount > 0 ? (totalIntensity / matchCount) : 0.1;
+                
+                let color = '#22c55e'; // Green
+                if (avgIntensity >= 0.8) color = '#ef4444'; // Red
+                else if (avgIntensity >= 0.6) color = '#fb923c'; // Orange
+                else if (avgIntensity >= 0.4) color = '#facc15'; // Yellow
+                else if (avgIntensity >= 0.2) color = '#4ade80'; // Light Green
+
+                L.polyline(path.map(p => [p.lat, p.lng || p.lon]), {
+                    color: color,
+                    weight: 5,
+                    opacity: 0.85
+                }).addTo(this.routesLayerGroup).bindPopup(`
+                    <div style="padding: 4px; color:#333;">
+                        <strong>Route: ${route.route_name || route.route_code}</strong><br>
+                        <span>Traffic Status: ${avgIntensity >= 0.8 ? 'Heavy' : avgIntensity >= 0.6 ? 'Moderate-Heavy' : avgIntensity >= 0.4 ? 'Moderate' : 'Low'}</span>
+                    </div>
+                `);
+            }
         });
 
         const legend = L.control({ position: 'bottomright' });

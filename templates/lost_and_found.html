@@ -24,11 +24,11 @@
     
     <div class="d-flex align-items-center mb-4 mt-3 fade-up">
         {% if current_user.role == "admin" %}
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% elif current_user.role == "driver" %}
-            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% else %}
-            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% endif %}
         <div>
             <h2 class="fw-bold mb-0 text-white">🎒 Lost & Found</h2>
@@ -80,14 +80,9 @@
                         <input type="text" name="lost_location" id="item-lost-location" class="form-control bg-dark text-white border-secondary" placeholder="e.g. Visakhapatnam to Rajamahendravaram" required>
                     </div>
 
-                    <div class="col-md-6">
+                    <div class="col-md-12">
                         <label class="form-label text-muted small fw-bold">Bus Number / ID</label>
                         <input type="text" name="bus_id" id="item-bus-id" class="form-control bg-dark text-white border-secondary" placeholder="e.g. APSRTC-101 or registration plate">
-                    </div>
-                    
-                    <div class="col-md-6">
-                        <label class="form-label text-muted small fw-bold">Driver ID (if known)</label>
-                        <input type="text" name="driver_id" id="item-driver-id" class="form-control bg-dark text-white border-secondary" placeholder="e.g. DVR-001">
                     </div>
 
                     <div class="col-12 d-none" id="other-desc-group">
@@ -98,6 +93,25 @@
                     <div class="col-12" id="standard-desc-group">
                         <label class="form-label text-muted small fw-bold">Description</label>
                         <textarea name="description" id="standard-desc-input" class="form-control bg-dark text-white border-secondary" rows="3" placeholder="Describe the item in detail..."></textarea>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label text-muted small fw-bold">Reference / Evidence Image (Optional)</label>
+                        <input type="file" id="lnf-image-input" class="form-control bg-dark text-white border-secondary" accept="image/jpeg, image/png, image/webp" capture="environment">
+                        <div class="form-text text-secondary mb-2">Upload a clear image of the lost item to help identify it.</div>
+                        <input type="hidden" name="evidence_image" id="lnf-image-data" value="">
+                        <div class="position-relative d-inline-block mt-2">
+                            <img id="lnf-image-preview" alt="Item photo preview" class="img-fluid rounded border border-secondary d-none" style="max-height:180px;object-fit:contain;">
+                            <button type="button" id="remove-lnf-image-btn" class="remove-image-btn" style="position: absolute; top: -10px; right: -10px; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.8); color: white; border: 1px solid rgba(255,255,255,0.2); align-items: center; justify-content: center; font-size: 14px; cursor: pointer; z-index: 10; display: none;" onclick="document.getElementById('lnf-image-input').value=''; document.getElementById('lnf-image-input').dispatchEvent(new Event('change'))">✕</button>
+                        </div>
+                        <style>
+                            #lnf-image-preview:not(.d-none) + #remove-lnf-image-btn {
+                                display: flex !important;
+                            }
+                            #remove-lnf-image-btn:hover {
+                                background: rgba(255,93,108,0.9) !important;
+                            }
+                        </style>
                     </div>
 
                     <div class="col-12">
@@ -266,6 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <span class="badge bg-secondary text-uppercase" style="font-size: 0.65rem;">${item.status}</span>
                                     </div>
                                     <p class="text-light small mb-2">${item.description || 'No additional details provided.'}</p>
+                                    ${item.evidence_image && String(item.evidence_image).startsWith('data:image/') ? `<a href="${item.evidence_image}" target="_blank" class="text-info d-block mt-1 mb-2" style="font-size:0.8rem;">📸 View Evidence Image</a>` : ''}
                                     ${item.driver_reply ? `<p class="text-success small mb-2"><strong>Driver Reply:</strong> ${item.driver_reply}</p>` : ''}
                                     <div class="d-flex justify-content-between text-muted" style="font-size: 0.75rem;">
                                         <span>Bus: ${item.bus_number || item.bus_id}</span>
@@ -402,9 +417,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         const matchingBusMeta = activeFleetCache.find(b => b.bus_id === item.bus_id);
-        document.getElementById('item-bus-id').value = matchingBusMeta ? matchingBusMeta.bus_number : (item.bus_id || '');
-        document.getElementById('item-lost-location').value = matchingBusMeta ? `${matchingBusMeta.source_stop} to ${matchingBusMeta.destination_stop}` : '';
-        document.getElementById('item-driver-id').value = matchingBusMeta && matchingBusMeta.driver_id ? matchingBusMeta.driver_id : '';
+        document.getElementById('item-bus-id').value = matchingBusMeta ? matchingBusMeta.bus_number : (item.bus_number || item.bus_id || '');
+        document.getElementById('item-lost-location').value = item.route_name || (matchingBusMeta ? `${matchingBusMeta.source_stop} to ${matchingBusMeta.destination_stop}` : '');
         
         if (item.item_name === 'Other') {
             document.getElementById('other-desc-input').value = item.description || '';
@@ -413,6 +427,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         document.getElementById('item-contact-number').value = item.contact_phone || '';
+        
+        const imageData = document.getElementById('lnf-image-data');
+        const imagePreview = document.getElementById('lnf-image-preview');
+        imageData.value = item.evidence_image || '';
+        if (item.evidence_image) {
+            imagePreview.src = item.evidence_image;
+            imagePreview.classList.remove('d-none');
+        } else {
+            imagePreview.removeAttribute('src');
+            imagePreview.classList.add('d-none');
+        }
+
         document.getElementById('lost-found-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
@@ -428,6 +454,11 @@ document.addEventListener('DOMContentLoaded', () => {
         otherDescGroup.classList.add('d-none');
         otherDescInput.required = false;
         standardDescGroup.classList.remove('d-none');
+        
+        document.getElementById('lnf-image-data').value = '';
+        document.getElementById('lnf-image-input').value = '';
+        document.getElementById('lnf-image-preview').removeAttribute('src');
+        document.getElementById('lnf-image-preview').classList.add('d-none');
     };
 
     window.executeReportDeletion = function(id) {
@@ -483,14 +514,68 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (response.ok) {
                     document.getElementById('modal-title-text').textContent = isEditingMode ? "Report Modifications Saved" : "Report Submitted";
-                    document.getElementById('modal-desc-text').textContent = isEditingMode ? "Your log definitions were updated across operations matrix directories cleanly." : "Your lost item report has been successfully recorded. Notifications have been dispatched to available driver teams immediately.";
+                    document.getElementById('modal-desc-text').textContent = isEditingMode ? "Your report adjustments were completely updated and saved across all relevant logs." : "Your lost item report has been successfully recorded. Notifications have been dispatched to available driver teams immediately.";
                     
                     document.getElementById('successModal').style.display = 'flex';
                     resetFormState();
                     syncFleetThenLoadItems();
                     loadItems('history', 'items-history-container');
+                } else {
+                    const errData = await response.json();
+                    alert(errData.error || "Failed to submit report");
                 }
-            } catch (err) { console.error("Submit error:", err); }
+            } catch (err) { console.error("Submit request execution fault:", err); }
+        });
+    }
+
+    const imageInput = document.getElementById('lnf-image-input');
+    const imageData = document.getElementById('lnf-image-data');
+    const imagePreview = document.getElementById('lnf-image-preview');
+    if (imageInput && imageData && imagePreview) {
+        imageInput.addEventListener('change', () => {
+            const file = imageInput.files && imageInput.files[0];
+            if (!file) {
+                imageData.value = '';
+                imagePreview.removeAttribute('src');
+                imagePreview.classList.add('d-none');
+                return;
+            }
+            if (!file.type.startsWith('image/')) {
+                imageInput.value = '';
+                imageData.value = '';
+                imagePreview.classList.add('d-none');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                imageData.value = reader.result || '';
+                imagePreview.src = reader.result;
+                imagePreview.classList.remove('d-none');
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    const busInput = document.getElementById('item-bus-id');
+    const locationInput = document.getElementById('item-lost-location');
+    let debounceTimer;
+    if (busInput && locationInput) {
+        busInput.addEventListener('input', (e) => {
+            clearTimeout(debounceTimer);
+            const busNumber = e.target.value.trim();
+            if (!busNumber) return;
+            
+            debounceTimer = setTimeout(async () => {
+                try {
+                    const res = await fetch(`/api/buses/route-info?bus_number=${encodeURIComponent(busNumber)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.found && data.route_name) {
+                            locationInput.value = data.route_name;
+                        }
+                    }
+                } catch(err) { console.error("Bus route fetch error:", err); }
+            }, 500);
         });
     }
 });

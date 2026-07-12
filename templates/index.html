@@ -14,7 +14,17 @@
                 <p class="hero-tagline">The Pulse of Public Transportation</p>
                 <p class="hero-sub mb-4">Enterprise-grade fleet tracking across Andhra Pradesh. Real-time GPS monitoring, ETA intelligence, and operations control for Andhra Pradesh transport networks.</p>
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ url_for('login_page') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                    {% if current_user.is_authenticated %}
+                        {% if current_user.role == 'admin' %}
+                            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                        {% elif current_user.role == 'driver' %}
+                            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                        {% else %}
+                            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                        {% endif %}
+                    {% else %}
+                        <a href="{{ url_for('login_page') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                    {% endif %}
                     <a href="#" id="pwa-install-link" class="btn btn-outline-light btn-lg d-none" onclick="if(window.TransPulseUtils && window.TransPulseUtils.triggerManualInstall) { window.TransPulseUtils.triggerManualInstall(); }; return false;">Install App</a>
                 </div>
             </div>
@@ -127,9 +137,18 @@
          </p>
      </div>
          </div>
-            </div>
-                <a href="{{ url_for('login_page') }}" class="btn btn-accent">Explore APSRTC Network →</a>
-            </div>
+         </div>
+             {% if current_user.is_authenticated %}
+                 {% if current_user.role == 'admin' %}
+                     <a href="{{ url_for('admin_dashboard') }}" class="btn btn-accent">Explore APSRTC Network →</a>
+                 {% elif current_user.role == 'driver' %}
+                     <a href="{{ url_for('driver_dashboard') }}" class="btn btn-accent">Explore APSRTC Network →</a>
+                 {% else %}
+                     <a href="{{ url_for('passenger_dashboard') }}#live-tracking" class="btn btn-accent">Explore APSRTC Network →</a>
+                 {% endif %}
+             {% else %}
+                 <a href="{{ url_for('login_page') }}" class="btn btn-accent">Explore Network →</a>
+             {% endif %}
         </div>
     </div>
 </section>

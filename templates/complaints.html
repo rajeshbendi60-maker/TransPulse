@@ -28,11 +28,11 @@
     
     <div class="d-flex align-items-center mb-4 mt-3 fade-up">
         {% if current_user.role == "admin" %}
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% elif current_user.role == "driver" %}
-            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% else %}
-            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back to Hub</a>
+            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
         {% endif %}
         <div>
             <h2 class="fw-bold mb-1 text-white">Complaints Management</h2>
@@ -125,10 +125,21 @@
                     </div>
 
                     <div class="col-12">
-                        <label class="form-label text-muted small fw-bold">Photo Evidence</label>
-                        <input type="file" id="complaint-image-input" class="form-control bg-dark text-white border-secondary" accept="image/*" capture="environment">
+                        <label class="form-label text-muted small fw-bold">Photo Evidence *</label>
+                        <input type="file" id="complaint-image-input" class="form-control bg-dark text-white border-secondary" accept="image/*" capture="environment" required>
                         <input type="hidden" name="evidence_image" id="complaint-image-data" value="">
-                        <img id="complaint-image-preview" alt="Complaint photo preview" class="img-fluid rounded border border-secondary mt-2 d-none" style="max-height:180px;object-fit:contain;">
+                        <div class="position-relative d-inline-block mt-2">
+                            <img id="complaint-image-preview" alt="Complaint photo preview" class="img-fluid rounded border border-secondary d-none" style="max-height:180px;object-fit:contain;">
+                            <button type="button" id="remove-complaint-image-btn" class="remove-image-btn" style="position: absolute; top: -10px; right: -10px; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.8); color: white; border: 1px solid rgba(255,255,255,0.2); align-items: center; justify-content: center; font-size: 14px; cursor: pointer; z-index: 10; display: none;" onclick="document.getElementById('complaint-image-input').value=''; document.getElementById('complaint-image-input').dispatchEvent(new Event('change')); document.getElementById('complaint-image-input').required=true;">✕</button>
+                        </div>
+                        <style>
+                            #complaint-image-preview:not(.d-none) + #remove-complaint-image-btn {
+                                display: flex !important;
+                            }
+                            #remove-complaint-image-btn:hover {
+                                background: rgba(255,93,108,0.9) !important;
+                            }
+                        </style>
                     </div>
 
                     <div class="col-12 mt-2 text-start d-flex gap-3">
@@ -409,7 +420,7 @@ window.triggerComplaintFormPrepopulation = function(c) {
     document.getElementById('submit-action-btn').textContent = "Save Changes";
     document.getElementById('cancel-edit-btn').classList.remove('d-none');
 
-    const categorySelect = document.getElementById('complaint-category');
+    const catSelect = document.getElementById('complaint-category');
     const customTypeGroup = document.getElementById('custom-type-group');
     const customTypeInput = document.getElementById('custom-type-input');
     const detailedDescGroup = document.getElementById('detailed-desc-group');
@@ -447,9 +458,11 @@ window.triggerComplaintFormPrepopulation = function(c) {
         if (c.evidence_image) {
             imagePreview.src = c.evidence_image;
             imagePreview.classList.remove('d-none');
+            document.getElementById('complaint-image-input').required = false;
         } else {
             imagePreview.removeAttribute('src');
             imagePreview.classList.add('d-none');
+            document.getElementById('complaint-image-input').required = true;
         }
     }
     document.getElementById('complaint-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -465,6 +478,7 @@ window.resetFormState = function() {
     document.getElementById('custom-type-group').classList.add('d-none');
     document.getElementById('detailed-desc-group').classList.add('d-none');
     document.getElementById('normal-desc-group').classList.remove('d-none');
+    document.getElementById('complaint-image-input').required = true;
     const imageData = document.getElementById('complaint-image-data');
     const imagePreview = document.getElementById('complaint-image-preview');
     if (imageData) imageData.value = '';
@@ -610,6 +624,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const isEditingMode = !!document.getElementById('edit-complaint-id').value;
             if (isEditingMode) {
                 data.action = 'edit';
+            }
+
+            if (!data.evidence_image) {
+                alert("Upload Evidence Image is mandatory.");
+                return;
             }
 
             try {
