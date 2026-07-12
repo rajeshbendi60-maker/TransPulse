@@ -10,3 +10,4 @@ instance/*.sqlite
 *.pyc
 ~$*
 *~
+ppt
