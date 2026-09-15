@@ -155,6 +155,11 @@
         }
         .btn-glass-back .ms-2 { margin-left: 0 !important; }
     }
+    
+    /* Smooth marker animation for Leaflet */
+    .smooth-bus-marker {
+        transition: transform 2.5s linear !important;
+    }
 </style>
 {% endblock %}
 
@@ -183,10 +188,14 @@
             <p class="text-secondary small mb-3">Waiting for the driver to start the trip.</p>
             <p class="text-muted mx-auto" style="font-size: 0.85rem; max-width: 80%;">Live location, route, ETA and tracking information will appear automatically once GPS becomes active.</p>
         </div>
-        <div class="tracking-floating-header">
+        <div class="tracking-floating-header d-flex" style="gap: 10px;">
             <button onclick="window.location.href='{{ back_url }}' || '/'" class="btn-glass-back d-flex align-items-center justify-content-center">
                 <i class="fa-solid fa-chevron-left"></i>
-                <span class="d-none d-sm-inline ms-2">Back to Panel</span>
+                <span class="d-none d-sm-inline ms-2">Back</span>
+            </button>
+            <button onclick="window.TransPulseTracking && typeof window.TransPulseTracking.fetchBusData === 'function' ? window.TransPulseTracking.fetchBusData() : window.location.reload()" class="btn-glass-back d-flex align-items-center justify-content-center">
+                <i class="fa-solid fa-sync-alt"></i>
+                <span class="d-none d-sm-inline ms-2">Refresh</span>
             </button>
         </div>
     </div>

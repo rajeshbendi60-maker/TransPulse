@@ -100,16 +100,16 @@ window.TransPulseTracking = {
     _busIcon: function(bearing) {
         const rotation = bearing || 0;
         return L.divIcon({
-            className: '',
+            className: 'smooth-bus-marker',
             html: `
                 <div class="apsrtc-bus-marker" style="
                     width:36px;height:48px;
                     transform:rotate(${rotation}deg);
                     transform-origin:50% 50%;
-                    transition:none;
+                    transition: transform 2.5s linear;
                     filter:drop-shadow(0 4px 5px rgba(0,0,0,0.55)) drop-shadow(0 0 8px rgba(255,193,7,0.45));
                 ">
-                    <svg viewBox="0 0 64 96" width="36" height="48" xmlns="http://www.w3.org/2000/svg" aria-label="APSRTC bus">
+                    <svg viewBox="0 0 64 96" width="36" height="48" xmlns="http://www.w3.org/2000/svg" aria-label="Bus marker">
                         <ellipse cx="32" cy="88" rx="22" ry="4" fill="rgba(0,0,0,0.28)"/>
                         <rect x="9" y="8" width="46" height="76" rx="11" fill="#f4ead8" stroke="#7b1e18" stroke-width="2"/>
                         <path d="M12 31H52V67H12Z" fill="#d12b22"/>
@@ -122,7 +122,7 @@ window.TransPulseTracking = {
                         <rect x="16" y="50" width="8" height="12" rx="2" fill="#263b4a" stroke="#f8fbff" stroke-width="1"/>
                         <rect x="40" y="50" width="8" height="12" rx="2" fill="#263b4a" stroke="#f8fbff" stroke-width="1"/>
                         <rect x="25" y="34" width="14" height="28" rx="3" fill="#b8201a" opacity="0.7"/>
-                        <text x="32" y="48" text-anchor="middle" font-size="5.5" font-family="Arial, sans-serif" font-weight="700" fill="#ffffff">APSRTC</text>
+                        <text x="32" y="48" text-anchor="middle" font-size="5.5" font-family="Arial, sans-serif" font-weight="700" fill="#ffffff">BUS</text>
                         <path d="M14 69H50L47 79Q32 84 17 79Z" fill="#243746" stroke="#f8fbff" stroke-width="1.2"/>
                         <rect x="17" y="72" width="30" height="5" rx="2" fill="#88cce7" opacity="0.8"/>
                         <rect x="13" y="18" width="4" height="9" rx="1.5" fill="#7b1e18"/>
@@ -966,7 +966,16 @@ window.TransPulseTracking = {
                 }
             } else {
                 this.busMarker.setLatLng(pos);
-                this.busMarker.setIcon(this._busIcon(bearing));
+                
+                // Update rotation smoothly without destroying the DOM node (which would break the transition)
+                const iconDiv = this.busMarker.getElement();
+                if (iconDiv) {
+                    const innerMarker = iconDiv.querySelector('.apsrtc-bus-marker');
+                    if (innerMarker) {
+                        innerMarker.style.transform = `rotate(${bearing || 0}deg)`;
+                    }
+                }
+                
                 this.busMarker.setPopupContent(popupHtml);
 
                 this.lastBearing = bearing;
