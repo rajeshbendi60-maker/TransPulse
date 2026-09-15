@@ -32,3 +32,4 @@ class AiConversation(db.Model):
     prompt = db.Column(db.Text, nullable=False)
     response = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+# TP-v2.0-Release

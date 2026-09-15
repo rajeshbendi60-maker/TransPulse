@@ -51,3 +51,4 @@ Clicking Start Return Trip:
 End Return Trip
 
 Concluding the return journey cleanly de-registers the bus from the active fleet, shutting down all telemetry streams, and marks the shift as offline.
+<!-- TP-v2.0-Release -->

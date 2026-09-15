@@ -14,3 +14,4 @@
 12. Move live GPS/delay/session state to Redis for multi-worker deployments.
 13. Schedule GTFS imports with backup/rollback procedure.
 14. Monitor logs for `[APP_ERROR]`, `[GOOGLE_AUTH]`, `[GTFS ETL]`, and `[ROAD_GEOMETRY]`.
+<!-- TP-v2.0-Release -->

@@ -90,3 +90,4 @@ def acknowledge_alert():
         return jsonify({"success": True}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
+# TP-v2.0-Release

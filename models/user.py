@@ -170,3 +170,4 @@ class User(UserMixin, db.Model):
 
     def __repr__(self):
         return f"<User {self.email} ({self.role})>"
+# TP-v2.0-Release

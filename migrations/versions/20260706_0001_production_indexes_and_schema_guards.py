@@ -124,3 +124,4 @@ def downgrade():
         ("users", "ix_users_transpulse_id"),
     ]:
         _drop_index_if_exists(bind, index_name, table_name)
+# TP-v2.0-Release

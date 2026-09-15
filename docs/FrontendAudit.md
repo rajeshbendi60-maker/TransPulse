@@ -17,3 +17,4 @@ Remaining Watch Items
 
 1. Several templates still use `innerHTML` for locally generated markup. They should continue to escape any server/user-provided values before interpolation.
 2. Long-lived polling intervals are cleared in the most important unload paths, but a full browser QA pass is still recommended.
+<!-- TP-v2.0-Release -->

@@ -23,3 +23,4 @@ Run this checklist after dependency installation and migrations are complete in 
 19. Occupancy: driver updates and passenger/admin live occupancy API render correctly.
 20. Offline Mode: service worker/offline page works after install.
 21. PWA: manifest, icons, install prompt, and app display mode work.
+<!-- TP-v2.0-Release -->

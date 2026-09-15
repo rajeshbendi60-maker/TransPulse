@@ -72,3 +72,4 @@ class AuditLog(db.Model):
     details = db.Column(db.Text, nullable=True)
     ip_address = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+# TP-v2.0-Release

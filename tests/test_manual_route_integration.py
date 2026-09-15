@@ -13,6 +13,7 @@ class ManualRouteIntegrationTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
         app.config['LOGIN_DISABLED'] = True
+        app.config['WTF_CSRF_ENABLED'] = False
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         app.config['ROUTE_MATCH_THRESHOLD_KM'] = 2.0
         app.config['STOP_RADIUS_KM'] = 0.03
@@ -21,6 +22,7 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         db.create_all()
         
         from models.user import User
+        User.query.filter_by(email="testdriver@tp.com").delete()
         self.mock_driver = User(email="testdriver@tp.com", role="driver", full_name="Test Driver", password_hash="dummy")
         db.session.add(self.mock_driver)
         db.session.commit()
@@ -37,6 +39,8 @@ class ManualRouteIntegrationTests(unittest.TestCase):
             sess['_user_id'] = str(self.mock_driver.id)
             sess['assigned_bus_id'] = bus_id
         response = self.client.post("/api/driver/location", json={"bus_id": bus_id, "lat": lat, "lng": lon})
+        if response.status_code != 200:
+            pass
         return response.json, response.status_code
 
     def get_runtime(self, bus_id):
@@ -44,6 +48,9 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         return DRIVER_RUNTIME_SESSIONS.get(bus_id)
 
     def test_7_8_9_manual_route_integration(self):
+        Route.query.filter_by(route_code="01003").delete()
+        Stop.query.filter(Stop.stop_code.in_(["M-PAL", "M-TEK", "M-SRI"])).delete()
+        db.session.commit()
         # Create route 01003
         r = Route(route_code="01003", name="Palasa - Srikakulam", origin="Palasa", destination="Srikakulam", distance_km=80.0, departure_time="10:00", arrival_time="12:00")
         db.session.add(r)
@@ -79,6 +86,8 @@ class ManualRouteIntegrationTests(unittest.TestCase):
 
         # Start trip
         assigned_trip = _create_trip_for_bus(b, r.id)
+        assigned_trip.status = "in_progress"
+        db.session.commit()
         self.assertEqual(assigned_trip.route_id, r.id)
         self.assertEqual(assigned_trip.shape_id, baseline_trip.shape_id)
         
@@ -101,3 +110,4 @@ class ManualRouteIntegrationTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+# TP-v2.0-Release

@@ -51,3 +51,4 @@ class Journey(db.Model):
 
     def __repr__(self):
         return f"<Journey {self.id} Route {self.route_number} Status {self.journey_status}>"
+# TP-v2.0-Release

@@ -17,3 +17,4 @@ High-value cache areas:
 5. Heatmap city density payload.
 
 Production note: in-memory caches are per-process. Use Redis or database-backed cache for multi-worker consistency.
+<!-- TP-v2.0-Release -->

@@ -172,3 +172,4 @@ window.TransPulseTrackingHistory = {
 document.addEventListener('DOMContentLoaded', () => {
     if (window.TransPulseTrackingHistory) window.TransPulseTrackingHistory.init();
 });
+/* TP-v2.0-Release */

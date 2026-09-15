@@ -24,3 +24,4 @@ class AssistantService:
     def ask(self, prompt, role="Admin"):
         context = {"role": role}
         return self.adapter.generate_response(prompt, context)
+# TP-v2.0-Release

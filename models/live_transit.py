@@ -53,3 +53,4 @@ class RouteDeviationEvent(db.Model):
     resolved = db.Column(db.Boolean, default=False)
     
     bus = db.relationship("Bus", backref=db.backref("deviations", lazy=True))
+# TP-v2.0-Release

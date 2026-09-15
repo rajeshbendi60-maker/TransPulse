@@ -32,3 +32,4 @@ TransPulse uses a role-based access system:
 1. Passengers: Access live tracking, favorite routes, and submit support tickets.
 2. Drivers: View assigned trip schedules, trigger en-route SOS alerts, and process lost/found items.
 3. Administrators: Monitor the entire fleet on a master grid, resolve passenger complaints, and manage vehicle assignments.
+<!-- TP-v2.0-Release -->

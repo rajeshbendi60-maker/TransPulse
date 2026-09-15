@@ -47,3 +47,4 @@ class StopTime(db.Model):
         db.Index("idx_stop_time_trip_sequence", "trip_id", "stop_sequence"),
         db.Index("idx_stop_time_stop_trip", "stop_id", "trip_id"),
     )
+# TP-v2.0-Release

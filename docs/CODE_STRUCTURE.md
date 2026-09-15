@@ -10,3 +10,4 @@
 8. `docs/`: project, API, security, performance, deployment, and testing documentation.
 
 The project currently keeps routes in one file by design. Shared helper functions should remain in `app.py` unless the architecture rule changes.
+<!-- TP-v2.0-Release -->

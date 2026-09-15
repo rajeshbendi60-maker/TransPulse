@@ -124,3 +124,4 @@ class StateOperationsPlatform:
         self.analytics_aggregator = AnalyticsAggregator()
 
 state_operations_platform = StateOperationsPlatform()
+# TP-v2.0-Release

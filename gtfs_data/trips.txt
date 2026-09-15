@@ -3074,3 +3074,4 @@ route_id,service_id,trip_id,trip_short_name,trip_headsign,direction_id,block_id,
 99426,Mon-Tue-Wed-Thu-Fri-Sat-Sun,99426,,99426,0,,99426,0,0,0
 99427,Mon-Tue-Wed-Thu-Fri-Sat-Sun,99427,,99427,0,,99427,0,0,0
 99502,Mon-Tue-Wed-Thu-Fri-Sat-Sun,99502,,99502,0,,99502,0,0,0
+

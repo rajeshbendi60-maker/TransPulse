@@ -27,3 +27,4 @@ Releases & DevOps
 2. [Upgrades & Migration Tasks](UPGRADES.md): Legacy system upgrades, database migrations, and structural conversions.
 3. [System Changelog](CHANGELOG.md): Operational updates log.
 4. [Release Notes v2.0](RELEASE_NOTES_v2.0.md): Main features and optimizations included in the current release.
+<!-- TP-v2.0-Release -->

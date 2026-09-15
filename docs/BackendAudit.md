@@ -22,3 +22,4 @@ Fixes Applied
 Notes
 
 `LIVE_GPS_DATA`, `BUS_DELAY_DATA`, `BUS_SIMULATION_STATE`, and passenger tracking sessions remain in-process memory. This is acceptable for a single-process demo, but production multi-worker deployments should move this state to Redis or a database-backed store.
+<!-- TP-v2.0-Release -->

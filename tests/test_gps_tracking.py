@@ -13,6 +13,7 @@ class GPSTrackingTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
         app.config['LOGIN_DISABLED'] = True
+        app.config['WTF_CSRF_ENABLED'] = False
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         app.config['ROUTE_MATCH_THRESHOLD_KM'] = 2.0
         app.config['STOP_RADIUS_KM'] = 0.03
@@ -21,6 +22,7 @@ class GPSTrackingTests(unittest.TestCase):
         db.create_all()
         
         from models.user import User
+        User.query.filter_by(email="testdriver@tp.com").delete()
         self.mock_driver = User(email="testdriver@tp.com", role="driver", full_name="Test Driver", password_hash="dummy")
         db.session.add(self.mock_driver)
         db.session.commit()
@@ -34,6 +36,9 @@ class GPSTrackingTests(unittest.TestCase):
         self.app_context.pop()
 
     def _setup_mock_data(self):
+        Route.query.filter(Route.route_code.in_(["01004", "01003"])).delete()
+        Stop.query.filter(Stop.stop_code.in_(["STP-NLR", "STP-GDR", "STP-NPT", "STP-TPT", "STP-VZG", "STP-RJY", "STP-BZA"])).delete()
+        db.session.commit()
         # Route 1: Nellore to Tirupati (GTFS)
         r1 = Route(route_code="01004", name="Nellore - Tirupati", origin="Nellore", destination="Tirupati", distance_km=100.0)
         db.session.add(r1)
@@ -63,7 +68,7 @@ class GPSTrackingTests(unittest.TestCase):
         db.session.flush()
 
         # Trip for Route 1
-        t1 = Trip(route_id=r1.id, service_id="SRV_1", status="assigned", gtfs_trip_id="TRIP_1")
+        t1 = Trip(route_id=r1.id, service_id="SRV_1", status="in_progress", gtfs_trip_id="TRIP_1")
         db.session.add(t1)
         db.session.flush()
 
@@ -77,6 +82,8 @@ class GPSTrackingTests(unittest.TestCase):
         # Bus Assignment
         b1 = Bus(bus_number="APSRTC-101", registration_number="AP-01-X-1234", capacity=40, route_id=r1.id, is_active=True)
         db.session.add(b1)
+        db.session.flush()
+        t1.bus_id = b1.id
         db.session.commit()
 
         # Initialize tracking state
@@ -99,9 +106,8 @@ class GPSTrackingTests(unittest.TestCase):
             sess['_user_id'] = str(self.mock_driver.id)
             sess['assigned_bus_id'] = bus_id
         response = self.client.post("/api/driver/location", json={"bus_id": bus_id, "lat": lat, "lng": lon})
-        # The test expects a tuple (data, status_code), but wait, the original code unpacked `response, code = ...`
-        # and then checked `code == 200`. Let's just return None, response.status_code for compatibility if data isn't needed,
-        # but let's return response.json, response.status_code
+        if response.status_code != 200:
+            pass
         return response.json, response.status_code
 
     def get_runtime(self, bus_id):
@@ -148,7 +154,7 @@ class GPSTrackingTests(unittest.TestCase):
         self.assertEqual(rt["current_stop"], "Not available")
         # Ensure it doesn't switch route
         from app import Trip
-        active_trip = Trip.query.filter_by(bus_id=self.b1.id, status="assigned").first()
+        active_trip = Trip.query.filter_by(bus_id=self.b1.id, status="in_progress").first()
         self.assertEqual(active_trip.route_id, self.r1.id)
 
     def test_6_gps_jitter(self):
@@ -178,3 +184,4 @@ class GPSTrackingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+# TP-v2.0-Release

@@ -17,3 +17,4 @@ class Calendar(db.Model):
 
     def __repr__(self) -> str:
         return f"<Calendar Service {self.service_id}>"
+# TP-v2.0-Release

@@ -42,3 +42,4 @@ Remaining Watch Items
 2. Existing buses/trips are purged with GTFS-backed tables. Confirm operational data retention expectations before production imports.
 3. Apply migration `20260706_0002_gtfs_metadata_and_shape_integrity.py` before production import on existing databases.
 4. The extracted local feed currently does not include `agency.txt`, `calendar.txt`, `calendar_dates.txt`, or `feed_info.txt`; the importer supports them, and the database tables exist, but those source files imported zero rows in this feed copy.
+<!-- TP-v2.0-Release -->

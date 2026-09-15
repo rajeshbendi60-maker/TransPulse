@@ -37,3 +37,4 @@ class Route(db.Model):
 
     def __repr__(self) -> str:
         return f"<Route {self.route_code}>"
+# TP-v2.0-Release

@@ -308,3 +308,4 @@
         window.TransPulseUtils.enhanceFlashMessages();
     }
 })();
+/* TP-v2.0-Release */

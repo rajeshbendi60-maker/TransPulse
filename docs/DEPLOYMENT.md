@@ -35,3 +35,4 @@ TransPulse uses `gunicorn` as the production WSGI server.
 6. HTTPS
 
 Render automatically provisions and manages SSL/TLS certificates for your application. The `config.py` intelligently detects the `production` environment and enforces secure, HTTPOnly cookies across the platform to leverage this secure layer.
+<!-- TP-v2.0-Release -->

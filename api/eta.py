@@ -33,3 +33,4 @@ def get_stop_eta(stop_id):
     except Exception as e:
         logger.error(f"Error calculating ETA for stop {stop_id}: {str(e)}")
         return jsonify({"success": False, "error": "Internal server error"}), 500
+# TP-v2.0-Release

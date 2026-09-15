@@ -38,3 +38,4 @@ def export_excel():
 def export_csv():
     url = bi_platform.export_engine.export_csv(request.json)
     return jsonify({"success": True, "url": url}), 200
+# TP-v2.0-Release

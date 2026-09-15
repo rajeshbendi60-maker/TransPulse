@@ -78,3 +78,4 @@ class IncidentReport(db.Model):
     lon = db.Column(db.Float, nullable=True)
     reported_at = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(50), default="OPEN")
+# TP-v2.0-Release

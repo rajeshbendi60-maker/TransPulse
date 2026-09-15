@@ -56,3 +56,4 @@ class Shape(db.Model):
             f"<Shape {self.shape_id} "
             f"Seq:{self.shape_pt_sequence}>"
         )
+# TP-v2.0-Release

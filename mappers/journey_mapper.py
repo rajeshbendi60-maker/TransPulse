@@ -37,3 +37,4 @@ class JourneyMapper:
             "updatedAt": datetime_to_millis(journey.updated_at),
             "deviceId": journey.device_id
         }
+# TP-v2.0-Release

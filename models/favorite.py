@@ -34,3 +34,4 @@ class Favorite(db.Model):
 
     def __repr__(self) -> str:
         return f"<Favorite {self.title} ({self.category})>"
+# TP-v2.0-Release

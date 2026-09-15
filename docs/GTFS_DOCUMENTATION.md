@@ -55,3 +55,4 @@ Performance notes:
 4. Route origins and destinations are display-only fields and never reject assignments.
 5. Generated shapes are invalidated and rebuilt when GTFS is re-imported.
 6. Import failures rollback the entire transaction safely.
+<!-- TP-v2.0-Release -->

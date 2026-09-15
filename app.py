@@ -2459,10 +2459,11 @@ def _osrm_route_for_stop_sequence(points: list) -> list:
             import socket
             if isinstance(exc, (TimeoutError, socket.timeout, URLError)) or (isinstance(exc, OSError) and not isinstance(exc, ValueError)):
                 logger.warning("[OSRM] Network failure on chunk query, aborting leg-by-leg: %s", exc)
-                raise ValueError("OSRM network failure, aborting route generation")
-                
-            logger.warning("[OSRM] Chunk query failed, falling back to leg-by-leg: %s", exc)
-            segment = []
+                # Instead of raising, just generate a straight line for the whole chunk
+                segment = [{"lat": float(p["lat"]), "lng": float(p["lng"])} for p in waypoint_chunk]
+            else:
+                logger.warning("[OSRM] Chunk query failed, falling back to leg-by-leg: %s", exc)
+                segment = []
             for i in range(len(waypoint_chunk) - 1):
                 p1 = waypoint_chunk[i]
                 p2 = waypoint_chunk[i + 1]
@@ -4182,9 +4183,14 @@ def _project_point_onto_segment(lat: float, lon: float, path: list, nearest_idx:
     This ensures the completed/remaining split lands exactly beneath the
     vehicle marker rather than at the nearest discrete path vertex.
     """
-    if not path or nearest_idx >= len(path) - 1:
+    if not path:
         return {"lat": lat, "lng": lon}
 
+    if nearest_idx >= len(path) - 1:
+        nearest_idx = max(0, len(path) - 2)
+
+    if nearest_idx >= len(path) - 1: # still true if path length is 1
+        return {"lat": path[-1]["lat"], "lng": path[-1]["lng"]}
     p1 = path[nearest_idx]
     p2 = path[nearest_idx + 1]
     try:
@@ -8907,3 +8913,4 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", 5000))
     app.run(host=host, port=port, debug=False)
+# TP-v2.0-Release

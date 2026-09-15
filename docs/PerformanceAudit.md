@@ -13,3 +13,4 @@ Remaining Optimization Candidates
 1. `_live_fleet_snapshot()` still performs multiple helper queries per active bus. For large fleets, preloading active trips, routes, stop times, shapes, and occupancy records would reduce query count further.
 2. OSRM geometry generation is synchronous on request. Cached failures reduce repeated calls, but background generation would be better in production.
 3. In-memory live state is not shared across workers.
+<!-- TP-v2.0-Release -->

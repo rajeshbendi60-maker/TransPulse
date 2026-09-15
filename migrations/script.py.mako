@@ -21,3 +21,4 @@ def upgrade():
 
 def downgrade():
     ${downgrades if downgrades else "pass"}
+

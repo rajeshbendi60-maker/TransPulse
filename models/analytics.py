@@ -60,3 +60,4 @@ class PassengerMetrics(db.Model):
     date = db.Column(db.Date, nullable=False)
     route_id = db.Column(db.String(100), nullable=False)
     passenger_count = db.Column(db.Integer, default=0)
+# TP-v2.0-Release

@@ -60,3 +60,4 @@ Fields include id, bus_id, route_id, lat, lon, status, and created_at.
 4. Entity Relationship Mapping
 
 The database links users to buses, complaints, and lost/found reports. A route contains multiple buses, trips, complaints, lost/found items, and SOS alerts. A bus serves trips and can trigger SOS alerts. A trip contains an ordered sequence of stop times, and each stop time corresponds to a specific stop checkpoint.
+<!-- TP-v2.0-Release -->

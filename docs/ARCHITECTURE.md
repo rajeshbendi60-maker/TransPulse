@@ -40,3 +40,4 @@ Key modules:
 5. Static files: Tracking logic, heatmap, polling, SOS handling, and visual styling.
 
 Architecture rule: The application routes and logic remain centralized to preserve the current architectural constraints.
+<!-- TP-v2.0-Release -->

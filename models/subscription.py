@@ -55,3 +55,4 @@ class Subscription(db.Model):
 
     def __repr__(self):
         return f"<Subscription User:{self.user_id} Stop:{self.stop_id}>"
+# TP-v2.0-Release

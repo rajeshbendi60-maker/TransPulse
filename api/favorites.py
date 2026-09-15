@@ -109,3 +109,4 @@ def reorder_favorites():
     except Exception as e:
         logger.error(f"Error reordering favorites: {str(e)}")
         return jsonify({"success": False, "error": "Internal server error"}), 500
+# TP-v2.0-Release

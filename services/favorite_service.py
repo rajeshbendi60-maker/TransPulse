@@ -81,3 +81,4 @@ class FavoriteService:
         except SQLAlchemyError:
             db.session.rollback()
             return False
+# TP-v2.0-Release

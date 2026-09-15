@@ -35,3 +35,4 @@ with app.app_context():
     print("Email         : driver@transpulse.com")
     print("Password      : driver@tp")
     print("Driver Code   : DTP-001 (assigned by Admin)")
+# TP-v2.0-Release

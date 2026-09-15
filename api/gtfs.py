@@ -90,3 +90,4 @@ def get_nearby_stops():
     stops = Stop.query.limit(limit).all()
     response_data = [GTFSMapper.to_stop_response(s) for s in stops]
     return success_response({"stops": response_data})
+# TP-v2.0-Release

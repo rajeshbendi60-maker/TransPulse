@@ -69,3 +69,4 @@ class BusinessIntelligencePlatform:
             db.session.commit()
 
 bi_platform = BusinessIntelligencePlatform()
+# TP-v2.0-Release

@@ -58,3 +58,4 @@ class SystemHealthSnapshot(db.Model):
     live_transit_status = db.Column(db.String(50), default="HEALTHY")
     eta_engine_status = db.Column(db.String(50), default="HEALTHY")
     journey_planner_status = db.Column(db.String(50), default="HEALTHY")
+# TP-v2.0-Release

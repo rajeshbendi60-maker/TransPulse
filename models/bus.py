@@ -124,3 +124,4 @@ class Bus(db.Model):
 
     def __repr__(self):
         return f"<Bus {self.bus_number}>"
+# TP-v2.0-Release

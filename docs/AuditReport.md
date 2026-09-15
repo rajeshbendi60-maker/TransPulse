@@ -37,3 +37,4 @@ Production Readiness Score
 82%.
 
 The project is substantially more secure and stable after this pass, but production readiness still depends on installing dependencies, running a real migration/test cycle, configuring production secrets and Google OAuth, and validating live GTFS/GPS behavior against production data.
+<!-- TP-v2.0-Release -->

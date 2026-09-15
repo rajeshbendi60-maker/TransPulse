@@ -23,3 +23,4 @@ Deployment Notes
 1. Terminate TLS at the platform load balancer or reverse proxy.
 2. Configure trusted proxy headers at the platform layer when deploying behind a proxy.
 3. Use migrations in `migrations/versions/` against the existing database; do not recreate production data.
+<!-- TP-v2.0-Release -->

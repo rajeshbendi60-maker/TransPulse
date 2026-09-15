@@ -25,3 +25,4 @@ Manual Production Requirements
 3. Install `google-auth`.
 4. Use persistent Flask-Limiter storage such as Redis in production.
 5. Configure real SMTP credentials for password reset.
+<!-- TP-v2.0-Release -->

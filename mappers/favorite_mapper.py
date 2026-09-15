@@ -79,3 +79,4 @@ class FavoriteMapper:
                 pass
                 
         return favorite
+# TP-v2.0-Release

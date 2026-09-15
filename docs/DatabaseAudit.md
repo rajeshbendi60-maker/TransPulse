@@ -16,3 +16,4 @@ Notes
 
 1. Schema changes were intentionally narrow.
 2. Full migration scripts should be generated before production deployment if using Flask-Migrate/Alembic rather than startup schema patching.
+<!-- TP-v2.0-Release -->

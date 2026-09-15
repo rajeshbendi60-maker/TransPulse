@@ -34,3 +34,4 @@ If a commuter attempts to track a bus that has just finished its route, TransPul
 Offline Buses
 
 Buses that have not yet been started by a driver gracefully show an "Offline" state, ensuring passengers are not misled by stale coordinates.
+<!-- TP-v2.0-Release -->

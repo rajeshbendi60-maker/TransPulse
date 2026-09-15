@@ -57,3 +57,4 @@ class SOSAlert(db.Model):
             'longitude': self.longitude,
             'admin_notes': self.admin_notes
         }
+# TP-v2.0-Release

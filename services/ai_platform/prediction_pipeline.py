@@ -53,3 +53,4 @@ class PredictionPipeline:
         if "Delay" in raw_pred["value"]:
             return "Dispatch another vehicle"
         return "No action required"
+# TP-v2.0-Release

@@ -44,3 +44,4 @@ class Complaint(db.Model):
             'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
             'admin_notes': self.admin_notes
         }
+# TP-v2.0-Release

@@ -2,3 +2,4 @@ Single-database Alembic environment for TransPulse.
 
 Use Flask-Migrate/Alembic against an existing database. Do not recreate the
 database for production upgrades.
+

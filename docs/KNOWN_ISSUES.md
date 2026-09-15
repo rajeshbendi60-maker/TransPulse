@@ -20,3 +20,4 @@ Residual Risk
 1. Some dashboard views still perform repeated helper queries at fleet scale.
 2. OSRM road geometry generation is synchronous when cache misses occur.
 3. Existing mojibake text in templates remains cosmetic debt.
+<!-- TP-v2.0-Release -->

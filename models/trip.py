@@ -36,3 +36,4 @@ class Trip(db.Model):
 
     def __repr__(self) -> str:
         return f"<Trip bus={self.bus_id} route={self.route_id} status={self.status}>"
+# TP-v2.0-Release

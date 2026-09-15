@@ -66,3 +66,4 @@ def update_preferences():
             pref.enabled = enabled
     db.session.commit()
     return jsonify({"success": True}), 200
+# TP-v2.0-Release

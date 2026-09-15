@@ -70,3 +70,4 @@ def post_vehicle_location():
     except Exception as e:
         logger.error(f"Error posting vehicle location: {str(e)}")
         return jsonify({"success": False, "error": "Internal server error"}), 500
+# TP-v2.0-Release

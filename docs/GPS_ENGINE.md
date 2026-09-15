@@ -14,3 +14,4 @@ Key behaviors:
 Operational limits:
 
 1. In-memory GPS state is process-local. Multi-worker production deployments need a shared store.
+<!-- TP-v2.0-Release -->

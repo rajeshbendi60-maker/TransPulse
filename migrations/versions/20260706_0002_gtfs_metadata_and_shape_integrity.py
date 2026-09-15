@@ -162,3 +162,4 @@ def downgrade():
         op.drop_table("feed_info")
     if "calendar_dates" in _table_names(bind):
         op.drop_table("calendar_dates")
+# TP-v2.0-Release

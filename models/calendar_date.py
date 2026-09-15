@@ -15,3 +15,4 @@ class CalendarDate(db.Model):
 
     def __repr__(self) -> str:
         return f"<CalendarDate {self.service_id} {self.date}>"
+# TP-v2.0-Release

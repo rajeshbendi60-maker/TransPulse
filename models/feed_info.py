@@ -17,3 +17,4 @@ class FeedInfo(db.Model):
 
     def __repr__(self) -> str:
         return f"<FeedInfo {self.feed_publisher_name}>"
+# TP-v2.0-Release

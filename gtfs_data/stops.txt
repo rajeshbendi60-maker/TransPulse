@@ -1897,3 +1897,4 @@ stop_id,stop_code,stop_name,tts_stop_name,stop_desc,stop_lat,stop_lon,zone_id,st
 9961,9961,NAGOLE,NAGOLE,,17.378141,78.558843,,,0,,Asia/Kolkata,0,,,
 9981,9981,NAIDUPET,NAIDUPET,,13.906208,79.901017,,,0,,Asia/Kolkata,0,,,
 9991,9991,NAKKAPALLI,NAKKAPALLI,,17.40888742862684,82.71535645240125,,,0,,Asia/Kolkata,0,,,
+

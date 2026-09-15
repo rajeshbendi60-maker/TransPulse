@@ -88,3 +88,4 @@ class Notification(db.Model):
             "related_bus_id": self.related_bus_id,
             "related_route_id": self.related_route_id
         }
+# TP-v2.0-Release

@@ -60,3 +60,4 @@ class GTFSMapper:
             "todayTrips": [GTFSMapper.to_trip_response(t) for t in trips],
             "statistics": stats
         }
+# TP-v2.0-Release

@@ -79,3 +79,4 @@ class NotificationAuditLog(db.Model):
     target = db.Column(db.String(255), nullable=False)
     notification_id = db.Column(db.String(36), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+# TP-v2.0-Release

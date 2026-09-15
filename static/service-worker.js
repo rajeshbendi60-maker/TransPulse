@@ -105,3 +105,4 @@ self.addEventListener('message', (event) => {
         self.skipWaiting();
     }
 });
+/* TP-v2.0-Release */

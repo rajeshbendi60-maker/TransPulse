@@ -49,3 +49,4 @@ class BusOccupancy(db.Model):
             'occupancy_percentage': round(self.occupancy_percentage, 2) if self.occupancy_percentage is not None else 0,
             'recorded_at': self.recorded_at.isoformat() if self.recorded_at else None
         }
+# TP-v2.0-Release

@@ -35,3 +35,4 @@ def ask_assistant():
     role = request.json.get("role", "Admin")
     response = ai_platform.ask_assistant(prompt, role)
     return jsonify({"success": True, "data": {"response": response}}), 200
+# TP-v2.0-Release

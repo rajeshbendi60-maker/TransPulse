@@ -152,3 +152,4 @@ Admin analytics:
 3. `GET /heatmap/data`
 
 API errors return JSON with an HTTP status code for AJAX/API callers.
+<!-- TP-v2.0-Release -->

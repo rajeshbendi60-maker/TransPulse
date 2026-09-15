@@ -36,3 +36,4 @@ def recent_journeys():
 @journey_planner_bp.route("/favorite", methods=["POST"])
 def favorite_journey():
     return jsonify({"success": True, "message": "Journey saved"}), 200
+# TP-v2.0-Release

@@ -39,3 +39,4 @@ class Config:
     PREFERRED_URL_SCHEME = "https" if os.environ.get("FLASK_ENV") == "production" else "http"
 
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB limit
+# TP-v2.0-Release
