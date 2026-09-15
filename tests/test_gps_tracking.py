@@ -12,13 +12,19 @@ from models import db, Route, Trip, Stop, StopTime, Bus
 class GPSTrackingTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
-        app.config['LOGIN_DISABLED'] = True
+        app.config['LOGIN_DISABLED'] = False
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         app.config['ROUTE_MATCH_THRESHOLD_KM'] = 2.0
         app.config['STOP_RADIUS_KM'] = 0.03
         self.app_context = app.app_context()
         self.app_context.push()
         db.create_all()
+        
+        from models.user import User
+        self.mock_driver = User(email="testdriver@tp.com", role="driver", full_name="Test Driver")
+        db.session.add(self.mock_driver)
+        db.session.commit()
+
         self.client = app.test_client()
         self._setup_mock_data()
 
@@ -90,6 +96,7 @@ class GPSTrackingTests(unittest.TestCase):
 
     def _send_gps(self, bus_id, lat, lon):
         with self.client.session_transaction() as sess:
+            sess['_user_id'] = str(self.mock_driver.id)
             sess['assigned_bus_id'] = bus_id
         response = self.client.post("/api/driver/location", json={"bus_id": bus_id, "lat": lat, "lng": lon})
         # The test expects a tuple (data, status_code), but wait, the original code unpacked `response, code = ...`
