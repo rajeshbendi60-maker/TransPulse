@@ -2298,7 +2298,10 @@ def role_required(*allowed_roles):
         @wraps(func)
         @login_required
         def wrapper(*args, **kwargs):
-            if current_user.role not in allowed_roles:
+            if current_app.config.get("LOGIN_DISABLED"):
+                return func(*args, **kwargs)
+            role = getattr(current_user, "role", None)
+            if not role or role not in allowed_roles:
                 if _request_wants_json() or request.path.startswith("/api/"):
                     return jsonify({"success": False, "error": "Forbidden"}), 403
                 flash("You do not have access to this page.", "danger")
