@@ -340,6 +340,7 @@ def _cleanup_legacy_driver_accounts() -> None:
 
 
 def _ensure_shared_driver_account() -> None:
+    from sqlalchemy.exc import IntegrityError
     _cleanup_legacy_driver_accounts()
     driver = _shared_driver_user()
     if not driver:
@@ -351,14 +352,21 @@ def _ensure_shared_driver_account() -> None:
         )
         driver.set_password("driver@tp")
         db.session.add(driver)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
     else:
         driver.email = SHARED_DRIVER_EMAIL
         driver.set_password("driver@tp")
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
 
 
 def _ensure_default_admin() -> None:
+    from sqlalchemy.exc import IntegrityError
     admin = User.query.filter_by(role="admin").first()
     if not admin:
         admin = User(
@@ -369,12 +377,18 @@ def _ensure_default_admin() -> None:
         )
         admin.set_password("admin@tp")
         db.session.add(admin)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
     else:
         admin.email = "admin@transpulse.com"
         admin.transpulse_id = "ATP-01"
         admin.set_password("admin@tp")
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
 
 
 def _bus_for_driver_code(raw: str) -> Optional[Bus]:
