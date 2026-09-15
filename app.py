@@ -6517,6 +6517,7 @@ def register_routes(app: Flask) -> None:
     @app.route("/admin/fix_routes", methods=["GET"])
     def admin_fix_routes():
         try:
+            fixed = 0
             routes = Route.query.all()
             for route in routes:
                 default_trip = Trip.query.filter_by(route_id=route.id, gtfs_trip_id=f"TRIP_MANUAL_{route.id}_001").first()
