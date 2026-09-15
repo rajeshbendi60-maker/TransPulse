@@ -21,7 +21,7 @@ class GPSTrackingTests(unittest.TestCase):
         db.create_all()
         
         from models.user import User
-        self.mock_driver = User(email="testdriver@tp.com", role="driver", full_name="Test Driver")
+        self.mock_driver = User(email="testdriver@tp.com", role="driver", full_name="Test Driver", password_hash="dummy")
         db.session.add(self.mock_driver)
         db.session.commit()
 
