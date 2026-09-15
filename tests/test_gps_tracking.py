@@ -12,7 +12,7 @@ from models import db, Route, Trip, Stop, StopTime, Bus
 class GPSTrackingTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
-        app.config['LOGIN_DISABLED'] = False
+        app.config['LOGIN_DISABLED'] = True
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         app.config['ROUTE_MATCH_THRESHOLD_KM'] = 2.0
         app.config['STOP_RADIUS_KM'] = 0.03

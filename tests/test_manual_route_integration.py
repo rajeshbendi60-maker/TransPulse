@@ -12,7 +12,7 @@ from models import db, Route, Trip, Stop, StopTime, Bus, Shape
 class ManualRouteIntegrationTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
-        app.config['LOGIN_DISABLED'] = False
+        app.config['LOGIN_DISABLED'] = True
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         app.config['ROUTE_MATCH_THRESHOLD_KM'] = 2.0
         app.config['STOP_RADIUS_KM'] = 0.03
@@ -47,6 +47,12 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         # Create route 01003
         r = Route(route_code="01003", name="Palasa - Srikakulam", origin="Palasa", destination="Srikakulam", distance_km=80.0, departure_time="10:00", arrival_time="12:00")
         db.session.add(r)
+        
+        # Add pre-existing stops so _known_stop_point_by_name can geocode them for shape generation
+        s1 = Stop(stop_name="Palasa", stop_lat=18.7663, stop_lon=84.4136, stop_code="M-PAL")
+        s2 = Stop(stop_name="Tekkali", stop_lat=18.6146, stop_lon=84.2323, stop_code="M-TEK")
+        s3 = Stop(stop_name="Srikakulam", stop_lat=18.3000, stop_lon=83.9000, stop_code="M-SRI")
+        db.session.add_all([s1, s2, s3])
         db.session.flush()
 
         # Simulate manual stop schedule generation (Test 7)
@@ -79,15 +85,7 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         # Test 8 - Manual route intermediate stop GPS update
         # Get coordinates from the generated stops
         stops = [st.stop for st in StopTime.query.filter_by(trip_id=assigned_trip.id).order_by(StopTime.stop_sequence).all()]
-        palasa = stops[0]
         tekkali = stops[1]
-        
-        # We need to manually add coordinates to these stops for the test to work effectively
-        # since _apply_manual_route_schedule creates new stops with no coordinates 
-        # (they default to None unless geocoded, but let's mock it)
-        palasa.stop_lat, palasa.stop_lon = 18.7663, 84.4136
-        tekkali.stop_lat, tekkali.stop_lon = 18.6146, 84.2323
-        db.session.commit()
         
         # Send GPS to intermediate stop
         self._send_gps(b.id, tekkali.stop_lat, tekkali.stop_lon)
