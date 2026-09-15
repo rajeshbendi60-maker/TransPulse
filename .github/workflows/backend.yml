@@ -38,3 +38,4 @@ jobs:
     - name: Build Docker Image
       run: |
         docker build -t transpulse/backend:latest .
+# TP-v2.0-Release
