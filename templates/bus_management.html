@@ -3,11 +3,10 @@
 {% block content %}
 <div class="container pb-5">
     
-    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
-        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-info me-3 px-4 rounded-pill fw-bold text-white" style="border-color:#34d2ff; background:rgba(52,210,255,0.1);">← Back</a>
+    <div class="d-flex flex-wrap align-items-center mb-4 mt-3 fade-up gap-2">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-link text-white text-decoration-none p-0 me-3 d-none d-lg-inline-block"><i class="fa-solid fa-chevron-left fs-5"></i></a>
         <div>
             <h2 class="fw-bold mb-1 text-white">Bus Management Center</h2>
-            <p class="text-muted mb-0">Unified operations panel for route architecture, bus registry telemetry, and driver assignments.</p>
         </div>
     </div>
 
@@ -16,13 +15,12 @@
             <div class="card" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
                 <div class="card-body p-4 p-md-5">
                     <h5 class="text-white fw-bold mb-4 d-flex align-items-center gap-2">
-                        💡 Bus Assignment & Route Registration Panel
+                        💡 Bus Assignment
                     </h5>
                     
                     <form method="POST" action="{{ url_for('admin_buses') }}" id="tp-assign-bus-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="assign_bus">
-                        <h6 class="text-info pb-2 mb-3" style="border-bottom: 1px solid rgba(52, 210, 255, 0.3);">Bus Configuration</h6>
                         <div class="row g-3 mb-4">
                             <div class="col-md-3">
                                 <label class="form-label text-light small mb-1">Bus Config Number *</label>
@@ -37,48 +35,82 @@
                                 <input type="number" name="capacity" class="form-control bg-dark text-white border-secondary" value="45" required>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label text-light small mb-1">Assigned Driver ID (DTP-XXXXX)</label>
-                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" placeholder="e.g. DTP-001">
+                                <label class="form-label text-light small mb-1">Assigned Driver ID *</label>
+                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" placeholder="e.g. DTP-001" required>
                             </div>
                         </div>
 
                         <h6 class="text-info pb-2 mb-3 mt-2" style="border-bottom: 1px solid rgba(52, 210, 255, 0.3);">Route Assignment</h6>
                         <div class="row g-3 mb-3">
                             <div class="col-md-12">
-                                <label class="form-label text-light small mb-1">Select Existing Route (Recommended)</label>
-                                <select name="existing_route_id" class="form-select bg-dark text-white border-secondary">
-                                    <option value="">— Select Existing Route OR Create New Below —</option>
-                                    {% for r in routes %}
-                                        <option value="{{ r.id }}">{{ r.route_code }} — {{ r.origin }} ➜ {{ r.destination }}</option>
-                                    {% endfor %}
-                                </select>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label class="form-label text-light small mb-0">Existing Route</label>
+                                    <button type="button" class="btn btn-sm btn-outline-info py-0 px-2 small" onclick="resetRouteForm()">
+                                        <i class="fa-solid fa-rotate-left"></i> Reset
+                                    </button>
+                                </div>
+                                <div class="dropdown">
+                                    <input type="hidden" name="existing_route_id" id="tp-existing-route-id">
+                                    <button class="form-select bg-dark text-white border-secondary text-start dropdown-toggle text-truncate" type="button" id="routeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside">
+                                        Search existing routes...
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-dark w-100 p-2 shadow-lg" aria-labelledby="routeDropdownBtn" style="max-height: 350px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);">
+                                        <input type="text" class="form-control form-control-sm mb-2 border-secondary bg-dark text-white" id="routeSearchInput" placeholder="Type to search..." autocomplete="off">
+                                        <div id="routeDropdownList">
+                                            <a class="dropdown-item route-option text-muted small text-wrap lh-sm" href="#" data-value="">Clear selection...</a>
+                                            {% for r in routes %}
+                                            <a class="dropdown-item route-option small text-wrap lh-sm border-bottom border-secondary border-opacity-25 py-2" href="#" data-value="{{ r.id }}" data-search-text="{{ r.route_code | lower }} {{ r.origin | lower }} {{ r.destination | lower }}">
+                                                <span class="text-info fw-bold">{{ r.route_code }}</span> <br class="d-md-none"> {{ r.origin }} ➜ {{ r.destination }}
+                                            </a>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <h6 class="text-muted pb-2 mb-3 mt-2 small">— OR Create New Route —</h6>
                         <div class="row g-3 mb-3">
-                            <div class="col-md-3">
+                            <div class="col-md-6">
                                 <label class="form-label text-light small mb-1">Route Code</label>
                                 <input type="text" name="route_code" class="form-control bg-dark text-white border-secondary" placeholder="e.g. 01004">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-6">
                                 <label class="form-label text-light small mb-1">Route Name</label>
                                 <input type="text" name="route_name" class="form-control bg-dark text-white border-secondary" placeholder="Express Link">
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label text-light small mb-1">Source City</label>
-                                <input type="text" name="origin" class="form-control bg-dark text-white border-secondary" placeholder="Source city / stop">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label text-light small mb-1">Destination City</label>
-                                <input type="text" name="destination" class="form-control bg-dark text-white border-secondary" placeholder="Destination city / stop">
-                            </div>
                         </div>
-                        
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-12">
-                                <label class="form-label text-light small mb-1">Intermediate Stops (Comma separated order)</label>
-                                <input type="text" name="intermediate_stops" class="form-control bg-dark text-white border-secondary" placeholder="Stop A, Stop B, Stop C">
+
+                        <div class="p-3 mb-4 rounded" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05);">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Source City / Stop *</label>
+                                    <input type="text" name="origin" class="form-control bg-dark text-white border-secondary" placeholder="Origin">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Departure Time *</label>
+                                    <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" name="departure_time" class="form-control bg-dark text-white border-secondary" placeholder="Select Time">
+                                </div>
+                            </div>
+                            
+                            <input type="hidden" name="intermediate_stops" id="tp-hidden-intermediate-stops">
+                            <div id="tp-dynamic-stops-container" class="mb-3"></div>
+                            
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-sm btn-outline-info" onclick="addDynamicStop()">
+                                    <i class="fa-solid fa-plus me-1"></i> Add Intermediate Stop
+                                </button>
+                            </div>
+
+                            <div class="row g-3 pt-3" style="border-top: 1px dashed rgba(255,255,255,0.1);">
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Destination City / Stop *</label>
+                                    <input type="text" name="destination" class="form-control bg-dark text-white border-secondary" placeholder="Destination">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Arrival Time *</label>
+                                    <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" name="arrival_time" class="form-control bg-dark text-white border-secondary" placeholder="Select Time">
+                                </div>
                             </div>
                         </div>
 
@@ -94,7 +126,8 @@
     <div class="card fade-up-2" style="background: rgba(8, 22, 40, 0.6); border: 1px solid var(--tp-border);">
         <div class="card-body p-4">
             <h4 class="text-white fw-bold mb-4">📂 Assignment Buses Logs</h4>
-            <div class="table-responsive">
+            <!-- Desktop Table View -->
+            <div class="table-responsive d-none d-lg-block">
                 <table class="table table-dark table-hover align-middle mb-0">
                     <thead>
                         <tr>
@@ -110,7 +143,7 @@
                         {% for bus in buses %}
                             <tr id="tp-bus-row-{{ bus.id }}" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                                 <td class="text-white">
-                                    <span class="text-info fw-bold">#{{ bus.id }}</span> 🚌 {{ bus.bus_number }}<br>
+                                    <span class="text-info fw-bold">{{ loop.index }}.</span> {{ bus.bus_number }}<br>
                                     <small class="text-muted">Plate: {{ bus.registration_number }} | Cap: {{ bus.capacity }}</small>
                                 </td>
                                 <td class="text-light">
@@ -167,6 +200,47 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Mobile Card View -->
+            <div class="d-lg-none d-flex flex-column gap-3 mt-3" id="tp-bus-card-container">
+                {% for bus in buses %}
+                <div class="card bg-dark bg-opacity-50 border-secondary border-opacity-25 rounded-3" id="tp-bus-card-{{ bus.id }}">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <span class="text-info fw-bold">{{ loop.index }}.</span> <span class="text-white fw-bold">{{ bus.bus_number }}</span>
+                                <div class="small text-muted mt-1">Plate: {{ bus.registration_number }} | Cap: {{ bus.capacity }}</div>
+                            </div>
+                            <div class="tp-live-status-cell text-end" data-live-status-bus-id="{{ bus.id }}">
+                                <span class="badge bg-secondary">LOADING...</span>
+                            </div>
+                        </div>
+                        <div class="mb-2 text-light small">
+                            <strong>Driver:</strong> 
+                            {% if bus.assigned_driver_code %}
+                                👨‍✈️ <span class="text-info">{{ bus.assigned_driver_code }}</span>
+                            {% else %}
+                                <span class="text-muted fst-italic">Unassigned</span>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3 text-light small">
+                            <strong>Route:</strong> 
+                            {% if bus.route %}
+                                <span class="text-info fw-bold">{{ bus.route.route_code }}</span> ({{ bus.route.origin }} ➔ {{ bus.route.destination }})
+                            {% else %}
+                                <span class="text-muted fst-italic">Depot Idle</span>
+                            {% endif %}
+                        </div>
+                        <div class="d-flex gap-2 border-top border-secondary border-opacity-25 pt-3 mt-2">
+                            <a href="{{ url_for('edit_bus', bus_id=bus.id) }}" class="btn btn-sm btn-outline-info flex-grow-1 fw-bold">✏️ Edit</a>
+                            <button type="button" class="btn btn-sm btn-outline-danger tp-delete-bus-btn flex-grow-1 fw-bold" data-bus-id="{{ bus.id }}" data-bus-number="{{ bus.bus_number|e }}">🗑 Delete</button>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">No active registered vehicles configured.</div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </div>
@@ -181,34 +255,130 @@
     </div>
 </div>
 
-<div id="tp-delete-bus-confirm-modal" style="display:none; position:fixed; inset:0; z-index:260000; background:rgba(0,0,0,0.86); backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:18px;">
-    <div class="card glass-panel shadow-lg" style="width:100%; max-width:430px; border-color:#ff5d6c; border-radius:16px; background:linear-gradient(135deg,#1c0610,#040b18); box-shadow:0 0 0 1px rgba(255,93,108,.35), 0 0 38px rgba(255,93,108,.24);">
-        <div class="card-body p-4 p-md-5 text-center">
-            <div style="width:72px;height:72px;border-radius:16px;margin:0 auto 22px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff5d6c,#ff9f43);font-size:2rem;box-shadow:0 0 30px rgba(255,93,108,.52);">&#128465;</div>
-            <h3 class="text-white fw-bold mb-3">Delete Bus?</h3>
-            <p class="text-muted mb-4">Bus <span id="tp-delete-bus-name">--</span> will be removed.</p>
-            <div class="d-flex gap-3">
-                <button type="button" class="btn btn-outline-light w-50 fw-bold rounded-pill" id="tp-delete-bus-cancel">Cancel</button>
-                <button type="button" class="btn w-50 fw-bold rounded-pill" id="tp-delete-bus-confirm" style="background:linear-gradient(135deg,#ff5d6c,#ff9f43);color:#18050a;border:0;">Delete</button>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div id="tp-delete-bus-success-modal" style="display:none; position:fixed; inset:0; z-index:260001; background:rgba(0,0,0,0.84); backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:18px;">
-    <div class="card glass-panel shadow-lg" style="width:100%; max-width:430px; border-color:#22d39a; border-radius:16px; background:linear-gradient(135deg,#071d34,#040b18); box-shadow:0 0 0 1px rgba(34,211,154,.35), 0 0 38px rgba(34,211,154,.22);">
-        <div class="card-body p-4 p-md-5 text-center">
-            <div style="width:72px;height:72px;border-radius:16px;margin:0 auto 22px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#22d39a,#7cf0b8);font-size:2rem;font-weight:800;color:#04101d;box-shadow:0 0 30px rgba(34,211,154,.45);">&#10003;</div>
-            <h3 class="text-white fw-bold mb-3">Bus Deleted Successfully</h3>
-            <p class="text-muted mb-4">Bus <span id="tp-delete-bus-success-name">--</span> has been removed.</p>
-            <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" id="tp-delete-bus-success-close" style="background:linear-gradient(135deg,#22d39a,#7cf0b8);color:#04101d;border:0;">Got It</button>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    window.TP_ROUTES = {
+        {% for r in routes %}
+        "{{ r.id }}": {
+            route_code: {{ r.route_code|tojson }},
+            name: {{ (r.name or '')|tojson }},
+            origin: {{ r.origin|tojson }},
+            destination: {{ r.destination|tojson }},
+            departure_time: {{ (r.departure_time or '')|tojson }},
+            arrival_time: {{ (r.arrival_time or '')|tojson }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.getElementById('routeSearchInput');
+        const routeOptions = document.querySelectorAll('.route-option');
+        const hiddenInput = document.getElementById('tp-existing-route-id');
+        const dropdownBtn = document.getElementById('routeDropdownBtn');
+
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                routeOptions.forEach(opt => {
+                    const searchData = opt.dataset.searchText || '';
+                    if (!term || searchData.includes(term) || !opt.dataset.value) {
+                        opt.style.display = 'block';
+                    } else {
+                        opt.style.display = 'none';
+                    }
+                });
+            });
+            
+            // Focus search input when dropdown opens
+            const dropdownEl = document.getElementById('routeDropdownBtn');
+            dropdownEl.addEventListener('shown.bs.dropdown', () => {
+                searchInput.focus();
+            });
+        }
+
+        routeOptions.forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.preventDefault();
+                const id = opt.dataset.value;
+                hiddenInput.value = id;
+                dropdownBtn.innerHTML = opt.innerHTML;
+                
+                // Hide dropdown
+                const dropdown = bootstrap.Dropdown.getInstance(dropdownBtn) || new bootstrap.Dropdown(dropdownBtn);
+                dropdown.hide();
+
+                if (id) {
+                    const route = window.TP_ROUTES[id];
+                    if (route) {
+                        document.querySelector('input[name="route_code"]').value = route.route_code || '';
+                        document.querySelector('input[name="route_name"]').value = route.name || '';
+                        document.querySelector('input[name="origin"]').value = route.origin || '';
+                        document.querySelector('input[name="destination"]').value = route.destination || '';
+                        
+                        const depInput = document.querySelector('input[name="departure_time"]');
+                        if (route.departure_time) {
+                            depInput.type = 'time';
+                            depInput.value = route.departure_time;
+                        } else {
+                            depInput.value = '';
+                        }
+                        
+                        const arrInput = document.querySelector('input[name="arrival_time"]');
+                        if (route.arrival_time) {
+                            arrInput.type = 'time';
+                            arrInput.value = route.arrival_time;
+                        } else {
+                            arrInput.value = '';
+                        }
+                    }
+                } else {
+                    document.getElementById('tp-assign-bus-form').reset();
+                    document.getElementById('tp-dynamic-stops-container').innerHTML = '';
+                    hiddenInput.value = '';
+                    dropdownBtn.innerHTML = 'Search existing routes...';
+                    searchInput.value = '';
+                    routeOptions.forEach(o => o.style.display = 'block');
+                }
+            });
+        });
+    });
+
+    window.resetRouteForm = function() {
+        document.getElementById('tp-assign-bus-form').reset();
+        document.getElementById('tp-dynamic-stops-container').innerHTML = '';
+        document.getElementById('tp-existing-route-id').value = '';
+        const dropdownBtn = document.getElementById('routeDropdownBtn');
+        if (dropdownBtn) dropdownBtn.innerHTML = 'Search existing routes...';
+        const searchInput = document.getElementById('routeSearchInput');
+        if (searchInput) {
+            searchInput.value = '';
+            document.querySelectorAll('.route-option').forEach(o => o.style.display = 'block');
+        }
+    };
+
+    window.addDynamicStop = function() {
+        const container = document.getElementById('tp-dynamic-stops-container');
+        const row = document.createElement('div');
+        row.className = 'row g-3 mb-2 dynamic-stop-row align-items-end';
+        row.innerHTML = `
+            <div class="col-md-5">
+                <label class="form-label text-light small mb-1">Intermediate Stop Name</label>
+                <input type="text" class="form-control bg-dark text-white border-secondary dynamic-stop-name" placeholder="Stop Name">
+            </div>
+            <div class="col-md-5">
+                <label class="form-label text-light small mb-1">Arrival Time</label>
+                <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" class="form-control bg-dark text-white border-secondary dynamic-stop-time" placeholder="Select Time">
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.dynamic-stop-row').remove()"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        `;
+        container.appendChild(row);
+    };
+
     (function() {
         if (window.__tpBusManagementBound) return;
         window.__tpBusManagementBound = true;
@@ -302,6 +472,20 @@
                     if (!assignForm.checkValidity()) return;
 
                     event.preventDefault();
+                    
+                    const dynamicStops = document.querySelectorAll('.dynamic-stop-row');
+                    const compiled = Array.from(dynamicStops).map(row => {
+                        const name = row.querySelector('.dynamic-stop-name').value.trim();
+                        const time = row.querySelector('.dynamic-stop-time').value.trim();
+                        if (!name) return null;
+                        return time ? `${name}|${time}` : name;
+                    }).filter(s => s).join(',');
+                    
+                    const hiddenInput = document.getElementById('tp-hidden-intermediate-stops');
+                    if (hiddenInput) {
+                        hiddenInput.value = compiled;
+                    }
+
                     state.assignmentSubmitting = true;
                     assignButton.disabled = true;
                     assignButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Assigning...';
@@ -320,29 +504,24 @@
             }
 
             const tableBody = document.getElementById('tp-bus-table-body');
-            const confirmModal = document.getElementById('tp-delete-bus-confirm-modal');
-            const confirmName = document.getElementById('tp-delete-bus-name');
-            const confirmButton = document.getElementById('tp-delete-bus-confirm');
-            const cancelButton = document.getElementById('tp-delete-bus-cancel');
-            const successModal = document.getElementById('tp-delete-bus-success-modal');
-            const successName = document.getElementById('tp-delete-bus-success-name');
-            const successClose = document.getElementById('tp-delete-bus-success-close');
-
-            const resetDeleteButton = () => {
-                if (!confirmButton) return;
-                confirmButton.disabled = false;
-                confirmButton.textContent = 'Delete';
-            };
-
+            
             const removeDeletedRow = (busId) => {
                 const row = document.getElementById(`tp-bus-row-${busId}`);
                 if (row) row.remove();
+                
+                const card = document.getElementById(`tp-bus-card-${busId}`);
+                if (card) card.remove();
+                
                 if (tableBody && !tableBody.querySelector('tr')) {
                     tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No active registered vehicles configured in system database schema.</td></tr>';
                 }
+                const cardContainer = document.getElementById('tp-bus-card-container');
+                if (cardContainer && !cardContainer.querySelector('.card')) {
+                    cardContainer.innerHTML = '<div class="text-center text-muted py-4">No active registered vehicles configured.</div>';
+                }
             };
 
-            document.addEventListener('click', (event) => {
+            document.addEventListener('click', async (event) => {
                 const button = event.target.closest('.tp-delete-bus-btn');
                 if (!button) return;
                 event.preventDefault();
@@ -350,60 +529,37 @@
 
                 const busId = button.dataset.busId;
                 const busNumber = button.dataset.busNumber || '--';
-                state.pendingDelete = { busId, busNumber };
-                if (confirmName) confirmName.textContent = busNumber;
-                resetDeleteButton();
-                showModal(confirmModal);
+                
+                if (!window.confirm(`Are you sure you want to delete bus ${busNumber}?`)) {
+                    return;
+                }
+
+                state.deleteInFlight = true;
+                const originalHtml = button.innerHTML;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+                button.disabled = true;
+
+                try {
+                    const response = await fetch(`/admin/buses/delete/${encodeURIComponent(busId)}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                        }
+                    });
+                    if (!response.ok) throw new Error(`Delete failed with status ${response.status}`);
+
+                    removeDeletedRow(busId);
+                    alert(`Bus ${busNumber} deleted successfully.`);
+                } catch (error) {
+                    console.error('Error deleting bus:', error);
+                    alert('Unable to delete bus. Please try again.');
+                    button.innerHTML = originalHtml;
+                    button.disabled = false;
+                } finally {
+                    state.deleteInFlight = false;
+                }
             });
-
-            if (cancelButton) {
-                cancelButton.addEventListener('click', () => {
-                    if (state.deleteInFlight) return;
-                    state.pendingDelete = null;
-                    hideModal(confirmModal);
-                });
-            }
-
-            if (confirmButton) {
-                confirmButton.addEventListener('click', async () => {
-                    if (state.deleteInFlight || !state.pendingDelete) return;
-                    const { busId, busNumber } = state.pendingDelete;
-                    state.deleteInFlight = true;
-                    confirmButton.disabled = true;
-                    confirmButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Deleting...';
-
-                    try {
-                        const response = await fetch(`/admin/buses/delete/${encodeURIComponent(busId)}`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                            }
-                        });
-                        if (!response.ok) throw new Error(`Delete failed with status ${response.status}`);
-
-                        rememberHandledDeleteFlash(busNumber);
-                        hideModal(confirmModal);
-                        removeDeletedRow(busId);
-                        if (successName) successName.textContent = busNumber;
-                        showModal(successModal);
-                    } catch (error) {
-                        console.error('Error deleting bus:', error);
-                        hideModal(confirmModal);
-                        alert('Unable to delete bus. Please try again.');
-                    } finally {
-                        state.deleteInFlight = false;
-                        state.pendingDelete = null;
-                        resetDeleteButton();
-                    }
-                });
-            }
-
-            if (successClose) {
-                successClose.addEventListener('click', () => {
-                    hideModal(successModal);
-                });
-            }
         });
     })();
 </script>

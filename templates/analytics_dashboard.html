@@ -2,7 +2,7 @@
 {% block title %}TransPulse | Operational Analytics{% endblock %}
 {% block head_extras %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
+    <style>
     .dark-glass-card {
         background: linear-gradient(135deg, rgba(11, 29, 54, 0.6), rgba(4, 11, 24, 0.8));
         border: 1px solid rgba(52, 210, 255, 0.15);
@@ -15,7 +15,20 @@
         height: 280px;
         width: 100%;
     }
-</style>
+    @media (max-width: 768px) {
+        .metric-card {
+            padding: 0.75rem 0.4rem !important;
+        }
+        .metric-card h6 {
+            font-size: 0.6rem !important;
+            margin-bottom: 0.3rem !important;
+            letter-spacing: 0 !important;
+        }
+        .metric-card p {
+            font-size: 1.1rem !important;
+        }
+    }
+    </style>
 {% endblock %}
 
 {% block content %}
@@ -23,37 +36,92 @@
     
     <div class="d-flex align-items-center justify-content-between mb-4 mt-3 fade-up">
         <div class="d-flex align-items-center">
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-info me-3 px-4 rounded-pill fw-bold text-white" style="border-color: #34d2ff; background: rgba(52, 210, 255, 0.1);">← Back</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-link text-white text-decoration-none p-0 me-3 d-none d-lg-inline-block"><i class="fa-solid fa-chevron-left fs-5"></i></a>
             <div>
-                <h2 class="fw-bold mb-0 text-white">📊 System Performance Analytics</h2>
-                <p class="text-muted mb-0">Live operational matrix monitoring and automated fleet data visualization.</p>
+                <h2 class="fw-bold mb-0 text-white d-none d-md-block">📊 System Performance Analytics</h2>
+                <h2 class="fw-bold mb-0 text-white d-block d-md-none fs-4">📊 System Analysis</h2>
+                <p class="text-muted mb-0 d-none d-md-block">Live operational matrix monitoring and automated fleet data visualization.</p>
             </div>
         </div>
     </div>
 
-    <div class="row g-3 mb-4 fade-up-1">
-        <div class="col-6 col-lg-3">
+    <div class="row g-2 g-md-3 mb-4 fade-up-1">
+        <div class="col-6 col-md-3 col-lg-3">
             <div class="metric-card">
-                <h6><span class="icon">🏁</span>Total System Trips</h6>
+                <h6><span class="icon">🏁</span>System Trips</h6>
                 <p>{{ totals.total_trips }}</p>
             </div>
         </div>
-        <div class="col-6 col-lg-3">
-            <div class="metric-card border-success">
-                <h6><span class="icon text-success">🟢</span>Active Trips</h6>
-                <p class="text-success">{{ totals.active_trips }}</p>
-            </div>
-        </div>
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-md-3 col-lg-3">
             <div class="metric-card">
-                <h6><span class="icon">🚌</span>Registered Fleet</h6>
-                <p>{{ totals.bus_count }}</p>
-            </div>
-        </div>
-        <div class="col-6 col-lg-3">
-            <div class="metric-card">
-                <h6><span class="icon">👥</span>Total Network Users</h6>
+                <h6><span class="icon">👥</span>Network Users</h6>
                 <p>{{ totals.user_count }}</p>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-lg-3">
+            <div class="metric-card">
+                <h6><span class="icon"><i class="fa-solid fa-bus"></i></span>Fleet Buses</h6>
+                <p>{{ total_buses }}</p>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-lg-3">
+            <div class="metric-card border-success bg-dark">
+                <h6><span class="icon text-success"><i class="fa-solid fa-circle-check"></i></span>Active Deployed</h6>
+                <p class="text-success">{{ active_buses }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-2 g-md-3 mb-4 fade-up-1" style="animation-delay: 0.1s;">
+        <div class="col-4 col-md-4 col-lg-4">
+            <div class="metric-card">
+                <h6><span class="icon"><i class="fa-solid fa-route"></i></span>Active Routes</h6>
+                <p>{{ total_routes }}</p>
+            </div>
+        </div>
+        <div class="col-4 col-md-4 col-lg-4">
+            <div class="metric-card">
+                <h6><span class="icon"><i class="fa-solid fa-clipboard-list"></i></span>Complaints</h6>
+                <p style="color: var(--tp-warning);">{{ open_complaints }}</p>
+            </div>
+        </div>
+        <div class="col-4 col-md-4 col-lg-4">
+            <div class="metric-card" style="border-color: rgba(255, 93, 108, 0.4);">
+                <h6><span class="icon"><i class="fa-solid fa-triangle-exclamation"></i></span>SOS Alerts</h6>
+                <p style="color: var(--tp-danger);">{{ sos_alerts }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-2 g-md-3 mb-4 fade-up-1 d-flex flex-wrap justify-content-start" style="animation-delay: 0.2s;">
+        <div class="col-4 col-md-2 stat-col-mobile" style="flex: 1 0 18%;">
+            <div class="metric-card bg-dark border-warning">
+                <h6><span class="icon text-warning"><i class="fa-solid fa-clock"></i></span>Waiting to Depart</h6>
+                <p class="text-warning" id="stat-waiting">{{ waiting_to_depart }}</p>
+            </div>
+        </div>
+        <div class="col-4 col-md-2 stat-col-mobile" style="flex: 1 0 18%;">
+            <div class="metric-card bg-dark border-info">
+                <h6><span class="icon text-info"><i class="fa-solid fa-truck-fast"></i></span>Running</h6>
+                <p class="text-info" id="stat-running">{{ running }}</p>
+            </div>
+        </div>
+        <div class="col-4 col-md-2 stat-col-mobile" style="flex: 1 0 18%;">
+            <div class="metric-card bg-dark border-secondary">
+                <h6><span class="icon text-secondary"><i class="fa-solid fa-power-off"></i></span>Offline</h6>
+                <p class="text-secondary" id="stat-offline">{{ offline }}</p>
+            </div>
+        </div>
+        <div class="col-4 col-md-2 stat-col-mobile" style="flex: 1 0 18%;">
+            <div class="metric-card bg-dark border-success">
+                <h6><span class="icon text-success"><i class="fa-solid fa-flag-checkered"></i></span>Completed</h6>
+                <p class="text-success" id="stat-completed">{{ completed_buses }}</p>
+            </div>
+        </div>
+        <div class="col-4 col-md-2 stat-col-mobile" style="flex: 1 0 18%;">
+            <div class="metric-card bg-dark border-primary">
+                <h6><span class="icon text-primary"><i class="fa-solid fa-rotate-left"></i></span>Return Ready</h6>
+                <p class="text-primary" id="stat-return">{{ return_ready }}</p>
             </div>
         </div>
     </div>
@@ -62,7 +130,8 @@
         <div class="col-lg-8">
             <div class="card dark-glass-card h-100">
                 <div class="card-body p-4">
-                    <h5 class="text-white fw-bold mb-3">⇆ Fleet Deployment Density per Corridor</h5>
+                    <h5 class="text-white fw-bold mb-3 d-none d-md-block">⇆ Fleet Deployment Density per Corridor</h5>
+                    <h6 class="text-white fw-bold mb-3 d-block d-md-none fs-6">⇆ Fleet Density</h6>
                     <div class="chart-container">
                         <canvas id="routeTrafficChart"></canvas>
                     </div>
@@ -82,33 +151,7 @@
         </div>
     </div>
 
-    <div class="row g-4 fade-up-3">
-        <div class="col-md-12">
-            <div class="card dark-glass-card">
-                <div class="card-body p-4">
-                    <h5 class="text-white fw-bold mb-3">📋 Trip Execution Lifecycle Status Matrix</h5>
-                    <div class="row g-3 text-center text-light">
-                        <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
-                            <span class="text-muted d-block small mb-1">SCHEDULED</span>
-                            <strong class="fs-4">{{ trip_status_counts.scheduled }}</strong>
-                        </div>
-                        <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
-                            <span class="text-success d-block small mb-1">IN PROGRESS</span>
-                            <strong class="fs-4 text-success">{{ trip_status_counts.in_progress }}</strong>
-                        </div>
-                        <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
-                            <span class="text-info d-block small mb-1">COMPLETED</span>
-                            <strong class="fs-4 text-info">{{ trip_status_counts.completed }}</strong>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <span class="text-danger d-block small mb-1">CANCELLED</span>
-                            <strong class="fs-4 text-danger">{{ trip_status_counts.cancelled }}</strong>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
 </div>
 

@@ -3,6 +3,46 @@
 
 {% block head_extras %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+    .hub-card {
+        border-radius: 8px; 
+        padding: 12px; 
+        text-align: center;
+    }
+    .hub-card span {
+        font-size: 0.85rem; 
+        font-weight: 600; 
+        display: block;
+    }
+    .hub-card strong {
+        color: #fff; 
+        font-size: 1.1rem; 
+        display: block; 
+        margin-top: 2px;
+    }
+    @media (max-width: 768px) {
+        .hub-card {
+            padding: 8px !important;
+        }
+        .hub-card span {
+            font-size: 0.65rem !important;
+        }
+        .hub-card strong {
+            font-size: 0.9rem !important;
+        }
+        .metric-card {
+            padding: 0.75rem 0.4rem !important;
+        }
+        .metric-card h6 {
+            font-size: 0.6rem !important;
+            margin-bottom: 0.3rem !important;
+            letter-spacing: 0 !important;
+        }
+        .metric-card p {
+            font-size: 1.1rem !important;
+        }
+    }
+    </style>
 {% endblock %}
 
 {% block content %}
@@ -10,10 +50,10 @@
     
     <div class="d-flex align-items-center justify-content-between mb-4 mt-3 fade-up">
         <div class="d-flex align-items-center">
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-info me-3 px-4 rounded-pill fw-bold text-white" style="border-color:#34d2ff; background:rgba(52,210,255,0.1);">← Back</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-link text-white text-decoration-none p-0 me-3 d-none d-lg-inline-block"><i class="fa-solid fa-chevron-left fs-5"></i></a>
             <div>
                 <h2 class="fw-bold mb-1 text-white">🔥 Transport Heatmap</h2>
-                <p class="text-muted mb-0">Real-time passenger density and peak usage insights across Andhra Pradesh.</p>
+                <p class="text-muted mb-0 d-none d-md-block">Real-time passenger density and peak usage insights.</p>
             </div>
         </div>
     </div>
@@ -26,62 +66,69 @@
 
     <div class="card glass-card mb-4 fade-up" style="background: rgba(11,29,54,0.6); border: 1px solid var(--tp-border);">
         <div class="card-body">
-            <h5 class="card-title mb-4 text-white fw-bold">📊 Top Transport Hubs (High Demand)</h5>
-            <div class="row g-3">
-                <div class="col-md-2 col-sm-4">
-                    <div style="background: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000; border-radius: 8px; padding: 12px; text-align: center;">
-                        <span style="font-size: 0.85rem; color: #ff9aa3; font-weight: 600; display: block;">#1 HUB</span>
-                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Vijayawada</strong>
+            <h5 class="card-title mb-4 text-white fw-bold d-none d-md-block">📊 Top Transport Hubs (High Demand)</h5>
+            <h6 class="card-title mb-4 text-white fw-bold d-block d-md-none fs-6">📊 Top Hubs</h6>
+            <div class="row g-2 g-md-3">
+                <div class="col-6 col-md-2">
+                    <div class="hub-card" style="background: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000;">
+                        <span style="color: #ff9aa3;">HUB 1</span>
+                        <strong>Vijayawada</strong>
                     </div>
                 </div>
-                <div class="col-md-2 col-sm-4">
-                    <div style="background: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000; border-radius: 8px; padding: 12px; text-align: center;">
-                        <span style="font-size: 0.85rem; color: #ff9aa3; font-weight: 600; display: block;">#2 HUB</span>
-                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Guntur</strong>
+                <div class="col-6 col-md-2">
+                    <div class="hub-card" style="background: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000;">
+                        <span style="color: #ff9aa3;">HUB 2</span>
+                        <strong>Guntur</strong>
                     </div>
                 </div>
-                <div class="col-md-2 col-sm-4">
-                    <div style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800; border-radius: 8px; padding: 12px; text-align: center;">
-                        <span style="font-size: 0.85rem; color: #ffd58a; font-weight: 600; display: block;">#3 HUB</span>
-                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Tirupati</strong>
+                <div class="col-6 col-md-2">
+                    <div class="hub-card" style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800;">
+                        <span style="color: #ffd58a;">HUB 3</span>
+                        <strong>Tirupati</strong>
                     </div>
                 </div>
-                <div class="col-md-3 col-sm-6">
-                    <div style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800; border-radius: 8px; padding: 12px; text-align: center;">
-                        <span style="font-size: 0.85rem; color: #ffd58a; font-weight: 600; display: block;">#4 HUB</span>
-                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Visakhapatnam</strong>
+                <div class="col-6 col-md-2">
+                    <div class="hub-card" style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800;">
+                        <span style="color: #ffd58a;">HUB 4</span>
+                        <strong>Visakhapatnam</strong>
                     </div>
                 </div>
-                <div class="col-md-3 col-sm-6">
-                    <div style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800; border-radius: 8px; padding: 12px; text-align: center;">
-                        <span style="font-size: 0.85rem; color: #ffd58a; font-weight: 600; display: block;">#5 HUB</span>
-                        <strong style="color: #fff; font-size: 1.1rem; display: block; margin-top: 2px;">Vizianagaram</strong>
+                <div class="col-6 col-md-2">
+                    <div class="hub-card" style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800;">
+                        <span style="color: #ffd58a;">HUB 5</span>
+                        <strong>Vizianagaram</strong>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="hub-card" style="background: rgba(255, 136, 0, 0.1); border: 1px solid #ff8800;">
+                        <span style="color: #ffd58a;">HUB 6</span>
+                        <strong>Kurnool</strong>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row g-3 mb-4 fade-up">
-        <div class="col-md-3 col-sm-6">
+    <div class="row g-2 g-md-3 mb-4 fade-up">
+        <div class="col-6 col-md-3">
             <div class="metric-card bg-dark border-info">
                 <h6><span class="icon">🚌</span>Total Routes</h6>
                 <p data-counter="{{ heatmap_stats.total_routes }}">{{ heatmap_stats.total_routes }}</p>
             </div>
         </div>
-        <div class="col-md-3 col-sm-6">
+        <div class="col-6 col-md-3">
             <div class="metric-card bg-dark border-info">
                 <h6><span class="icon">📍</span>Total Stops</h6>
                 <p data-counter="{{ heatmap_stats.total_stops }}">{{ heatmap_stats.total_stops }}</p>
             </div>
         </div>
-        <div class="col-md-3 col-sm-6">
+        <div class="col-6 col-md-3">
             <div class="metric-card bg-dark border-info">
                 <h6><span class="icon">🏙️</span>Total Cities</h6>
                 <p data-counter="{{ heatmap_stats.total_cities }}">{{ heatmap_stats.total_cities }}</p>
             </div>
         </div>
-        <div class="col-md-3 col-sm-6">
+        <div class="col-6 col-md-3">
             <div class="metric-card bg-dark border-info">
                 <h6><span class="icon">🧭</span>Total Trips</h6>
                 <p data-counter="{{ heatmap_stats.total_trips }}">{{ heatmap_stats.total_trips }}</p>

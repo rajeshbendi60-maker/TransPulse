@@ -124,7 +124,6 @@ window.TransPulseTrackingHistory = {
                 <tr>
                     <td class="fw-bold text-white">${busId}</td>
                     <td>${route}</td>
-                    <td>${source} <span class="text-info">&rarr;</span> ${destination}</td>
                     <td>${trackedAt}</td>
                     <td><span class="tracking-status-badge ${this.statusClass(status)}">${statusText}</span></td>
                     <td>

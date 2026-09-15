@@ -57,10 +57,13 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Never cache live data streams or telemetry feeds
-    if (url.pathname.startsWith('/api/')) {
+    // Never cache live data streams, telemetry feeds, or HTML pages (to prevent auth state bugs)
+    if (url.pathname.startsWith('/api/') || event.request.headers.get('accept').includes('text/html')) {
         event.respondWith(
             fetch(event.request).catch(() => {
+                if (event.request.headers.get('accept').includes('text/html')) {
+                    return caches.match('/offline.html');
+                }
                 return new Response(JSON.stringify({ error: 'Data link unreachable. Operating in offline mode.' }), {
                     status: 503,
                     headers: { 'Content-Type': 'application/json' }
@@ -70,7 +73,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Cache-First with Network Fallback strategy for static shell parameters
+    // Cache-First with Network Fallback strategy for static shell parameters (CSS, JS, Images)
     event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
             if (cachedResponse) {
@@ -79,10 +82,13 @@ self.addEventListener('fetch', (event) => {
 
             return fetch(event.request).then((networkResponse) => {
                 if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-                    const responseToCache = networkResponse.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(event.request, responseToCache);
-                    });
+                    // Only cache static assets, not dynamic pages
+                    if (url.pathname.startsWith('/static/') || url.pathname.match(/\.(png|jpg|jpeg|svg|ico|css|js)$/)) {
+                        const responseToCache = networkResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(event.request, responseToCache);
+                        });
+                    }
                 }
                 return networkResponse;
             }).catch(() => {

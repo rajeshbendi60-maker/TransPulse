@@ -25,6 +25,10 @@
                     <label class="form-label">Destination</label>
                     <input class="form-control" name="destination" value="{{ route.destination }}" required>
                 </div>
+                <div class="col-md-12">
+                    <label class="form-label">Intermediate Stops (Comma separated)</label>
+                    <input class="form-control" name="intermediate_stops" value="{{ route.intermediate_stops or '' }}" placeholder="Stop A, Stop B">
+                </div>
                 <div class="col-12 d-flex gap-2">
                     <button class="btn btn-primary" type="submit">Save Changes</button>
                     <a href="{{ url_for('admin_routes') }}" class="btn btn-outline-secondary">Back</a>

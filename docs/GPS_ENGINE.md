@@ -1,25 +1,16 @@
-# GPS Engine
+GPS Engine
 
-Live driver GPS is held in `LIVE_GPS_DATA` and exposed through the live bus APIs. Simulated movement uses GTFS stops/shapes and trip state when real driver coordinates are not fresh.
-
-```mermaid
-flowchart TD
-    Driver["Driver location POST"] --> Validate["Coordinate, speed, jump validation"]
-    Validate --> Memory["LIVE_GPS_DATA"]
-    Memory --> Snapshot["Live fleet snapshot"]
-    Snapshot --> Passenger["Passenger tracking"]
-    Snapshot --> Admin["Admin live fleet"]
-    Snapshot --> DriverDash["Driver telemetry"]
-```
+Live driver GPS is held in memory and exposed through the live bus APIs. Simulated movement uses GTFS stops, shapes, and trip state when real driver coordinates are not fresh.
 
 Key behaviors:
 
-- Stale GPS packets are ignored by `_fresh_gps_packet`.
-- Driver trip start/end clears stale live GPS state.
-- Passenger tracking heartbeats are recorded by `/api/tracking/session`.
-- Delay reports update ETA, schedule labels, and notifications.
-- Completed trips can still be rendered briefly through `/api/tracking/completed/<bus_identifier>`.
+1. Stale GPS packets are ignored during validation.
+2. Driver trip start and end events clear the stale live GPS state.
+3. Passenger tracking heartbeats are recorded by the tracking session endpoint.
+4. Delay reports update ETA, schedule labels, and notifications.
+5. Completed trips can still be rendered briefly through the completed tracking endpoints.
+6. The driver's location is posted, validated for coordinates, speed, and jumps, stored in memory, and merged into a live fleet snapshot which feeds the passenger tracking map, the admin fleet view, and the driver telemetry.
 
 Operational limits:
 
-- In-memory GPS state is process-local. Multi-worker production deployments need Redis or another shared store.
+1. In-memory GPS state is process-local. Multi-worker production deployments need a shared store.

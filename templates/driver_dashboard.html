@@ -2,31 +2,399 @@
 {% block title %}TransPulse | Driver Dashboard{% endblock %}
 {% block head_extras %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* HUD Glassmorphism & Backgrounds */
+.driver-dashboard-shell {
+    background: radial-gradient(circle at top right, rgba(0,255,200,0.05), transparent 40%),
+                radial-gradient(circle at bottom left, rgba(0,100,255,0.05), transparent 40%);
+}
+.glass-panel {
+    background: linear-gradient(135deg, rgba(8,16,32,0.9), rgba(2,6,12,0.95)) !important;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255,255,255,0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.3s ease;
+}
+.glass-panel:hover {
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+/* Command Console Buttons */
+.driver-control-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+    padding: 15px;
+    background: rgba(0,0,0,0.4);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.02);
+}
+.driver-action-btn {
+    border-radius: 12px;
+    padding: 15px 20px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 0.85rem;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    border: none;
+}
+#start-trip-btn {
+    background: linear-gradient(135deg, #00b09b, #96c93d);
+    color: #000;
+    box-shadow: 0 0 20px rgba(0,176,155,0.4);
+}
+#start-trip-btn:hover { box-shadow: 0 0 30px rgba(0,176,155,0.7); transform: translateY(-2px); }
+
+#passenger-emergency-btn {
+    background: repeating-linear-gradient(
+        45deg,
+        #cc0000,
+        #cc0000 10px,
+        #a00000 10px,
+        #a00000 20px
+    );
+    color: white;
+    text-shadow: 1px 1px 2px black;
+    box-shadow: 0 0 20px rgba(204,0,0,0.5);
+    border: 1px solid #ff4d4d;
+}
+#passenger-emergency-btn:hover { box-shadow: 0 0 30px rgba(204,0,0,0.8); transform: translateY(-2px); }
+
+/* GPS Pulsating Radar */
+@keyframes radar-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(0, 255, 200, 0.7); }
+    70% { box-shadow: 0 0 0 15px rgba(0, 255, 200, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 255, 200, 0); }
+}
+.gps-active-pulse {
+    animation: radar-pulse 2s infinite;
+    background: #00ffcc !important;
+    color: #000 !important;
+    border-color: #00ffcc !important;
+}
+
+/* Glowing Route Timeline */
+.route-timeline {
+    position: relative;
+    padding-left: 25px;
+}
+.route-timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 5px;
+    bottom: 5px;
+    width: 2px;
+    background: rgba(255,255,255,0.1);
+}
+.timeline-stop {
+    position: relative;
+    padding-bottom: 20px;
+}
+.timeline-stop::before {
+    content: '';
+    position: absolute;
+    left: -21px;
+    top: 4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #444;
+    border: 2px solid #222;
+    z-index: 2;
+    transition: all 0.3s ease;
+}
+.stop-completed::before {
+    background: #00ffcc;
+    border-color: #00ffcc;
+    box-shadow: 0 0 10px #00ffcc;
+}
+.stop-current::before {
+    background: #00a8ff;
+    border-color: #fff;
+    box-shadow: 0 0 15px #00a8ff, 0 0 5px #fff;
+    width: 14px;
+    height: 14px;
+    left: -23px;
+    top: 2px;
+}
+.stop-name {
+    color: #aaa;
+    font-size: 0.9rem;
+}
+.stop-completed .stop-name { color: #666; }
+.stop-current .stop-name { color: #fff; font-weight: bold; text-shadow: 0 0 5px rgba(255,255,255,0.5); }
+
+/* HUD Telemetry Panels */
+.telemetry-layout {
+    background: rgba(0,0,0,0.5);
+    border-radius: 12px;
+    padding: 15px;
+    border: 1px solid rgba(0, 168, 255, 0.2);
+}
+.telemetry-section-title {
+    color: #00a8ff;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    border-bottom: 1px solid rgba(0, 168, 255, 0.3);
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+}
+.telemetry-value {
+    color: #fff;
+    font-weight: 600;
+    font-size: 1.1rem;
+    text-shadow: 0 0 10px rgba(255,255,255,0.2);
+}
+/* Glowing Progress Track */
+.trip-progress-track {
+    background: rgba(255,255,255,0.05);
+    height: 12px;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.8);
+    border: 1px solid rgba(0,168,255,0.2);
+}
+.trip-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00a8ff, #00ffcc);
+    box-shadow: 0 0 15px rgba(0,255,200,0.8);
+    border-radius: 10px;
+    transition: width 0.5s ease;
+}
+
+/* Fix Card Padding */
+.driver-dashboard-shell .card {
+    padding: 1.5rem;
+}
+@media (max-width: 991.98px) {
+    .driver-dashboard-shell .card {
+        padding: 1rem;
+    }
+}
+
+/* Mobile SPA Grid Styling */
+.rapido-grid {
+    display: none;
+}
+@media (max-width: 991.98px) {
+    .rapido-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-bottom: 2rem;
+    }
+    .driver-control-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    .driver-action-btn {
+        padding: 12px 10px;
+        font-size: 0.75rem;
+    }
+    .driver-action-btn i {
+        display: block;
+        font-size: 1.2rem;
+        margin-bottom: 4px;
+        margin-right: 0 !important;
+    }
+}
+
+.rapido-grid.hidden, .feature-grid.hidden {
+    display: none !important;
+}
+
+.driver-ops-grid {
+    display: none !important;
+}
+.driver-ops-grid.spa-active {
+    display: flex !important;
+    flex-direction: column;
+}
+
+/* Hide all elements with data-screen by default in SPA mode */
+.driver-ops-grid.spa-active [data-screen] {
+    display: none !important;
+}
+/* Show only the active screen elements */
+.driver-ops-grid.spa-active [data-screen].active-screen {
+    display: block !important;
+    animation: modalFadeIn 0.3s ease forwards;
+}
+
+
+@media (min-width: 992px) {
+    .driver-ops-grid.spa-active .spa-back-btn {
+        display: inline-flex !important;
+    }
+}
+.rapido-tile {
+    background: rgba(11,29,54,0.6);
+    border: 1px solid rgba(52,210,255,0.15);
+    border-radius: 12px;
+    padding: 16px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s;
+}
+.rapido-tile:active {
+    background: rgba(52,210,255,0.1);
+    transform: scale(0.96);
+}
+.rapido-tile-icon { font-size: 1.8rem; margin-bottom: 8px; }
+.rapido-tile-text { font-size: 0.75rem; color: #e6f1ff; font-weight: 600; line-height: 1.3; }
+</style>
 {% endblock %}
 {% block content %}
 <div class="container position-relative driver-dashboard-shell">
-    <div class="section-head fade-up d-flex justify-content-between align-items-start">
-        <div>
-            <h2 class="mb-1 text-white">Driver Console</h2>
-            <p class="text-info">APSRTC Duty Management | {{ driver_id }}</p>
+    <div class="d-flex align-items-center justify-content-between mb-4 mt-3 fade-up" id="driver-greeting-header">
+        <div class="d-flex align-items-center gap-3">
+            <div class="greeting-box">
+                <h5 class="fw-bold mb-0 text-white text-truncate" id="dynamic-greeting-driver" style="font-size: clamp(1rem, 4vw, 1.5rem); line-height: 1.3;">Good morning</h5>
+                <p class="text-info mb-0 small" style="opacity: 0.85;">Welcome to Transpulse</p>
+                <script>
+                    (function(){
+                        const hr = new Date().getHours();
+                        const timeGreeting = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+                        document.getElementById('dynamic-greeting-driver').innerText = timeGreeting + ', {{ current_user.full_name }}';
+                    })();
+                </script>
+            </div>
+            <!-- MOBILE BELL -->
+            <a href="{{ url_for('notifications_center') }}" class="btn btn-dark rounded-circle position-relative d-flex d-md-none align-items-center justify-content-center shadow-sm border border-secondary flex-shrink-0" style="width: 40px; height: 40px; min-width: 40px; padding: 0;">
+                <i class="fa-solid fa-bell text-white" style="font-size: 0.95rem;"></i>
+                <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-dark rounded-circle" style="margin-top: 4px; margin-left: -6px; width: 10px; height: 10px;">
+                    <span class="visually-hidden">New alerts</span>
+                </span>
+            </a>
         </div>
-        <div class="d-flex flex-column align-items-end gap-2">
-            <span class="status-pill status-on-time shadow">Duty Active</span>
-            <span id="gpsStatusBadge" class="badge bg-secondary p-2 shadow d-none text-center" style="font-size: 0.85rem;">
+        
+        <!-- DESKTOP RIGHT ALIGNED SECTION -->
+        <div class="d-none d-md-flex align-items-center gap-3 flex-shrink-0">
+            <!-- DESKTOP BELL -->
+            <a href="{{ url_for('notifications_center') }}" class="btn btn-dark rounded-circle position-relative d-flex align-items-center justify-content-center shadow-sm border border-secondary flex-shrink-0" style="width: 40px; height: 40px; min-width: 40px; padding: 0;">
+                <i class="fa-solid fa-bell text-white" style="font-size: 0.95rem;"></i>
+                <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-dark rounded-circle" style="margin-top: 4px; margin-left: -6px; width: 10px; height: 10px;">
+                    <span class="visually-hidden">New alerts</span>
+                </span>
+            </a>
+            <span id="gpsStatusBadge" class="badge bg-secondary p-2 shadow d-none text-center" style="font-size: 0.85rem; white-space: nowrap;">
                 <i class="fa-solid fa-satellite-dish me-1"></i> Awaiting GPS...
             </span>
         </div>
     </div>
 
-    {% if not has_assigned_bus %}
-    <div class="alert alert-info bg-dark border-info text-info mb-4 fade-up-1">
-        No bus assigned. Contact administrator.
+
+
+    <!-- Mobile Grid (Rapido-style) -->
+    <div class="rapido-grid d-grid d-lg-none fade-up-1" id="mobile-driver-grid">
+        <div class="rapido-tile" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('ops'){% endif %}">
+            <div class="rapido-tile-icon text-cyan"><i class="fa-solid fa-play"></i></div>
+            <div class="rapido-tile-text">{% if not has_assigned_bus %}No Bus is<br>assigned to enable{% else %}Trip<br>Operations{% endif %}</div>
+        </div>
+        <div class="rapido-tile" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('sequence'){% endif %}">
+            <div class="rapido-tile-icon text-info"><i class="fa-solid fa-route"></i></div>
+            <div class="rapido-tile-text">{% if not has_assigned_bus %}No Bus is<br>assigned to enable{% else %}Route<br>Sequence{% endif %}</div>
+        </div>
+        <div class="rapido-tile" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('details'){% endif %}">
+            <div class="rapido-tile-icon text-primary"><i class="fa-solid fa-satellite-dish"></i></div>
+            <div class="rapido-tile-text">{% if not has_assigned_bus %}No Bus is<br>assigned to enable{% else %}Trip<br>Details{% endif %}</div>
+        </div>
+        <div class="rapido-tile" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('sos'){% endif %}" style="border-color: rgba(255,50,50,0.3); background: rgba(255,50,50,0.05);">
+            <div class="rapido-tile-icon text-danger"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <div class="rapido-tile-text text-danger">{% if not has_assigned_bus %}No Bus is<br>assigned to enable{% else %}SOS<br>Emergency{% endif %}</div>
+        </div>
+        <div class="rapido-tile" onclick="{% if not has_assigned_bus %}return false;{% else %}window.location.href='{{ url_for('complaints_page') }}'{% endif %}">
+            <div class="rapido-tile-icon text-warning"><i class="fa-solid fa-clipboard-list"></i></div>
+            <div class="rapido-tile-text">{% if not has_assigned_bus %}No Bus is<br>assigned to enable{% else %}Complaints{% endif %}</div>
+        </div>
+        <div class="rapido-tile" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('lost'){% endif %}">
+            <div class="rapido-tile-icon text-secondary"><i class="fa-solid fa-box-open"></i></div>
+            <div class="rapido-tile-text">{% if not has_assigned_bus %}No Bus is<br>assigned to enable{% else %}Lost &<br>Found{% endif %}</div>
+        </div>
     </div>
-    {% endif %}
+
+    <!-- Desktop Feature Grid -->
+    <div class="feature-grid d-none d-lg-grid fade-up-1" id="desktop-driver-grid">
+        <div class="feature-card-lg fc-cyan" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('ops'){% endif %}" style="cursor: {% if not has_assigned_bus %}not-allowed{% else %}pointer{% endif %};">
+            <div class="fc-content">
+                <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-play"></i></div></div>
+                <div>
+                    <h4 class="fc-title">Trip Operations</h4>
+                    <p class="fc-desc">{% if not has_assigned_bus %}No Bus is assigned to enable{% else %}Start, stop, and manage trip status{% endif %}</p>
+                </div>
+            </div>
+            <div class="fc-arrow">Open &rarr;</div>
+        </div>
+
+        <div class="feature-card-lg fc-indigo" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('sequence'){% endif %}" style="cursor: {% if not has_assigned_bus %}not-allowed{% else %}pointer{% endif %};">
+            <div class="fc-content">
+                <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-route"></i></div></div>
+                <div>
+                    <h4 class="fc-title">Route Sequence</h4>
+                    <p class="fc-desc">{% if not has_assigned_bus %}No Bus is assigned to enable{% else %}View upcoming stops and timeline{% endif %}</p>
+                </div>
+            </div>
+            <div class="fc-arrow">Open &rarr;</div>
+        </div>
+
+        <div class="feature-card-lg fc-blue" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('details'){% endif %}" style="cursor: {% if not has_assigned_bus %}not-allowed{% else %}pointer{% endif %};">
+            <div class="fc-content">
+                <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-satellite-dish"></i></div></div>
+                <div>
+                    <h4 class="fc-title">Trip Details</h4>
+                    <p class="fc-desc">{% if not has_assigned_bus %}No Bus is assigned to enable{% else %}Live telemetry and trip summary data{% endif %}</p>
+                </div>
+            </div>
+            <div class="fc-arrow">Open &rarr;</div>
+        </div>
+
+        <div class="feature-card-lg fc-red" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('sos'){% endif %}" style="cursor: {% if not has_assigned_bus %}not-allowed{% else %}pointer{% endif %};">
+            <div class="fc-content">
+                <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-triangle-exclamation"></i></div></div>
+                <div>
+                    <h4 class="fc-title text-white">SOS Emergency</h4>
+                    <p class="fc-desc text-white-50">{% if not has_assigned_bus %}No Bus is assigned to enable{% else %}Trigger distress signals to the control room{% endif %}</p>
+                </div>
+            </div>
+            <div class="fc-arrow text-white">Open &rarr;</div>
+        </div>
+
+        <div class="feature-card-lg fc-orange" onclick="{% if not has_assigned_bus %}return false;{% else %}window.location.href='{{ url_for('complaints_page') }}'{% endif %}" style="cursor: {% if not has_assigned_bus %}not-allowed{% else %}pointer{% endif %};">
+            <div class="fc-content">
+                <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-clipboard-list"></i></div></div>
+                <div>
+                    <h4 class="fc-title">Complaints</h4>
+                    <p class="fc-desc">{% if not has_assigned_bus %}No Bus is assigned to enable{% else %}Log and review passenger issues{% endif %}</p>
+                </div>
+            </div>
+            <div class="fc-arrow">Open &rarr;</div>
+        </div>
+
+        <div class="feature-card-lg fc-purple" onclick="{% if not has_assigned_bus %}return false;{% else %}showDriverScreen('lost'){% endif %}" style="cursor: {% if not has_assigned_bus %}not-allowed{% else %}pointer{% endif %};">
+            <div class="fc-content">
+                <div class="fc-icon-wrapper"><div class="fc-icon"><i class="fa-solid fa-box-open"></i></div></div>
+                <div>
+                    <h4 class="fc-title">Lost & Found</h4>
+                    <p class="fc-desc">{% if not has_assigned_bus %}No Bus is assigned to enable{% else %}Report items found on the vehicle{% endif %}</p>
+                </div>
+            </div>
+            <div class="fc-arrow">Open &rarr;</div>
+        </div>
+    </div>
 
     <div class="driver-ops-grid fade-up-1" id="assigned-bus-section" {% if not has_assigned_bus %}style="display:none"{% endif %}>
-        <div class="driver-left-column">
-            <section class="card glass-panel border-secondary driver-dashboard-card driver-ops-card">
+        <button class="btn btn-link text-white text-decoration-none p-0 mb-3 align-items-center spa-back-btn d-none" onclick="hideDriverScreen()" style="width: fit-content;">
+            <i class="fa-solid fa-chevron-left fs-5"></i>
+        </button>
+            <section class="card glass-panel border-secondary driver-dashboard-card driver-ops-card" data-screen="ops">
                 <div class="driver-card-header driver-card-header-split border-bottom border-secondary pb-2 mb-3">
                     <h5 class="text-white m-0">Trip Operations</h5>
                     <span id="driver-trip-state-badge" class="badge bg-secondary">{{ driver_trip_state }}</span>
@@ -51,59 +419,9 @@
                 <button id="start-return-trip-btn" class="btn btn-success driver-action-btn fw-bold w-100 mt-3 d-none" onclick="startDriverTrip(true)">
                     <i class="fa-solid fa-rotate-left me-1"></i> Start Return Trip
                 </button>
-                <div id="driver-trip-status-panel" class="driver-trip-status-panel mt-3">
-                    {% if has_assigned_bus %}
-                    <div class="telemetry-layout">
-                        <section class="telemetry-section">
-                            <div class="telemetry-section-title">Trip Status</div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">Bus Number</span>
-                                <span class="telemetry-value">{{ driver_initial_context.busNumber }}</span>
-                            </div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">Route</span>
-                                <span class="telemetry-value">{{ driver_initial_context.routeName }}</span>
-                            </div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">Direction</span>
-                                <span class="telemetry-value">{{ driver_initial_context.direction }}</span>
-                            </div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">Bus Status</span>
-                                <span class="telemetry-value">OFFLINE</span>
-                            </div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">Trip Status</span>
-                                <span class="telemetry-value">{{ driver_initial_context.tripStatus }}</span>
-                            </div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">GPS Status</span>
-                                <span class="telemetry-value">OFFLINE</span>
-                            </div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">Current Stop</span>
-                                <span class="telemetry-value">{{ driver_initial_context.currentStop }}</span>
-                            </div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">Next Stop</span>
-                                <span class="telemetry-value">{{ driver_initial_context.nextStop }}</span>
-                            </div>
-                            <div class="telemetry-field">
-                                <span class="telemetry-label">Trip Progress</span>
-                                <span class="telemetry-value">0%</span>
-                            </div>
-                        </section>
-                    </div>
-                    {% else %}
-                    <div class="d-flex align-items-center gap-2 text-muted">
-                        <div class="spinner-border spinner-border-sm text-info" role="status"></div>
-                        <span>Loading trip status...</span>
-                    </div>
-                    {% endif %}
-                </div>
             </section>
 
-            <section class="driver-live-main card glass-panel border-primary">
+            <section class="driver-live-main card glass-panel border-primary" data-screen="details">
                 <div class="driver-card-body">
                     <h5 class="text-white border-bottom border-secondary pb-2 mb-4">Live Telemetry Dashboard</h5>
                     <div id="dvr-telemetry-container">
@@ -112,17 +430,8 @@
                             <section class="telemetry-section">
                                 <div class="telemetry-section-title">Current Trip</div>
                                 <div class="telemetry-field"><span class="telemetry-label">Route</span><span class="telemetry-value">{{ driver_initial_context.routeCode }}</span></div>
-                                <div class="telemetry-field"><span class="telemetry-label">Origin</span><span class="telemetry-value">{{ driver_initial_context.sourceStop }}</span></div>
-                                <div class="telemetry-field"><span class="telemetry-label">Destination</span><span class="telemetry-value">{{ driver_initial_context.destinationStop }}</span></div>
                                 <div class="telemetry-field"><span class="telemetry-label">Current Stop</span><span class="telemetry-value">{{ driver_initial_context.currentStop }}</span></div>
                                 <div class="telemetry-field"><span class="telemetry-label">Next Stop</span><span class="telemetry-value">{{ driver_initial_context.nextStop }}</span></div>
-                            </section>
-                            <section class="telemetry-section">
-                                <div class="telemetry-section-title">Journey Information</div>
-                                <div class="telemetry-field"><span class="telemetry-label">Scheduled Arrival</span><span class="telemetry-value">{{ driver_initial_context.scheduledArrival }}</span></div>
-                                <div class="telemetry-field"><span class="telemetry-label">Scheduled Departure</span><span class="telemetry-value">{{ driver_initial_context.scheduledDeparture }}</span></div>
-                                <div class="telemetry-field"><span class="telemetry-label">Actual Arrival</span><span class="telemetry-value">--</span></div>
-                                <div class="telemetry-field"><span class="telemetry-label">Actual Departure</span><span class="telemetry-value">--</span></div>
                             </section>
                             <section class="telemetry-section">
                                 <div class="telemetry-section-title">Live Telemetry</div>
@@ -144,7 +453,7 @@
                 </div>
             </section>
 
-            <section class="card glass-panel border-danger driver-dashboard-card driver-bottom-card driver-sos-card">
+            <section class="card glass-panel border-danger driver-dashboard-card driver-bottom-card driver-sos-card" data-screen="sos">
                 <div class="driver-card-header driver-card-header-split">
                     <h5 class="text-danger fw-bold m-0">Active SOS Alerts</h5>
                     <span id="sos-count-badge" class="badge bg-danger shadow" style="display:none;">0 Active</span>
@@ -157,7 +466,7 @@
                 </div>
             </section>
 
-            <section class="card glass-panel border-warning driver-dashboard-card driver-bottom-card driver-lost-found-card" id="driver-lost-found-section">
+            <section class="card glass-panel border-warning driver-dashboard-card driver-bottom-card driver-lost-found-card" id="driver-lost-found-section" data-screen="lost">
                 <h5 class="text-white border-bottom border-secondary pb-2 mb-3">Lost Item Reports</h5>
                 <div id="driver-lnf-list" class="row g-3 driver-lower-content">
                     <div class="col-12 text-muted small d-flex align-items-center gap-2">
@@ -167,16 +476,7 @@
                 </div>
             </section>
 
-            <section class="premium-action-banner driver-dashboard-card driver-bottom-card driver-complaints-card">
-                <div class="driver-complaints-title driver-card-header-split">
-                    <h3 class="fw-bold m-0 text-white">Manage Operational Complaints</h3>
-                    <a href="{{ url_for('complaints_page') }}" class="driver-ui-btn driver-ui-btn-primary driver-complaints-btn">File New Dispute</a>
-                </div>
-            </section>
-        </div>
-
-        <aside class="driver-right-column">
-            <section class="driver-side-card card glass-panel border-info">
+            <section class="driver-side-card card glass-panel border-info" data-screen="summary">
                 <h5 class="text-white border-bottom border-secondary pb-2">Trip Summary</h5>
                 <div id="dvr-trip-summary-container" class="driver-card-body">
                     {% if has_assigned_bus %}
@@ -215,7 +515,7 @@
                     {% endif %}
                 </div>
             </section>
-            <section class="driver-side-card card glass-panel border-info driver-route-path-card">
+            <section class="driver-side-card card glass-panel border-info driver-route-path-card" data-screen="sequence">
                 <h5 class="text-white border-bottom border-secondary pb-2">Route Path Sequence</h5>
                 <div id="dvr-route-sequence-container" class="driver-card-body driver-route-scroll">
                     {% if has_assigned_bus and driver_route_points %}
@@ -237,7 +537,6 @@
                     {% endif %}
                 </div>
             </section>
-        </aside>
     </div>
 </div>
 
@@ -443,6 +742,11 @@ function requestDriverInitialPosition() {
             },
             (error) => {
                 if (initialWatchId !== null) navigator.geolocation.clearWatch(initialWatchId);
+                
+                console.error("Initial GPS Lock Error:", error.message);
+                updateGpsBadge(false, 'GPS Error');
+                reject(error);
+
                 updateGpsBadge(false, 'GPS Blocked');
                 reject(new Error(error.message || 'Location permission is required to start the trip.'));
             },
@@ -532,8 +836,20 @@ function updateDriverControls() {
     }
 }
 
-function triggerEmergencySuccess() {
-    showDriverSuccess("Emergency Relayed", "The passenger emergency signal has been successfully forwarded to the control room and priority response lines.");
+async function triggerEmergencySuccess() {
+    if (!confirm("Are you sure you want to trigger a passenger emergency? This will alert admins immediately.")) return;
+    try {
+        const payload = await postDriverAction('/api/driver/sos', { 
+            reason: 'Passenger Emergency', 
+            severity: 'critical' 
+        });
+        showDriverSuccess("Emergency Relayed", "The passenger emergency signal has been successfully forwarded to the control room and priority response lines.");
+        if (window.AdminSOS && window.AdminSOS.loadAlerts) {
+            window.AdminSOS.loadAlerts();
+        }
+    } catch (error) {
+        showDriverSuccess("Action Failed", error.message);
+    }
 }
 
 async function submitDelayTelemetry() {
@@ -591,17 +907,13 @@ function renderDriverRouteSequence(container, stops, completedStops = 0, activeS
     container.innerHTML = `
         <div class="route-timeline">
             ${stops.map((stop, index) => {
-                let marker = '○';
                 let stateClass = 'stop-upcoming';
                 
                 if (tripCompleted) {
-                    marker = '✔';
                     stateClass = 'stop-completed';
                 } else if (index < completedStops) {
-                    marker = '✔';
                     stateClass = 'stop-completed';
                 } else if (index === activeStopIndex) {
-                    marker = '▶';
                     stateClass = 'stop-current';
                 }
 
@@ -619,7 +931,7 @@ function renderDriverRouteSequence(container, stops, completedStops = 0, activeS
                     </div>` : '';
                 return `
                     <div class="timeline-stop ${stateClass}${index === totalStops - 1 ? ' stop-final' : ''}">
-                        <span class="stop-name">${marker} ${escapeDriverText(nameText)}</span>
+                        <span class="stop-name">${escapeDriverText(nameText)}</span>
                         ${meta}
                     </div>
                 `;
@@ -654,8 +966,6 @@ function renderOfflineDriverDashboard() {
                 </section>
                 <section class="telemetry-section">
                     <div class="telemetry-section-title">Route Information</div>
-                    ${driverTelemetryField('Origin', context.sourceStop)}
-                    ${driverTelemetryField('Destination', context.destinationStop)}
                     ${driverTelemetryField('Current Stop', currentStop)}
                     ${driverTelemetryField('Next Stop', nextStop)}
                     ${driverTelemetryField('Total Stops', totalStops || '--')}
@@ -808,8 +1118,9 @@ updateTelemetry = async function() {
                           Number(lastTelemetrySnapshot.route_id) === Number(bus.route_id) &&
                           Number(lastTelemetrySnapshot.bus_id) === Number(bus.bus_id);
             if (!match) {
-                console.info("Telemetry assignment change detected. Invalidating cached telemetry.");
-                lastTelemetrySnapshot = null;
+                console.info("Telemetry assignment change detected. Reloading dashboard to sync new route sequence path.");
+                window.location.reload();
+                return;
             }
         }
 
@@ -899,13 +1210,22 @@ updateTelemetry = async function() {
         }
     }
 
-    const isGpsOffline = bus.gps_status === 'Offline' || serviceStatus === 'offline' || serviceStatus === 'OFFLINE';
-
-    if (isGpsOffline) {
-        const offlineMsg = `<div class="p-4 text-center text-muted fw-bold">GPS is Offline. Waiting for the driver to start the trip.</div>`;
+    if (!isDriverTripActive() && driverTripState !== 'RETURN_READY') {
+        const offlineMsg = `<div class="p-4 text-center text-muted fw-bold">Waiting for the driver to start the trip.</div>`;
         telemetryContainer.innerHTML = offlineMsg;
         if (tripStatusPanel) {
-            tripStatusPanel.innerHTML = `<div class="p-3 text-center text-muted small fw-bold">GPS is Offline. Waiting for the driver to start the trip.</div>`;
+            renderTripOperationsPanel(tripStatusPanel, {
+                busNumber: bus.bus_number || '--',
+                routeCode: bus.route_code,
+                routeName: bus.route_name,
+                direction: directionLabel,
+                busStatus: 'OFFLINE',
+                tripStatus: 'NOT STARTED',
+                gpsStatus: 'OFFLINE',
+                currentStop: driverInitialContext.currentStop || '--',
+                nextStop: driverInitialContext.nextStop || '--',
+                tripProgress: '0%'
+            });
         }
         tripSummaryContainer.innerHTML = offlineMsg;
         routeSequenceContainer.innerHTML = offlineMsg;
@@ -925,8 +1245,6 @@ updateTelemetry = async function() {
             </section>
             <section class="telemetry-section">
                 <div class="telemetry-section-title">Route Information</div>
-                ${telemetryField('Origin', bus.source_stop)}
-                ${telemetryField('Destination', bus.destination_stop)}
                 ${telemetryField('Current Stop', bus.current_stop)}
                 ${telemetryField('Next Stop', bus.next_stop)}
                 ${telemetryField('Total Stops', totalStops || '--')}
@@ -1155,8 +1473,8 @@ function updateGpsBadge(isSuccess, message) {
     if (!badge) return;
     const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     if (isSuccess) {
-        badge.className = "badge bg-success p-2 shadow text-center";
-        badge.innerHTML = `<i class="fa-solid fa-satellite-dish me-1"></i> GPS Active<br><small class="text-light" style="font-size:0.7em;">Last Update: ${timeString}</small>`;
+        badge.className = "badge bg-success p-2 shadow text-center gps-active-pulse";
+        badge.innerHTML = `<i class="fa-solid fa-satellite-dish me-1"></i> GPS Active<br><small class="text-dark fw-bold" style="font-size:0.7em;">Last Update: ${timeString}</small>`;
     } else {
         badge.className = "badge bg-secondary p-2 shadow text-center";
         badge.innerHTML = `<i class="fa-solid fa-satellite-dish me-1"></i> ${message || 'GPS Off'}`;
@@ -1169,6 +1487,7 @@ function stopDriverGpsBroadcast() {
         navigator.geolocation.clearWatch(driverGpsWatchId);
     }
     if (driverGpsInterval) clearInterval(driverGpsInterval);
+
     driverGpsWatchId = null;
     driverGpsInterval = null;
     driverLatestPosition = null;
@@ -1220,6 +1539,10 @@ function startDriverGpsBroadcast(initialPosition = null) {
 
     driverGpsWatchId = navigator.geolocation.watchPosition(
         (position) => {
+            if (position.coords.accuracy && position.coords.accuracy > 150) {
+                console.warn("Ignoring low accuracy driver GPS:", position.coords.accuracy);
+                return;
+            }
             driverLatestPosition = position;
             updateGpsBadge(true);
             sendDriverGpsPosition(position).catch(err => {
@@ -1228,8 +1551,9 @@ function startDriverGpsBroadcast(initialPosition = null) {
             });
         },
         (error) => {
-            console.error("GPS Permission Error:", error.message);
+            console.error("GPS Error:", error.message);
             updateGpsBadge(false, 'GPS Error');
+
         },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
@@ -1250,6 +1574,52 @@ function startDriverGpsBroadcast(initialPosition = null) {
 document.addEventListener("DOMContentLoaded", () => {
     updateDriverControls();
     if (isDriverTripActive()) startDriverGpsBroadcast();
+});
+
+// --- MOBILE SPA NAVIGATION ---
+function showDriverScreen(screenId) {
+    const opsGrid = document.querySelector('.driver-ops-grid');
+    if (opsGrid) opsGrid.classList.add('spa-active');
+    
+    const mGrid = document.getElementById('mobile-driver-grid');
+    if (mGrid) mGrid.classList.add('hidden');
+    
+    const dGrid = document.getElementById('desktop-driver-grid');
+    if (dGrid) dGrid.classList.add('hidden');
+    
+    const header = document.getElementById('driver-greeting-header');
+    if (header) header.classList.add('d-none');
+    
+    document.querySelectorAll('.driver-ops-grid [data-screen]').forEach(el => el.classList.remove('active-screen'));
+    document.querySelectorAll(`.driver-ops-grid [data-screen="${screenId}"]`).forEach(el => el.classList.add('active-screen'));
+    
+    if (screenId === 'details') {
+        document.querySelectorAll(`.driver-ops-grid [data-screen="summary"]`).forEach(el => el.classList.add('active-screen'));
+    }
+
+    // Push history state to allow native phone back button to work
+    history.pushState({ screen: screenId }, "", "#" + screenId);
+}
+
+function hideDriverScreen() {
+    const opsGrid = document.querySelector('.driver-ops-grid');
+    if (opsGrid) opsGrid.classList.remove('spa-active');
+    
+    const mGrid = document.getElementById('mobile-driver-grid');
+    if (mGrid) mGrid.classList.remove('hidden');
+    
+    const dGrid = document.getElementById('desktop-driver-grid');
+    if (dGrid) dGrid.classList.remove('hidden');
+    
+    const header = document.getElementById('driver-greeting-header');
+    if (header) header.classList.remove('d-none');
+    
+    document.querySelectorAll('.driver-ops-grid [data-screen]').forEach(el => el.classList.remove('active-screen'));
+}
+
+window.addEventListener("popstate", (e) => {
+    // When user hits the physical back button
+    hideDriverScreen();
 });
 </script>
 {% endblock %}

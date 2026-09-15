@@ -1,7 +1,7 @@
 {
   "name": "TransPulse",
   "short_name": "TransPulse",
-  "description": "Real-time bus tracking and transport management platform for Andhra Pradesh",
+  "description": "Real-time bus tracking and transport management platform",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

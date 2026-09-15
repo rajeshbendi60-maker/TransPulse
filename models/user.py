@@ -63,29 +63,35 @@ class User(UserMixin, db.Model):
         nullable=False
     )
 
+    # districts = db.relationship("DistrictAdmin", back_populates="user", lazy=True)
+    favorites = db.relationship('Favorite', back_populates='user', lazy='dynamic', cascade='all, delete-orphan')
+
+    # Phase 3.6: Journey History
+    journeys = db.relationship('Journey', back_populates='user', lazy='dynamic', cascade='all, delete-orphan')
+
     feedbacks = db.relationship(
-        "Feedback",
+        "models.feedback.Feedback",
         back_populates="user",
         lazy=True,
         cascade="all, delete-orphan"
     )
 
     notifications = db.relationship(
-        "Notification",
+        "models.notification.Notification",
         back_populates="recipient",
         lazy=True
     )
 
     complaints = db.relationship(
-        "Complaint",
-        foreign_keys="Complaint.passenger_id",
+        "models.complaint.Complaint",
+        foreign_keys="models.complaint.Complaint.passenger_id",
         back_populates="passenger",
         lazy=True
     )
 
     driver_complaints = db.relationship(
-        "Complaint",
-        foreign_keys="Complaint.driver_id",
+        "models.complaint.Complaint",
+        foreign_keys="models.complaint.Complaint.driver_id",
         back_populates="driver",
         lazy=True
     )

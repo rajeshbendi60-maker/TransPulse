@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
-    <meta name="description" content="Andhra Pradesh Smart Mobility Platform - Real-time bus tracking and transport management">
+    <meta name="description" content="Mobility Platform - Real-time bus tracking and transport management">
     <meta name="theme-color" content="#040b18">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -21,7 +21,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v=9">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     {% block head_extras %}{% endblock %}
 </head>
 <body class="transport-theme">
@@ -40,7 +41,7 @@
                     <div class="sidebar-group mb-3">
                         <small class="sidebar-label">Navigation</small>
                         <a class="sidebar-link" href="{{ url_for('index') }}">Home</a>
-                        {% if current_user.role == "admin" %}
+                        {% if current_user.role in ["admin", "district_admin", "state_admin"] %}
                             <a class="sidebar-link" href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a>
                             <a class="sidebar-link" href="{{ url_for('admin_buses') }}">Bus Management</a>
                             <a class="sidebar-link" href="{{ url_for('analytics_dashboard') }}">Analytics</a>
@@ -50,9 +51,9 @@
                         {% elif current_user.role == "passenger" %}
                             <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}">Passenger Dashboard</a>
                             <a class="sidebar-link" href="{{ url_for('lost_and_found_page') }}">Lost & Found</a>
+                            <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-favorites">Favorite Routes</a>
                         {% endif %}
                         <a class="sidebar-link" href="{{ url_for('complaints_page') }}">Complaints</a>
-                        <a class="sidebar-link" href="{{ url_for('notifications_center') }}">Notifications</a>
                     </div>
 
                     <form action="{{ url_for('logout_page') }}" method="post" class="mt-auto pb-2">
@@ -63,6 +64,8 @@
             </aside>
 
             <div class="content-shell">
+                <!-- Global Desktop Header removed -->
+
                 <nav class="topbar d-lg-none">
                     <div class="container-fluid px-3">
                         <div class="d-flex justify-content-between align-items-center py-2">
@@ -86,7 +89,7 @@
                     <div class="offcanvas-body">
                         <div class="d-grid gap-2">
                             <a class="sidebar-link" href="{{ url_for('index') }}">Home</a>
-                            {% if current_user.role == "admin" %}
+                            {% if current_user.role in ["admin", "district_admin", "state_admin"] %}
                                 <a class="sidebar-link" href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a>
                                 <a class="sidebar-link" href="{{ url_for('admin_buses') }}">Bus Management</a>
                                 <a class="sidebar-link" href="{{ url_for('analytics_dashboard') }}">Analytics</a>
@@ -94,8 +97,8 @@
                                 <a class="sidebar-link" href="{{ url_for('driver_dashboard') }}">Driver Dashboard</a>
                             {% elif current_user.role == "passenger" %}
                                 <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}">Passenger Dashboard</a>
+                                <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-favorites">Favorite Routes</a>
                             {% endif %}
-                            <a class="sidebar-link" href="{{ url_for('notifications_center') }}">Notifications</a>
                             <form action="{{ url_for('logout_page') }}" method="post">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button class="btn btn-accent w-100 mt-2" type="submit">Logout</button>
@@ -104,7 +107,7 @@
                     </div>
                 </div>
     {% else %}
-        <nav class="navbar navbar-expand-lg navbar-dark topbar">
+        <nav class="navbar navbar-expand-lg navbar-dark topbar d-none d-lg-block">
             <div class="container">
                 <a class="navbar-brand tp-logo-lockup" href="{{ url_for('index') }}">
                     {% include "_logo_icon.html" %}
@@ -141,10 +144,19 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
-    <script src="{{ url_for('static', filename='js/enhanced-utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/enhanced-utils.js') }}?v=fix-12"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/sos-handler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/map-utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/sos-handler.js') }}?v=fix-13"></script>
     <script src="{{ url_for('static', filename='js/route-selector.js') }}"></script>
+    {% if current_user.is_authenticated %}
+    <script>
+        window.TP_DRIVER_CODE = "{{ session.get('driver_code', '') }}";
+        window.TP_USER_ID = {{ current_user.id if current_user.is_authenticated else 'null' }};
+        window.TP_USER_ROLE = "{{ current_user.role if current_user.is_authenticated else '' }}";
+    </script>
+    {% endif %}
+    <script src="{{ url_for('static', filename='js/notifications.js') }}?v=fix-14"></script>
     <script>
         window.TransPulseCSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
         document.addEventListener('DOMContentLoaded', () => {

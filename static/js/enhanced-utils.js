@@ -54,6 +54,16 @@
             return { text: 'OFFLINE', badge: 'bg-secondary', live: 'OFFLINE' };
         },
 
+        formatMinutes: function(mins) {
+            if (mins === null || mins === undefined) return '--';
+            const num = parseInt(mins, 10);
+            if (isNaN(num)) return '--';
+            if (num < 60) return `${num} min`;
+            const h = Math.floor(num / 60);
+            const m = num % 60;
+            return m > 0 ? `${h}hr ${m}min` : `${h}hr`;
+        },
+
         etaDisplay: function(bus) {
             if (!bus) return '--';
             const tripStatus = String(bus.trip_status || '').toUpperCase();
@@ -63,9 +73,14 @@
                 return 'Completed';
             }
             if (tripStatus === 'WAITING_TO_DEPART') return '--';
-            if (bus.eta_label) return bus.eta_label;
+            if (bus.eta_label) {
+                // Try to format the number part if it exists (e.g. "693 min")
+                const match = bus.eta_label.match(/^(\d+)\s*m/i);
+                if (match) return this.formatMinutes(match[1]);
+                return bus.eta_label;
+            }
             const eta = bus.updated_eta_minutes ?? bus.eta_minutes;
-            return eta === null || eta === undefined ? '--' : `${eta} min`;
+            return this.formatMinutes(eta);
         },
 
         animateCounter: function(element, endValue, duration = 1500) {
@@ -243,50 +258,13 @@
         },
 
         enhanceFlashMessages: function() {
-            const alerts = Array.from(document.querySelectorAll('main .alert'));
-            alerts.forEach((alert) => {
-                const message = alert.textContent.replace(/\s+/g, ' ').trim();
-                if (!message) return;
-                const isDanger = alert.classList.contains('alert-danger');
-                const isSuccess = alert.classList.contains('alert-success');
-                if (!isDanger && !isSuccess) return;
-                try {
-                    const handledDeleteFlash = sessionStorage.getItem('tp-suppress-next-bus-delete-flash') || '';
-                    if (handledDeleteFlash && message.toLowerCase() === handledDeleteFlash.toLowerCase()) {
-                        alert.classList.add('d-none');
-                        sessionStorage.removeItem('tp-suppress-next-bus-delete-flash');
-                        return;
-                    }
-                } catch (error) {
-                    console.warn('Unable to read delete flash suppression flag.', error);
-                }
-                alert.classList.add('d-none');
-                const deleteText = /deleted/i.test(message);
-                this.showPremiumModal({
-                    type: isDanger ? 'danger' : (deleteText ? 'delete' : 'success'),
-                    title: isDanger ? 'Action Needs Attention' : (deleteText ? 'Deleted Successfully' : 'Success'),
-                    message,
-                    icon: isDanger ? '&#9888;' : (deleteText ? '&#128465;' : '&#10003;')
-                });
-            });
+            // Disabled per user request: Flash messages will just render natively via Bootstrap in base.html
+            // Do not intercept or hide them.
         },
 
         replaceNativeAlerts: function() {
-            if (window.__tpAlertWrapped) return;
-            window.__tpAlertWrapped = true;
-            const nativeAlert = window.alert.bind(window);
-            window.alert = (message) => {
-                if (document.body && window.TransPulseUtils) {
-                    window.TransPulseUtils.showPremiumModal({
-                        type: /delete|error|fail|invalid|required/i.test(String(message)) ? 'danger' : 'success',
-                        title: /delete|error|fail|invalid|required/i.test(String(message)) ? 'Action Needs Attention' : 'Notice',
-                        message: String(message),
-                        icon: /delete|error|fail|invalid|required/i.test(String(message)) ? '&#9888;' : '&#10003;'
-                    });
-                    return;
-                }
-                nativeAlert(message);
-            };
+            // Disabled per user request: Native window.alert() will just behave normally.
+            // Do not intercept or show custom modals.
         },
 
         triggerManualInstall: function() {

@@ -4,9 +4,7 @@ class Stop(db.Model):
     __tablename__ = "stops"
 
     id = db.Column(db.Integer, primary_key=True)
-    route_id = db.Column(db.Integer, db.ForeignKey("routes.id"), nullable=True, index=True)
     stop_name = db.Column(db.String(120), nullable=False)
-    stop_order = db.Column(db.Integer, nullable=True)
     eta_minutes = db.Column(db.Integer, nullable=True, default=0)
     scheduled_arrival_time = db.Column(db.String(20), nullable=True)
     scheduled_departure_time = db.Column(db.String(20), nullable=True)
@@ -21,17 +19,15 @@ class Stop(db.Model):
     location_type = db.Column(db.Integer, nullable=True, default=0)
     parent_station = db.Column(db.String(120), nullable=True)
 
-    route = db.relationship("Route", back_populates="stops")
     stop_times = db.relationship("StopTime", back_populates="stop", lazy=True, cascade="all, delete-orphan")
     subscriptions = db.relationship("Subscription", back_populates="stop", lazy=True, cascade="all, delete-orphan")
 
     __table_args__ = (
-        db.UniqueConstraint("route_id", "stop_order", name="uq_stop_route_order"),
         db.Index("idx_stops_code_location", "stop_code", "stop_lat", "stop_lon"),
     )
 
     def __repr__(self) -> str:
-        return f"<Stop {self.stop_name} ({self.route_id})>"
+        return f"<Stop {self.stop_name}>"
 
 class StopTime(db.Model):
     __tablename__ = "stop_times"

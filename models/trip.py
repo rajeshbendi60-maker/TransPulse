@@ -24,7 +24,7 @@ class Trip(db.Model):
    
     bus = db.relationship("Bus", back_populates="trips")
     route = db.relationship("Route", back_populates="trips")
-    notifications = db.relationship("Notification", back_populates="trip", lazy=True)
+    notifications = db.relationship("models.notification.Notification", back_populates="trip", lazy=True)
     stop_times = db.relationship("StopTime", back_populates="trip", lazy=True, cascade="all, delete-orphan")
     occupancy_records = db.relationship("BusOccupancy", back_populates="trip", lazy=True, cascade="all, delete-orphan")
 

@@ -21,10 +21,9 @@ class Route(db.Model):
     route_color = db.Column(db.String(6), nullable=True)
     route_text_color = db.Column(db.String(6), nullable=True)
 
-    stops = db.relationship("Stop", back_populates="route", lazy=True, cascade="all, delete-orphan")
     trips = db.relationship("Trip", back_populates="route", lazy=True)
     buses = db.relationship("Bus", back_populates="route", lazy=True)
-    complaints = db.relationship("Complaint", back_populates="route", lazy=True)
+    complaints = db.relationship("models.complaint.Complaint", back_populates="route", lazy=True)
     lost_and_found_items = db.relationship("LostAndFound", back_populates="route", lazy=True)
     sos_alerts = db.relationship("SOSAlert", back_populates="route", lazy=True)
 

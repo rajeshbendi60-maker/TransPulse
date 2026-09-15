@@ -111,41 +111,26 @@ window.SOSHandler = {
 
     showSuccessModal: function(data) {
         const payload = data || {};
-        const referenceId = payload.id ? `SOS-${String(payload.id).padStart(5, '0')}` : 'SOS-PENDING';
-        const emergencyType = payload.emergency_type || payload.reason || 'Emergency';
         this.closeActiveSOSDialogs();
-        let modal = document.getElementById('sosSuccessModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'sosSuccessModal';
-            document.body.appendChild(modal);
-        }
-        modal.style.cssText = 'display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(24,5,10,0.78); z-index:200001; align-items:center; justify-content:center; backdrop-filter: blur(10px); padding:18px;';
-
-        modal.innerHTML = `
-            <div class="card glass-panel shadow-lg" style="width:100%; max-width:440px; border:1px solid rgba(255,93,108,0.72); border-radius:16px; background: linear-gradient(135deg, rgba(28,6,16,0.98), rgba(4,11,24,0.98)); box-shadow: 0 0 0 1px rgba(255,93,108,0.3), 0 0 44px rgba(255,93,108,0.34), 0 28px 80px -34px rgba(0,0,0,0.95); animation: sosModalRise .28s ease-out;">
-                <div class="card-body p-4 p-md-5 text-center">
-                    <div style="background: linear-gradient(135deg, #ff5d6c, #ff9f43); border-radius: 16px; width: 76px; height: 76px; display: flex; align-items: center; justify-content: center; margin: 0 auto 22px auto; box-shadow: 0 0 30px rgba(255,93,108,0.55); animation: sosGlowPulse 1.8s ease-in-out infinite;">
-                        <span style="font-size: 2.25rem;">&#128680;</span>
-                    </div>
-                    <h3 class="text-white fw-bold mb-3">SOS Sent Successfully</h3>
-                    <div class="text-start mb-4 p-3" style="background: rgba(255,93,108,0.08); border:1px solid rgba(255,93,108,0.28); border-radius:12px;">
-                        <p class="text-muted small mb-1">Emergency Type:</p>
-                        <p class="text-light fw-bold mb-3">${this.escapeHtml(emergencyType)}</p>
-                        <p class="text-light mb-1">Driver Notified</p>
-                        <p class="text-light mb-0">Admin Notified</p>
-                    </div>
-                    <p class="text-muted small mb-1">Reference ID</p>
-                    <p class="fw-bold fs-5 mb-3" style="color:#ff9f43;" id="sos-success-ref">${referenceId}</p>
-                    <p class="text-muted small mb-1">Elapsed Time</p>
-                    <p class="fw-bold display-6 mb-2" style="color:#ff9f43; font-family:monospace;" id="sos-elapsed-timer">00:00</p>
-                    <p class="text-muted small mb-4" id="sos-response-status">Emergency response is being arranged.</p>
-                    <button type="button" id="sos-success-close-btn" class="btn fw-bold px-5 py-2 rounded-pill" style="background: linear-gradient(135deg, #ff5d6c, #ff9f43); color:#18050a; border:0; box-shadow: 0 0 24px rgba(255,93,108,0.38);">Got It</button>
+        
+        function showNativeAlert(message, category='success') {
+            const container = document.querySelector('main .container') || document.querySelector('.container');
+            if (!container) return;
+            const alertHtml = `
+                <div class="alert alert-${category} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
-            </div>`;
-        const closeBtn = modal.querySelector('#sos-success-close-btn');
-        if (closeBtn) closeBtn.addEventListener('click', () => this.closeSuccessModal(), { once: true });
-        modal.style.display = 'flex';
+            `;
+            container.insertAdjacentHTML('afterbegin', alertHtml);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        
+        showNativeAlert('SOS ALERT SENT. Your emergency alert has been successfully transmitted.', 'danger');
+        
+        const modal = document.getElementById('sosSuccessModal');
+        if (modal) modal.style.display = 'none';
+        
         this.startElapsedTimer(payload.id, payload.triggered_at);
     },
     
@@ -209,7 +194,12 @@ window.AdminSOS = {
         const AudioCtor = window.AudioContext || window.webkitAudioContext;
         if (AudioCtor) {
             this.audioContext = new AudioCtor();
-            document.addEventListener('click', () => this.unlockAudio(), { once: true });
+            const unlockEvents = ['click', 'touchstart', 'keydown', 'mousemove', 'scroll'];
+            const unlock = () => {
+                this.unlockAudio();
+                unlockEvents.forEach(e => document.removeEventListener(e, unlock));
+            };
+            unlockEvents.forEach(e => document.addEventListener(e, unlock));
         }
         this.loadAlerts();
         this.interval = setInterval(() => { if (!document.hidden) this.loadAlerts(); }, 5000);
@@ -264,7 +254,7 @@ window.AdminSOS = {
                     this.renderAlerts([]);
                     return;
                 }
-                const hasActiveAlert = alerts.length > 0;
+                const hasActiveAlert = alerts.some(a => ['new', 'active'].includes((a.status || 'NEW').toLowerCase()));
                 if (hasActiveAlert) this.startAlarm();
                 else this.stopAlarm();
 
@@ -369,11 +359,13 @@ window.AdminSOS = {
         const alertId = String(id).replace('notification-', '');
         const rawId = String(id);
         if (status === 'acknowledged' || rawId.startsWith('notification-')) {
-            fetch(`/api/sos/driver/acknowledge/${alertId}`, {
+            fetch(`/api/admin/sos/${alertId}/status`, {
                 method: 'POST',
                 headers: {
+                    'Content-Type': 'application/json',
                     'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                }
+                },
+                body: JSON.stringify({ status: 'acknowledged' })
             }).finally(() => {
                 this.hideModal();
                 this.closeDetailModal();
@@ -453,7 +445,7 @@ window.AdminSOS = {
         if (modal) modal.style.display = 'none';
     },
 
-    openAlertDetails: function(alertJson) {
+    openAlertDetails: function(alertJson, isDriver = false) {
         const a = typeof alertJson === 'string' ? JSON.parse(alertJson) : alertJson;
         const modal = this.ensureDetailModal();
         const status = (a.status || 'NEW').toUpperCase();
@@ -468,25 +460,43 @@ window.AdminSOS = {
         if (body) {
             body.innerHTML = `
                 <div class="mb-2"><span class="text-muted">${a.reporter_role === 'driver' ? 'Driver Name' : 'Passenger Name'}:</span> <span class="text-white fw-bold">${this.escapeHtml(a.passenger_name || 'Unknown')}</span></div>
-                <div class="mb-2"><span class="text-muted">${a.reporter_role === 'driver' ? 'Driver ID' : 'Passenger ID'}:</span> <span class="text-white">${this.escapeHtml(a.passenger_id || '--')}</span></div>
+                <div class="mb-2"><span class="text-muted">Mobile Number:</span> <span class="text-white">${this.escapeHtml(a.mobile || 'N/A')}</span></div>
                 <div class="mb-2"><span class="text-muted">Bus ID:</span> <span class="text-white fw-bold">${this.escapeHtml(a.bus_number || 'Unknown')}</span></div>
                 <div class="mb-2"><span class="text-muted">Emergency Type:</span> <span class="text-danger fw-bold">${this.escapeHtml(a.emergency_type || a.reason || 'Emergency')}</span></div>
                 <div class="mb-2"><span class="text-muted">Time:</span> <span class="text-white">${this.escapeHtml(this.formatAlertDateTime(a.triggered_at))}</span></div>
-                <div class="mb-2"><span class="text-muted">GPS Location:</span> <span class="text-white">${locationText}</span></div>
+                <div class="mb-2"><span class="text-muted">GPS Location:</span> <span class="text-white" id="sos-detail-location-name">${locationText}</span></div>
                 <div><span class="text-muted">Status:</span> <span class="text-warning fw-bold">${this.escapeHtml(status)}</span></div>
             `;
+            if (a.latitude && a.longitude) {
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${a.latitude}&lon=${a.longitude}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const locSpan = document.getElementById('sos-detail-location-name');
+                        if (locSpan && data && data.display_name) locSpan.textContent = data.display_name;
+                    }).catch(e => {
+                        console.log('Location fetch failed', e);
+                    });
+            }
         }
         if (actions) {
             const alertId = JSON.stringify(a.id);
-            if (a.can_acknowledge && ['new', 'active'].includes(statusLower)) {
-                actions.innerHTML = `<button class="btn btn-warning text-dark fw-bold" onclick='window.AdminSOS.updateStatus(${alertId}, "acknowledged")'>Acknowledge</button>`;
-            } else if (a.can_resolve) {
+            let btnAcknowledge = '';
+            if (['new', 'active'].includes(statusLower)) {
+                btnAcknowledge = `<button class="btn btn-warning text-dark fw-bold" onclick='window.AdminSOS.updateStatus(${alertId}, "acknowledged")'>Acknowledge</button>`;
+            }
+            
+            if (isDriver) {
+                actions.innerHTML = `
+                    <button class="btn btn-outline-info" onclick="window.location.href='/notifications'">Contact Passenger</button>
+                    ${btnAcknowledge}
+                `;
+            } else {
                 actions.innerHTML = `
                     <button class="btn btn-outline-info" onclick="window.location.href='/notifications'">Contact Passenger</button>
                     <button class="btn btn-outline-info" onclick="window.location.href='/notifications'">Contact Driver</button>
-                    <button class="btn btn-danger fw-bold" onclick='window.AdminSOS.updateStatus(${alertId}, "resolved")'>Mark Resolved</button>`;
-            } else {
-                actions.innerHTML = '';
+                    ${btnAcknowledge}
+                    <button class="btn btn-danger fw-bold" onclick='window.AdminSOS.updateStatus(${alertId}, "resolved")'>Mark Resolved</button>
+                `;
             }
         }
         modal.style.display = 'flex';
@@ -519,15 +529,16 @@ window.AdminSOS = {
             const alertId = JSON.stringify(a.id);
             const alertPayload = this.escapeHtml(JSON.stringify(a));
             const actionsHtml = isDriverView
-                ? `<button class="btn btn-sm btn-danger fw-bold" onclick='window.AdminSOS.openAlertDetails(${alertPayload})'>Open SOS</button>`
-                : `<button class="btn btn-sm btn-outline-light" onclick='window.AdminSOS.openAlertDetails(${alertPayload})'>View SOS</button>
+                ? `<button class="btn btn-sm btn-danger fw-bold" onclick='window.AdminSOS.openAlertDetails(${alertPayload}, true)'>Open SOS</button>`
+                : `<button class="btn btn-sm btn-outline-light" onclick='window.AdminSOS.openAlertDetails(${alertPayload}, false)'>View SOS</button>
                    <button class="btn btn-sm btn-outline-info" onclick="window.location.href='/notifications'">Contact Passenger</button>
                    <button class="btn btn-sm btn-outline-info" onclick="window.location.href='/notifications'">Contact Driver</button>
+                   <button class="btn btn-sm btn-warning text-dark fw-bold" onclick='window.AdminSOS.updateStatus(${alertId}, "acknowledged")'>Acknowledge</button>
                    ${a.can_resolve ? `<button class="btn btn-sm btn-danger fw-bold" onclick='window.AdminSOS.updateStatus(${alertId}, "resolved")'>Mark Resolved</button>` : ''}`;
-            html += `<div style="border:1px solid rgba(255,93,108,0.45); border-left: 5px solid ${color}; background: linear-gradient(135deg, rgba(255,93,108,0.14), rgba(4,11,24,0.92)); padding: 16px; border-radius: 12px; box-shadow: 0 0 26px rgba(255,93,108,0.16);">
-                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                            <div>
-                                <div class="fw-bold ${statusTextClass} mb-1" style="letter-spacing:0.04em;">
+            html += `<div style="border:1px solid rgba(255,93,108,0.45); border-left: 5px solid ${color}; background: linear-gradient(135deg, rgba(255,93,108,0.14), rgba(4,11,24,0.92)); padding: 16px; border-radius: 12px; box-shadow: 0 0 26px rgba(255,93,108,0.16); overflow: hidden;">
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2 flex-wrap">
+                            <div style="min-width: 0; flex: 1;">
+                                <div class="fw-bold ${statusTextClass} mb-1" style="letter-spacing:0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                     <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff2f45;box-shadow:0 0 0 0 rgba(255,47,69,0.72);animation:livePulse 1.35s ease-out infinite;margin-right:6px;"></span>
                                     ${alertTitle}
                                 </div>

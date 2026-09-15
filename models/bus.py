@@ -80,7 +80,7 @@ class Bus(db.Model):
     )
 
     complaints = db.relationship(
-        "Complaint",
+        "models.complaint.Complaint",
         back_populates="bus",
         lazy=True
     )

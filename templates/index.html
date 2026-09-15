@@ -2,18 +2,19 @@
 {% block title %}TransPulse{% endblock %}
 {% block content %}
 
-<section class="hero-section py-5">
-    <div class="container py-4 position-relative">
+<section class="hero-section d-flex align-items-center" style="min-height: calc(100vh - 76px); margin-top: -1.5rem; padding-bottom: 3rem;">
+    <div class="container position-relative">
         <div class="row align-items-center g-5">
-            <div class="col-lg-6 fade-up">
-                <span class="hero-eyebrow mb-3"><span class="dot"></span>Andhra Pradesh Smart Mobility Platform</span>
+            <div class="col-lg-5 fade-up">
                 <div class="tp-hero-logo">
                     {% include "_logo_icon.html" %}
                     <span class="tp-logo-text">TransPulse</span>
                 </div>
                 <p class="hero-tagline">The Pulse of Public Transportation</p>
-                <p class="hero-sub mb-4">Enterprise-grade fleet tracking across Andhra Pradesh. Real-time GPS monitoring, ETA intelligence, and operations control for Andhra Pradesh transport networks.</p>
-                <div class="d-flex flex-wrap gap-2">
+                <p class="hero-sub mb-4">A complete mobility ecosystem featuring real-time live tracking, interactive transport heatmaps, nearby stops, favorite routes, lost & found, and dedicated dashboards for passengers, drivers, and admins.</p>
+                
+                <!-- Desktop Buttons (Hidden on mobile) -->
+                <div class="d-none d-lg-flex flex-wrap gap-2">
                     {% if current_user.is_authenticated %}
                         {% if current_user.role == 'admin' %}
                             <a href="{{ url_for('admin_dashboard') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
@@ -25,132 +26,134 @@
                     {% else %}
                         <a href="{{ url_for('login_page') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
                     {% endif %}
-                    <a href="#" id="pwa-install-link" class="btn btn-outline-light btn-lg d-none" onclick="if(window.TransPulseUtils && window.TransPulseUtils.triggerManualInstall) { window.TransPulseUtils.triggerManualInstall(); }; return false;">Install App</a>
+                    <a href="#" id="pwa-install-link-desktop" class="btn btn-outline-light btn-lg" onclick="if(window.TransPulseUtils && window.TransPulseUtils.triggerManualInstall) { window.TransPulseUtils.triggerManualInstall(); }; return false;">Install App</a>
                 </div>
             </div>
-            <div class="col-lg-6 fade-up-2">
-                <div class="glass-card p-4 rounded-4" style="border: 1px solid var(--tp-border-strong); background: linear-gradient(135deg, rgba(52,210,255,0.08), rgba(79,141,255,0.04));">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="fw-semibold mb-0">Fleet Intelligence Hub</h5>
-                        <span class="badge" style="background: rgba(34,211,154,0.25); color: #22d39a; border: 1px solid rgba(34,211,154,0.5);">Live</span>
+
+            <div class="col-lg-7 fade-up-2 position-relative d-flex flex-column justify-content-center align-items-center hero-bus-wrapper">
+                <!-- HD Realistic Transparent Bus -->
+                <div class="floating-bus-container w-100 text-center" style="position: relative; z-index: 10;">
+                    <!-- Desktop Inline Styles -->
+                    <img id="hero-bus-img" class="responsive-bus" src="{{ url_for('static', filename='images/hero-bus.png') }}" onerror="this.src='{{ url_for('static', filename='images/auth-bus.png') }}'" alt="Smart City Bus" style="width: 110%; max-width: 800px; filter: drop-shadow(-15px 25px 20px rgba(0,0,0,0.6)); margin-left: -5%;" cross-origin="anonymous">
+                </div>
+                
+                <!-- Mobile Buttons (Hidden on desktop, placed immediately down the bus) -->
+                <div class="row w-100 mx-0 mt-3 px-3 d-flex d-lg-none" style="z-index: 20;">
+                    <div class="col-6 pe-2">
+                        {% if current_user.is_authenticated %}
+                            {% if current_user.role == 'admin' %}
+                                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-accent w-100 py-3" style="font-weight: 700;">Explore</a>
+                            {% elif current_user.role == 'driver' %}
+                                <a href="{{ url_for('driver_dashboard') }}" class="btn btn-accent w-100 py-3" style="font-weight: 700;">Explore</a>
+                            {% else %}
+                                <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-accent w-100 py-3" style="font-weight: 700;">Explore</a>
+                            {% endif %}
+                        {% else %}
+                            <a href="{{ url_for('login_page') }}" class="btn btn-accent w-100 py-3" style="font-weight: 700;">Explore</a>
+                        {% endif %}
                     </div>
-                    <ul class="list-unstyled mb-0" style="display:grid;gap:.65rem">
-                        <li class="d-flex align-items-start gap-2"><span style="color:#34d2ff;font-weight:700;font-size:1.2rem">◆</span><span><strong>Live Fleet Tracking</strong><br><small style="color:#9ebcdf">Real-time GPS with 5-second refresh</small></span></li>
-                        <li class="d-flex align-items-start gap-2"><span style="color:#4f8dff;font-weight:700;font-size:1.2rem">◆</span><span><strong>Route Intelligence</strong><br><small style="color:#9ebcdf">ETA prediction and stop sequencing</small></span></li>
-                        <li class="d-flex align-items-start gap-2"><span style="color:#6a5cff;font-weight:700;font-size:1.2rem">◆</span><span><strong>Operations Dashboard</strong><br><small style="color:#9ebcdf">Admin control center & analytics</small></span></li>
-                        <li class="d-flex align-items-start gap-2"><span style="color:#34d2ff;font-weight:700;font-size:1.2rem">◆</span><span><strong>Driver Telemetry</strong><br><small style="color:#9ebcdf">Real-time trip management & alerts</small></span></li>
-                    </ul>
+                    <div class="col-6 ps-2">
+                        <a href="#" id="pwa-install-link-mobile" class="btn btn-outline-light w-100 py-3" onclick="if(window.TransPulseUtils && window.TransPulseUtils.triggerManualInstall) { window.TransPulseUtils.triggerManualInstall(); }; return false;" style="font-weight: 700;">Install App</a>
+                    </div>
                 </div>
+                
+                <style>
+                    /* Force responsive behavior directly to bypass browser caching */
+                    @media (max-width: 991px) {
+                        .tp-hero-logo .tp-logo-icon { width: 52px !important; height: 52px !important; flex-basis: 52px !important; border-radius: 10px !important; }
+                        .tp-hero-logo .tp-logo-icon::after { display: none !important; }
+                        .tp-hero-logo .tp-logo-text { font-size: 2.2rem !important; }
+                        .hero-tagline { font-size: 1.2rem !important; margin-bottom: 0.5rem !important; }
+                        .hero-sub { font-size: 0.95rem !important; line-height: 1.4; margin-bottom: 1rem !important; }
+                        .responsive-bus { width: 100% !important; max-width: 100% !important; transform: scale(1) !important; transform-origin: center center !important; margin-left: 0 !important; margin-top: -15% !important; filter: drop-shadow(-10px 15px 15px rgba(0,0,0,0.6)) !important; }
+                        .hero-bus-wrapper { min-height: auto !important; padding-left: 0 !important; margin-top: 1rem !important; }
+                    }
+                </style>
+                
+                <script>
+                window.addEventListener('load', function() {
+                    const img = document.getElementById('hero-bus-img');
+                    if (!img) return;
+                    
+                    const processImage = () => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                            canvas.width = img.naturalWidth;
+                            canvas.height = img.naturalHeight;
+                            ctx.drawImage(img, 0, 0);
+                            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                            const data = imageData.data;
+                            
+                            const w = canvas.width, h = canvas.height;
+                            const stack = [[0, 0], [w-1, 0], [0, h-1], [w-1, h-1]]; // Start from all 4 corners
+                            const visited = new Uint8Array(w * h);
+                            
+                            const isBg = (i) => {
+                                const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+                                if (a === 0) return true;
+                                // Detect white/grey checkerboard squares
+                                return (r > 170 && g > 170 && b > 170 && Math.abs(r-g) < 20 && Math.abs(g-b) < 20);
+                            };
+                            
+                            while (stack.length > 0) {
+                                const [cx, cy] = stack.pop();
+                                const idx = (cy * w + cx);
+                                if (cx < 0 || cx >= w || cy < 0 || cy >= h || visited[idx]) continue;
+                                
+                                visited[idx] = 1;
+                                const p = idx * 4;
+                                
+                                if (isBg(p)) {
+                                    data[p+3] = 0; // Set alpha to transparent
+                                    stack.push([cx+1, cy]);
+                                    stack.push([cx-1, cy]);
+                                    stack.push([cx, cy+1]);
+                                    stack.push([cx, cy-1]);
+                                }
+                            }
+                            
+                            // Morphological Erosion to remove the jagged white halo (anti-aliasing artifacts)
+                            const tempAlpha = new Uint8Array(w * h);
+                            for (let i = 0; i < w * h; i++) tempAlpha[i] = data[i * 4 + 3];
+                            
+                            const erosionPasses = 2; // Erode by 2 pixels to completely kill the halo
+                            for (let pass = 0; pass < erosionPasses; pass++) {
+                                const currentAlpha = new Uint8Array(tempAlpha);
+                                for (let y = 1; y < h - 1; y++) {
+                                    for (let x = 1; x < w - 1; x++) {
+                                        const idx = y * w + x;
+                                        if (currentAlpha[idx] > 0) {
+                                            if (currentAlpha[idx - 1] === 0 || currentAlpha[idx + 1] === 0 || 
+                                                currentAlpha[idx - w] === 0 || currentAlpha[idx + w] === 0 ||
+                                                currentAlpha[idx - w - 1] === 0 || currentAlpha[idx - w + 1] === 0 ||
+                                                currentAlpha[idx + w - 1] === 0 || currentAlpha[idx + w + 1] === 0) {
+                                                data[idx * 4 + 3] = 0; // Erase edge pixel
+                                                tempAlpha[idx] = 0; // Update for next pass
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            ctx.putImageData(imageData, 0, 0);
+                            img.src = canvas.toDataURL('image/png');
+                        } catch (e) {
+                            console.error("BG removal failed", e);
+                        }
+                    };
+
+                    if(img.complete && img.naturalHeight > 0) processImage();
+                    else img.onload = processImage;
+                });
+                </script>
             </div>
         </div>
+
+
     </div>
 </section>
 
-<section class="py-5">
-    <div class="container">
-        <div class="row g-3 mb-5">
-            <div class="col-sm-6 col-lg-3 fade-up-1">
-                <div class="metric-card">
-                    <h6><span class="icon">◎</span>DISTRICTS COVERED</h6>
-                    <p data-counter="26">0</p>
-                </div>
-            </div>
-            <div class="col-sm-6 col-lg-3 fade-up-2">
-                <div class="metric-card">
-                    <h6><span class="icon">⌖</span>MAJOR CITIES</h6>
-                    <p><span data-counter="100+">0</span><span style="font-size:1rem;color:#9ec0e6;margin-left:4px">+</span></p>
-                </div>
-            </div>
-            <div class="col-sm-6 col-lg-3 fade-up-3">
-                <div class="metric-card">
-                    <h6><span class="icon">⇆</span>Active Routes</h6>
-                    <p data-counter="3080+">0</p>
-                </div>
-            </div>
-            <div class="col-sm-6 col-lg-3 fade-up-4">
-                <div class="metric-card">
-                    <h6><span class="icon">↻</span>ETA Refresh</h6>
-                    <p><span data-counter="5">0</span><span style="font-size:1rem;color:#9ec0e6;margin-left:4px">s</span></p>
-                </div>
-            </div>
-        </div>
 
-        <div class="section-head text-center" style="justify-content:center;flex-direction:column;align-items:center">
-            <h2>Andhra Pradesh Smart Mobility Platform</h2>
-            <p class="lead-muted">Enterprise-grade platform for commercial transport operators, drivers, and passengers across Andhra Pradesh.</p>
-        </div>
-
-        <div class="row g-4 mt-2">
-            <div class="col-md-4 fade-up-1">
-                <div class="feature-card">
-                    <div class="f-icon">🗺</div>
-                    <h5>APSRTC Live Tracking</h5>
-                    <p>Live Leaflet maps covering Andhra Pradesh with real-time bus markers, route overlays, and automated stop positioning.</p>
-                </div>
-            </div>
-            <div class="col-md-4 fade-up-2">
-                <div class="feature-card">
-                    <div class="f-icon">⏱</div>
-                    <h5>Advanced ETA Engine</h5>
-                    <p>Intelligent distance remaining, stop-by-stop ETA predictions, and live route progress with 5-second updates on every tracked vehicle.</p>
-                </div>
-            </div>
-            <div class="col-md-4 fade-up-3">
-                <div class="feature-card">
-                    <div class="f-icon">📊</div>
-                    <h5>Operations Intelligence</h5>
-                    <p>Real-time fleet monitoring, route analytics, performance dashboards, and admin control center with comprehensive reporting tools.</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="card mt-5 glass-card fade-up">
-            <div class="card-body p-4 d-flex flex-wrap align-items-center justify-content-between gap-3">
-               <div class="coverage-card">
-
-    <h2>APSRTC Network Coverage</h2>
-
-    <p class="coverage-subtitle">
-        Real-time monitoring and ETA intelligence across Andhra Pradesh.
-    </p>
-
-    <div class="coverage-regions">
-
-         <h4>North Andhra</h4>
-         <p>
-            Palasa • Sompeta • Ichapuram • Tekkali • Srikakulam
-         </p>
-
-         <h4>Coastal Andhra</h4>
-         <p>
-            Vizianagaram • Visakhapatnam • Kakinada • Rajamahendravaram • Eluru
-         </p>
-
-         <h4>Central Andhra</h4>
-         <p>
-            Vijayawada • Guntur • Ongole
-         </p>
-
-         <h4>South Andhra</h4>
-         <p>
-            Nellore • Kadapa • Kurnool • Anantapur • Tirupati
-         </p>
-     </div>
-         </div>
-         </div>
-             {% if current_user.is_authenticated %}
-                 {% if current_user.role == 'admin' %}
-                     <a href="{{ url_for('admin_dashboard') }}" class="btn btn-accent">Explore APSRTC Network →</a>
-                 {% elif current_user.role == 'driver' %}
-                     <a href="{{ url_for('driver_dashboard') }}" class="btn btn-accent">Explore APSRTC Network →</a>
-                 {% else %}
-                     <a href="{{ url_for('passenger_dashboard') }}#live-tracking" class="btn btn-accent">Explore APSRTC Network →</a>
-                 {% endif %}
-             {% else %}
-                 <a href="{{ url_for('login_page') }}" class="btn btn-accent">Explore Network →</a>
-             {% endif %}
-        </div>
-    </div>
-</section>
 
 {% endblock %}

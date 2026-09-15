@@ -1,75 +1,57 @@
-# GTFS Integration Guide
+GTFS Integration Guide
 
 TransPulse is deeply integrated with the General Transit Feed Specification (GTFS). Instead of hardcoding routes or mapping data manually, TransPulse automatically maps abstract schedule data into living, tracking geometry.
 
-## GTFS Files Used
+GTFS Files Used
 
-### `agency.txt`
+agency.txt
 Identifies the operating transit agency. Currently hardcoded in the parser to validate basic dataset integrity.
 
-### `routes.txt`
-Defines the distinct lines (e.g., Route 1, Route 21). TransPulse imports these into the `Route` model, extracting the `route_id`, `route_short_name`, and `route_long_name`.
+routes.txt
+Defines the distinct lines. TransPulse imports these into the Route model, extracting the IDs and names.
 
-### `trips.txt`
-Links a route to a specific sequence of stops. Used to ascertain the direction of travel (`direction_id`). TransPulse groups shape parameters dynamically based on these static trips.
+trips.txt
+Links a route to a specific sequence of stops. Used to ascertain the direction of travel. TransPulse groups shape parameters dynamically based on these static trips.
 
-### `stops.txt`
-Contains the precise physical coordinates of bus stops. TransPulse uses this to anchor the map UI and mathematically detect when a bus has successfully "arrived" at a designated station.
+stops.txt
+Contains the precise physical coordinates of bus stops. TransPulse uses this to anchor the map UI and mathematically detect when a bus has successfully arrived at a designated station.
 
-### `stop_times.txt`
-Dictates the sequence of stops and the expected arrival/departure times. TransPulse ingests these into the `StopTime` model to construct the Driver Dashboard sequence and the Passenger tracking timeline. 
+stop_times.txt
+Dictates the sequence of stops and the expected arrival and departure times. TransPulse ingests these into the StopTime model to construct the Driver Dashboard sequence and the Passenger tracking timeline.
 
-### `shapes.txt`
-Provides the high-fidelity polyline geometry outlining the physical road path of the route. TransPulse serializes this into a JSON array, serving it securely to Leaflet.js to draw the blue tracking line on the maps.
+shapes.txt
+Provides the high-fidelity polyline geometry outlining the physical road path of the route. TransPulse serializes this into a JSON array, serving it securely to mapping libraries to draw the tracking line on the maps.
 
-### `calendar.txt` & `calendar_dates.txt`
+calendar.txt and calendar_dates.txt
 Provides service availability. Handled implicitly via the standard GTFS constraints logic.
 
-## Import Process
-The command `flask import-gtfs` performs a non-destructive teardown and rebuild of the static topology:
+Import Process
+
+The import command performs a non-destructive teardown and rebuild of the static topology:
 1. Clears existing static models.
 2. Ingests stops, routes, and shapes.
 3. Assembles trips and stop_times.
-4. Leaves live state data (Buses, dynamic Trips) untouched to prevent catastrophic live-system failure during a schedule update.
+4. Leaves live state data untouched to prevent catastrophic live-system failure during a schedule update.
 
+GTFS Import Logic
 
-<!-- Merged from GTFS_IMPORT.md -->
-
-# GTFS Import
-
-The CLI command `flask import-gtfs` calls `process_extracted_gtfs()` in `import_apsrtc_data.py`.
-
-```mermaid
-flowchart TD
-    Zip["GTFS zip or gtfs_data folder"] --> Parse["Parse routes, stops, trips, stop_times, shapes"]
-    Parse --> RouteDisplay["Build route display fields from routes.txt only"]
-    RouteDisplay --> Purge["Purge GTFS-backed tables and route geometry cache"]
-    Purge --> Bulk["Bulk insert agency, calendar, calendar_dates, feed_info, routes, stops, shapes, trips"]
-    Bulk --> Link["Map gtfs_trip_id and stop_code"]
-    Link --> StopTimes["Bulk insert stop_times"]
-    StopTimes --> ShapeRepair["Generate missing shapes from ordered stop coordinates"]
-    ShapeRepair --> Integrity["Run GTFS integrity checks"]
-    Integrity --> Commit["Single transaction commit"]
-```
+The parser extracts GTFS data from the source folder. It builds route display fields, purges the existing GTFS-backed tables and geometry cache, and bulk inserts the new files. It maps the trip IDs and stop codes, inserts the stop times, generates missing shapes from ordered stop coordinates, runs integrity checks, and commits everything in a single transaction.
 
 Supported files:
-
-- `agency.txt`
-- `calendar.txt`
-- `routes.txt`
-- `trips.txt`
-- `stops.txt`
-- `stop_times.txt`
-- `shapes.txt`
-- `calendar_dates.txt`
-- `feed_info.txt`
+1. agency.txt
+2. calendar.txt
+3. routes.txt
+4. trips.txt
+5. stops.txt
+6. stop_times.txt
+7. shapes.txt
+8. calendar_dates.txt
+9. feed_info.txt
 
 Performance notes:
-
-- Inserts are batched with `bulk_insert_mappings`.
-- `trips.gtfs_trip_id` avoids per-trip flush loops.
-- Stop time lookups use in-memory source maps and database indexes.
-- `StopTime` is the authoritative route-stop ordering source.
-- `Route.origin` and `Route.destination` are display-only fields and never reject assignments.
-- Generated shapes are invalidated and rebuilt when GTFS is re-imported because `road_geometry_cache` is purged.
-- Import failures rollback the transaction and log exception details.
+1. Inserts are batched to increase database write speeds.
+2. Stop time lookups use in-memory source maps and database indexes.
+3. The stop times are the authoritative route-stop ordering source.
+4. Route origins and destinations are display-only fields and never reject assignments.
+5. Generated shapes are invalidated and rebuilt when GTFS is re-imported.
+6. Import failures rollback the entire transaction safely.

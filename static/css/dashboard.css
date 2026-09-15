@@ -87,7 +87,49 @@
     padding: 1rem 0;
 }
 
-@media (max-width: 991px) { .feature-grid { grid-template-columns: 1fr; } }
+@media (max-width: 991px) { 
+    .feature-grid { 
+        grid-template-columns: repeat(3, 1fr); 
+        gap: 12px;
+        padding: 0.5rem 0;
+    }
+    .feature-card-lg {
+        height: auto !important;
+        padding: 15px 8px !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        text-align: center !important;
+        border-radius: 14px !important;
+    }
+    .feature-card-lg .fc-content, 
+    #feature-hub .feature-left {
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+    .feature-card-lg .fc-title {
+        font-size: 0.75rem !important;
+        line-height: 1.2 !important;
+        margin: 0 !important;
+        white-space: normal !important;
+        font-weight: 600 !important;
+    }
+    .feature-card-lg .fc-desc {
+        display: none !important;
+    }
+    .feature-card-lg .fc-arrow,
+    #feature-hub .feature-action {
+        display: none !important;
+    }
+    .feature-card-lg .fc-icon-wrapper {
+        width: 48px !important;
+        height: 48px !important;
+        margin: 0 auto !important;
+    }
+    .feature-card-lg .fc-icon {
+        font-size: 1.5rem !important;
+    }
+}
 
 .feature-card-lg {
     display: flex;
@@ -186,186 +228,6 @@
 
 .tracking-history-table tbody td {
     border-color: rgba(255, 255, 255, 0.07);
-    color: rgba(230, 241, 255, 0.86);
-    vertical-align: middle;
-    padding: 0.65rem 0.9rem;
-}
-
-.tracking-history-table tbody tr {
-    transition: background 0.2s ease, transform 0.2s ease;
-}
-
-.tracking-history-table tbody tr:hover {
-    background: rgba(52, 210, 255, 0.055);
-}
-
-.tracking-status-badge {
-    display: inline-flex;
-    align-items: center;
-    border-radius: 999px;
-    padding: 0.26rem 0.58rem;
-    font-size: 0.74rem;
-    font-weight: 800;
-    white-space: nowrap;
-}
-
-.tracking-status-progress {
-    background: rgba(34, 211, 154, 0.12);
-    color: #22d39a;
-    border: 1px solid rgba(34, 211, 154, 0.24);
-}
-
-.tracking-status-delayed {
-    background: rgba(255, 193, 7, 0.13);
-    color: #ffc857;
-    border: 1px solid rgba(255, 193, 7, 0.27);
-}
-
-.tracking-status-completed {
-    background: rgba(52, 210, 255, 0.12);
-    color: #34d2ff;
-    border: 1px solid rgba(52, 210, 255, 0.25);
-}
-
-.tracking-history-action {
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
-    color: #e6f1ff;
-    border-radius: 999px;
-    padding: 0.22rem 0.55rem;
-    font-size: 0.76rem;
-    font-weight: 700;
-    text-decoration: none;
-    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-}
-
-.tracking-history-action:hover {
-    background: rgba(52, 210, 255, 0.14);
-    border-color: rgba(52, 210, 255, 0.42);
-    color: #ffffff;
-    transform: translateY(-1px);
-}
-
-.tracking-history-action-delete:hover {
-    background: rgba(255, 93, 108, 0.14);
-    border-color: rgba(255, 93, 108, 0.42);
-}
-
-.tracking-history-empty {
-    color: rgba(230, 241, 255, 0.62);
-    text-align: center;
-    padding: 0.9rem 1rem !important;
-    margin: 0;
-}
-
-/* ---------- Fullscreen Tracking Overlay ---------- */
-.tracking-overlay {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 1050;
-    background: #040b18;
-    display: flex;
-    flex-direction: row;
-}
-
-.track-left-panel, .track-right-panel {
-    width: 320px;
-    background: #0b1d36;
-    padding: 1.5rem;
-    overflow-y: auto;
-    z-index: 20;
-}
-
-.track-center-map {
-    flex: 1;
-    position: relative;
-    z-index: 10;
-}
-
-@media (max-width: 991px) {
-    .tracking-overlay { flex-direction: column; }
-    .track-left-panel, .track-right-panel { width: 100%; height: 25vh; }
-    .track-center-map { height: 50vh; }
-}
-
-/* ---------- General Utilities ---------- */
-.glass-panel { background: rgba(16, 41, 69, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
-.status-pill {
-    display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.22rem 0.6rem;
-    border-radius: 999px; font-size: 0.7rem; text-transform: uppercase;
-    font-weight: 700; border: 1px solid transparent; backdrop-filter: blur(4px);
-}
-.status-on-time { color: #7cf0b8; background: rgba(34,211,154,0.14); border-color: rgba(34,211,154,0.35); }
-.feature-screen { animation: screenFadeIn 0.3s ease-out forwards; }
-@keyframes screenFadeIn { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
-
-/* ==============================================================
-   NEW ENHANCEMENTS: LOGIN & REGISTER PAGES
-   ============================================================== */
-.glass-login-card {
-    background: linear-gradient(145deg, rgba(11, 29, 54, 0.7), rgba(4, 11, 24, 0.8));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(52, 210, 255, 0.2);
-    border-radius: 1.5rem;
-    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.glass-login-card:hover {
-    box-shadow: 0 30px 60px -12px rgba(52, 210, 255, 0.15);
-    border-color: rgba(52, 210, 255, 0.4);
-}
-
-.floating-bus-animation {
-    font-size: 5.5rem;
-    display: inline-block;
-    animation: floatBus 4s ease-in-out infinite;
-    text-shadow: 0 15px 35px rgba(52,210,255,0.4);
-    margin-bottom: 0.5rem;
-}
-
-@keyframes floatBus {
-    0%, 100% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-15px) scale(1.05); }
-}
-
-.fade-in-content {
-    animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(30px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* ==============================================================
-   DRIVER DASHBOARD: LIVE TELEMETRY
-   ============================================================== */
-.driver-dashboard-shell {
-    --driver-card-gap: 18px;
-    --driver-card-padding: 20px;
-    --driver-card-radius: 16px;
-    --driver-card-shadow: 0 16px 36px -18px rgba(0, 8, 22, 0.82);
-}
-
-.driver-dashboard-card,
-.driver-live-main,
-.driver-side-card,
-.premium-action-banner {
-    border-radius: var(--driver-card-radius);
-    box-shadow: var(--driver-card-shadow);
-}
-
-.driver-dashboard-card {
-    padding: var(--driver-card-padding);
-}
-
-.driver-dashboard-card > h5,
-.driver-card-header {
-    margin: 0 0 14px !important;
-    padding-bottom: 10px !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
-    line-height: 1.25;
 }
 
 .driver-card-header {
@@ -1071,6 +933,227 @@
 
 /* 4. Tracking Page Adjustments */
 @media (max-width: 768px) {
+   ============================================================== */
+.timeline-stop { 
+    padding-left: 24px; 
+    position: relative; 
+    margin-bottom: 14px; 
+    font-size: 0.95rem;
+}
+
+.timeline-stop .stop-name {
+    display: block;
+    margin-bottom: 4px;
+    line-height: 1.25;
+}
+
+.route-stop-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    color: #8aa4c4;
+    font-size: 0.76rem;
+    line-height: 1.25;
+}
+
+.timeline-stop::before { 
+    content: ''; 
+    position: absolute; 
+    left: 0; 
+    top: 4px; 
+    width: 14px; 
+    height: 14px; 
+    border-radius: 50%; 
+    border: 2px solid #fff; 
+    z-index: 2;
+}
+
+.timeline-stop::after { 
+    content: ''; 
+    position: absolute; 
+    left: 6px; 
+    top: 18px; 
+    width: 2px; 
+    height: calc(100% + 4px); 
+    background: rgba(255,255,255,0.15); 
+    z-index: 1;
+}
+
+.timeline-stop:last-child::after { 
+    display: none; 
+}
+
+/* Timeline State Colors */
+.stop-completed::before { 
+    background: #22d39a; 
+    border-color: #22d39a; 
+    box-shadow: 0 0 10px rgba(34,211,154,0.6); 
+}
+.stop-completed .stop-name { 
+    color: #22d39a; 
+    font-weight: 500; 
+}
+
+.stop-current::before { 
+    background: #34d2ff; 
+    border-color: #fff; 
+    box-shadow: 0 0 15px rgba(52,210,255,0.8); 
+    animation: pulseCurrentStop 2s infinite;
+}
+.stop-current .stop-name { 
+    color: #34d2ff; 
+    font-weight: 800; 
+    font-size: 1.05em; 
+}
+
+.stop-upcoming::before { 
+    background: #0b1d36; 
+    border-color: #7d92b3; 
+}
+.stop-upcoming .stop-name { 
+    color: #7d92b3; 
+}
+
+@keyframes pulseCurrentStop {
+    0% { box-shadow: 0 0 0 0 rgba(52,210,255,0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(52,210,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(52,210,255,0); }
+}
+
+/* ==============================================================
+   NEW ENHANCEMENTS: MAP MARKER OVERRIDES
+   ============================================================== */
+.tp-endpoint-marker { 
+    background: transparent; 
+    border: none; 
+}
+
+.tp-live-bus-marker { 
+    background: transparent; 
+    border: none; 
+    transition: transform 0.3s linear; 
+}
+
+.admin-bus-marker { 
+    background: transparent; 
+    border: none; 
+    transition: transform 0.3s linear; 
+}
+
+/* ==============================================================
+   GLOBAL DASHBOARD MOBILE RESPONSIVENESS ENHANCEMENTS
+   ============================================================== */
+
+/* 1. Navigation & Sidebar */
+@media (max-width: 991.98px) {
+    .offcanvas-collapse {
+        max-width: 80vw;
+    }
+    .navbar-collapse {
+        background: #040b18;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid rgba(52, 210, 255, 0.2);
+    }
+}
+
+/* 2. Admin & Driver KPI Grids */
+@media (max-width: 1400px) {
+    .driver-stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1200px) {
+    .telemetry-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .driver-ops-grid,
+    .feature-grid {
+        grid-template-columns: 1fr;
+    }
+    .admin-metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+}
+
+/* 3. Small Mobile Resets (<= 576px) */
+@media (max-width: 575.98px) {
+    .driver-stats-grid,
+    .driver-control-grid,
+    .driver-status-grid,
+    .admin-metrics-grid,
+    .telemetry-layout {
+        grid-template-columns: 1fr;
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+        
+        background: rgba(4, 11, 24, 0.42);
+        border: 1px solid rgba(91, 188, 255, 0.18);
+        border-radius: 8px;
+        box-shadow: 0 10px 24px -18px rgba(0, 8, 22, 0.8);
+        gap: 0;
+    }
+    
+    .telemetry-section {
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        padding: 0 12px 12px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 0;
+        margin-bottom: 12px;
+    }
+    
+    .telemetry-section:first-child {
+        padding-top: 12px;
+    }
+    
+    .telemetry-section:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+    }
+
+    .telemetry-field {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+        gap: 8px;
+    }
+
+    .driver-card-body, .driver-side-card, .card-body {
+        padding: 12px;
+        overflow-x: hidden;
+    }
+
+    .driver-ui-btn {
+        width: 100%;
+        margin-bottom: 8px;
+    }
+
+    .driver-action-row {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .premium-action-banner {
+        padding: 15px;
+    }
+    
+    .timeline-stop {
+        padding-left: 18px;
+    }
+}
+
+/* 4. Tracking Page Adjustments */
+@media (max-width: 768px) {
     #osm-map, .map-frame {
         height: 50vh;
         min-height: 350px;
@@ -1086,15 +1169,6 @@
     .search-card, .route-card-interactive {
         width: 100%;
         margin-bottom: 1rem;
-        flex-direction: column;
-    }
-    .route-card-interactive > div {
-        text-align: center;
-        width: 100%;
-        margin-bottom: 10px;
-    }
-    .route-card-interactive > div:last-child {
-        margin-bottom: 0;
     }
 }
 
@@ -1102,8 +1176,81 @@
 @media (max-width: 991px) {
     .chart-container, .chart-wrapper {
         position: relative;
-        height: 300px;
-        width: 100%;
-        min-height: 300px;
     }
+}
+
+/* ---------- REPAIRED: Fullscreen Tracking Overlay ---------- */
+.tracking-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 1050;
+    background: #040b18;
+    display: flex;
+    flex-direction: row;
+}
+
+.track-left-panel, .track-right-panel {
+    width: 320px;
+    background: #0b1d36;
+    padding: 1.5rem;
+    overflow-y: auto;
+    z-index: 20;
+}
+
+.track-center-map {
+    flex: 1;
+    position: relative;
+    z-index: 10;
+}
+
+@media (max-width: 991px) {
+    .tracking-overlay { display: block; }
+    .track-center-map { 
+        position: absolute !important;
+        inset: 0;
+        height: 100vh !important;
+        width: 100vw;
+        z-index: 10;
+    }
+    .track-left-panel, .track-right-panel { 
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: auto;
+        max-height: 50vh;
+        z-index: 20;
+        border-top-left-radius: 24px;
+        border-top-right-radius: 24px;
+        background: linear-gradient(135deg, rgba(16,41,69,0.98), rgba(11,29,54,1));
+        backdrop-filter: blur(20px);
+        border-top: 1px solid rgba(91, 188, 255, 0.2);
+    }
+}
+
+/* ---------- REPAIRED: General Utilities ---------- */
+.glass-panel { background: rgba(16, 41, 69, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
+.status-pill {
+    display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.22rem 0.6rem;
+    border-radius: 999px; font-size: 0.7rem; text-transform: uppercase;
+    font-weight: 700; border: 1px solid transparent; backdrop-filter: blur(4px);
+}
+.status-on-time { color: #7cf0b8; background: rgba(34,211,154,0.14); border-color: rgba(34,211,154,0.35); }
+.feature-screen { animation: screenFadeIn 0.3s ease-out forwards; }
+@keyframes screenFadeIn { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+
+/* REPAIRED: LOGIN CARD */
+.glass-login-card {
+    background: linear-gradient(145deg, rgba(11, 29, 54, 0.7), rgba(4, 11, 24, 0.8));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(52, 210, 255, 0.2);
+    border-radius: 1.5rem;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-login-card:hover {
+    box-shadow: 0 30px 60px -12px rgba(52, 210, 255, 0.15);
+    border-color: rgba(52, 210, 255, 0.4);
 }

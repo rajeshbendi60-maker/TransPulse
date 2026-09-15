@@ -177,6 +177,10 @@ window.TransPulseTracking = {
         if ("geolocation" in navigator) {
             this.geoWatchId = navigator.geolocation.watchPosition(
                 (pos) => {
+                    // Strictly wait for a high-accuracy GPS satellite lock
+                    const accuracy = pos.coords.accuracy || 10000;
+                    if (accuracy > 150) return;
+
                     this.userLatLng = [pos.coords.latitude, pos.coords.longitude];
                     if (!this.userMarker && this.activeMap) {
                         this.userMarker = L.circleMarker(this.userLatLng, {
@@ -190,7 +194,7 @@ window.TransPulseTracking = {
                     }
                 },
                 (err) => console.warn("[TransPulse] GPS Watch Error:", err.message),
-                { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 }
             );
         }
 
@@ -846,26 +850,33 @@ window.TransPulseTracking = {
 
             // ── Priority 3: Client-side OSRM (last resort) ─────────────────
             } else if (bus.stops && bus.stops.length >= 2) {
-                console.info('[TransPulse] display_path empty. Querying client OSRM router...');
-                const coords = bus.stops.map(s => `${s.lng},${s.lat}`).join(';');
-                const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-                fetch(osrmUrl)
-                    .then(res => res.ok ? res.json() : Promise.reject(new Error('OSRM error')))
-                    .then(data => {
-                        if (data.routes && data.routes.length > 0 && data.routes[0].geometry) {
-                            const lineCoords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                // Filter stops that have valid coordinates for OSRM routing
+                const validStops = bus.stops.filter(s => s.lat != null && s.lng != null && !isNaN(Number(s.lat)) && !isNaN(Number(s.lng)));
+                if (validStops.length >= 2) {
+                    console.info('[TransPulse] display_path empty. Querying client OSRM router...');
+                    const coords = validStops.map(s => `${Number(s.lng).toFixed(6)},${Number(s.lat).toFixed(6)}`).join(';');
+                    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+                    fetch(osrmUrl)
+                        .then(res => res.ok ? res.json() : Promise.reject(new Error('OSRM error')))
+                        .then(data => {
+                            if (data.routes && data.routes.length > 0 && data.routes[0].geometry) {
+                                const lineCoords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                                this._removeAllRouteLayers();
+                                this.drawPolyline(lineCoords);
+                                if (geomWarningBanner) geomWarningBanner.style.display = 'none';
+                            } else {
+                                throw new Error('No usable geometry in OSRM response');
+                            }
+                        })
+                        .catch(err => {
+                            console.warn('[TransPulse] Client OSRM failed:', err.message);
                             this._removeAllRouteLayers();
-                            this.drawPolyline(lineCoords);
-                            if (geomWarningBanner) geomWarningBanner.style.display = 'none';
-                        } else {
-                            throw new Error('No usable geometry in OSRM response');
-                        }
-                    })
-                    .catch(err => {
-                        console.warn('[TransPulse] Client OSRM failed:', err.message);
-                        this._removeAllRouteLayers();
-                        if (geomWarningBanner) geomWarningBanner.style.display = 'block';
-                    });
+                            if (geomWarningBanner) geomWarningBanner.style.display = 'block';
+                        });
+                } else {
+                    console.warn('[TransPulse] Not enough valid-coordinate stops for OSRM routing.');
+                    if (geomWarningBanner) geomWarningBanner.style.display = 'block';
+                }
 
             // ── Priority 4: No geometry at all ─────────────────────────────
             } else {
@@ -877,18 +888,34 @@ window.TransPulseTracking = {
             // ── Stop markers ────────────────────────────────────────────────
             if (bus.stops && bus.stops.length) {
                 this.stopLayerGroup.clearLayers();
+                const totalStops = bus.stops.length;
                 bus.stops.forEach((stop, idx) => {
-                    let circleColor = '#007bff';
-                    if (idx === 0) circleColor = '#ffc107';
-                    else if (idx === bus.stops.length - 1) circleColor = '#dc3545';
+                    // Skip stops without valid coordinates
+                    if (stop.lat == null || stop.lng == null || isNaN(Number(stop.lat)) || isNaN(Number(stop.lng))) return;
 
-                    L.circleMarker([stop.lat, stop.lng], {
+                    // Color: Route Origin=yellow, Intermediate=blue, Route Destination=red
+                    let circleColor = '#007bff';       // blue — intermediate
+                    let isReturn = (bus.direction === 1 || bus.direction === 'backward');
+                    
+                    if (idx === 0) {
+                        // First stop of the current trip
+                        circleColor = isReturn ? '#dc3545' : '#ffc107'; 
+                    } else if (idx === totalStops - 1) {
+                        // Last stop of the current trip
+                        circleColor = isReturn ? '#ffc107' : '#dc3545';
+                    }
+
+                    L.circleMarker([Number(stop.lat), Number(stop.lng)], {
                         radius: 8,
                         fillColor: '#040b14',
                         color: circleColor,
                         weight: 3,
                         fillOpacity: 1
-                    }).bindPopup(stop.name).addTo(this.stopLayerGroup);
+                    }).bindPopup(`<b>${stop.name || 'Stop'}</b><br>
+                        ${idx === 0 ? '<span style="color:#ffc107">⬤ Source</span>' :
+                          idx === totalStops - 1 ? '<span style="color:#dc3545">⬤ Destination</span>' :
+                          '<span style="color:#007bff">⬤ Intermediate</span>'}`)
+                     .addTo(this.stopLayerGroup);
                 });
             } else {
                 console.warn('[TransPulse] Stops data missing. Cannot render stop markers.');
@@ -965,14 +992,13 @@ window.TransPulseTracking = {
             return;
         }
 
-        // Timeline progression must use backend values only. Never calculate indexes on the frontend.
+        // Include rt_eta_rel values in hash so timeline re-renders every time ETAs change
         const completedStopsCount = bus.completed_stops || 0;
         const currentStopIdx = bus.current_stop_index || 0;
-
-        // Performance Optimization: Cache check using timeline state signature
-        const timelineState = `${bus.trip_id || ''}|${completedStopsCount}|${currentStopIdx}|${bus.current_delay_minutes}|${timelineStops.length}`;
+        const rtEtaSignature = timelineStops.map(s => s.rt_eta_rel || s.expected_time || '').join('|');
+        const timelineState = `${bus.trip_id || ''}|${completedStopsCount}|${currentStopIdx}|${bus.current_delay_minutes}|${timelineStops.length}|${rtEtaSignature}`;
         if (this.lastTimelineState === timelineState) {
-            return; // State did not change, skip DOM updates
+            return;
         }
         this.lastTimelineState = timelineState;
 
@@ -987,54 +1013,76 @@ window.TransPulseTracking = {
             let prefix = '○';
             let timeRows = '';
 
-            const isCompleted = idx < completedStopsCount;
-            const isCurrent = idx === currentStopIdx;
+            // Use rt_status from backend if available, else fall back to index comparison
+            const rtStatus = stop.rt_status || null;
+            const isCompleted = rtStatus ? rtStatus === 'Passed' : idx < completedStopsCount;
+            const isCurrent  = rtStatus ? rtStatus === 'At Stop' : idx === currentStopIdx;
 
             if (isCompleted) {
                 prefix = '✔';
                 textClass = 'text-success fw-bold';
-                statusLabel = 'Completed';
-                dotColor = '#22d39a'; // Green
-                
+                statusLabel = 'Passed';
+                dotColor = '#22d39a';
+
                 const sched = stop.scheduled_time || stop.arrival_time || '--';
-                const act = stop.actual_time && stop.actual_time !== '--' ? stop.actual_time : (stop.expected_time || sched);
-                const delayMin = Number(stop.delay_minutes != null ? stop.delay_minutes : 0);
-                const delayLabel = delayMin > 0 ? `+${delayMin} min` : (delayMin < 0 ? `${delayMin} min` : '0 min');
-                
+                // Use actual_time from RT calculation (real clock time when bus passed)
+                const actual = (stop.actual_time && stop.actual_time !== '--')
+                    ? stop.actual_time
+                    : (stop.rt_eta_abs && stop.rt_eta_abs !== '--' ? stop.rt_eta_abs : sched);
+
                 timeRows = `
                     <small class="text-white-50 d-block" style="font-size:0.75rem;">Scheduled: ${this.escapeHtml(sched)}</small>
-                    <small class="text-success d-block" style="font-size:0.75rem;">Actual: ${this.escapeHtml(act)}</small>
-                    <small class="text-warning d-block" style="font-size:0.75rem;">Delay: ${this.escapeHtml(delayLabel)}</small>
+                    <small class="text-success d-block" style="font-size:0.75rem;">✓ Passed: ${this.escapeHtml(actual)}</small>
                 `;
+
             } else if (isCurrent) {
                 prefix = '▶';
                 textClass = 'text-warning fw-bold fs-5';
                 statusLabel = 'Current Stop';
-                dotColor = '#ffc107'; // Yellow
-                
+                dotColor = '#ffc107';
+
                 const sched = stop.scheduled_time || stop.arrival_time || '--';
-                const act = stop.actual_time && stop.actual_time !== '--' ? stop.actual_time : (stop.expected_time || sched);
-                
+                const actual = (stop.actual_time && stop.actual_time !== '--')
+                    ? stop.actual_time
+                    : (stop.rt_eta_abs && stop.rt_eta_abs !== '--' ? stop.rt_eta_abs : sched);
+                const delayMin = Number(stop.delay_minutes || 0);
+                const delayColor = delayMin > 2 ? 'text-danger' : (delayMin < 0 ? 'text-success' : 'text-success');
+                const delayLabel = delayMin > 0 ? `+${delayMin} min late` : (delayMin < 0 ? `${Math.abs(delayMin)} min early` : 'On Time ✓');
+
                 timeRows = `
                     <small class="text-white-50 d-block" style="font-size:0.75rem;">Scheduled: ${this.escapeHtml(sched)}</small>
-                    <small class="text-warning d-block" style="font-size:0.75rem;">Actual: ${this.escapeHtml(act)}</small>
+                    <small class="text-warning d-block" style="font-size:0.75rem;">Arrived: ${this.escapeHtml(actual)}</small>
+                    <small class="${delayColor} d-block" style="font-size:0.75rem;">${this.escapeHtml(delayLabel)}</small>
                 `;
+
             } else {
+                // Upcoming stop — show real-time ETA
                 prefix = '○';
-                textClass = 'text-white-50';
+                textClass = isLast ? 'text-danger' : 'text-white-50';
+                dotColor = isLast ? '#dc3545' : (isFirst ? '#ffc107' : '#007bff');
                 statusLabel = isLast ? 'Final Destination' : (isFirst ? 'Route Origin' : 'Upcoming Stop');
-                dotColor = '#007bff'; // Blue
-                
+
                 const sched = stop.scheduled_time || stop.arrival_time || '--';
-                const exp = stop.expected_time && stop.expected_time !== '--' ? stop.expected_time : (stop.actual_time || sched);
-                
-                timeRows = `
-                    <small class="text-white-50 d-block" style="font-size:0.75rem;">Scheduled: ${this.escapeHtml(sched)}</small>
-                    <small class="text-info d-block" style="font-size:0.75rem;">Expected: ${this.escapeHtml(exp)}</small>
-                `;
+                // RT ETA: absolute time + relative countdown
+                const rtAbs = stop.rt_eta_abs && stop.rt_eta_abs !== '--' ? stop.rt_eta_abs : null;
+                const rtRel = stop.rt_eta_rel && stop.rt_eta_rel !== '--' ? stop.rt_eta_rel : null;
+
+                if (rtAbs && rtRel) {
+                    timeRows = `
+                        <small class="text-white-50 d-block" style="font-size:0.75rem;">Scheduled: ${this.escapeHtml(sched)}</small>
+                        <small class="text-info d-block" style="font-size:0.75rem;">ETA: ${this.escapeHtml(rtAbs)} <span style="opacity:0.7">(${this.escapeHtml(rtRel)})</span></small>
+                    `;
+                } else {
+                    // Fallback to static expected time
+                    const exp = stop.expected_time && stop.expected_time !== '--' ? stop.expected_time : sched;
+                    timeRows = `
+                        <small class="text-white-50 d-block" style="font-size:0.75rem;">Scheduled: ${this.escapeHtml(sched)}</small>
+                        <small class="text-info d-block" style="font-size:0.75rem;">Expected: ${this.escapeHtml(exp)}</small>
+                    `;
+                }
             }
 
-            let nameText = stop.name || stop.stop_name || '--';
+            const nameText = stop.name || stop.stop_name || '--';
 
             verticalHtml += `
                 <div class="timeline-node-card">
@@ -1046,6 +1094,7 @@ window.TransPulseTracking = {
         });
         tContainer.innerHTML = verticalHtml;
     },
+
 
     renderTelemetry: function(bus) {
         const updateEl = (id, text) => {

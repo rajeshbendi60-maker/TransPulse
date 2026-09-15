@@ -1,14 +1,12 @@
 # TransPulse Quick Reference Guide
 
-## 🚀 Getting Started
+Getting Started
 
-### Start the Application
-```bash
-python app.py
-```
+Start the Application
+
 Visit: http://localhost:5000
 
-### Test Accounts
+Test Accounts
 | Role | Email | Password |
 |------|-------|----------|
 | Admin | admin@transpulse.com | Admin@123 |
@@ -17,28 +15,29 @@ Visit: http://localhost:5000
 
 ---
 
-## 📍 Key Routes (Andhra Pradesh Network)
+Key Routes
 
-### Palasa Hub Routes (Mandatory)
-- **PAL-VIS**: Palasa → Visakhapatnam (156 km)
-- **PAL-VIJ**: Palasa → Vijayawada (428 km)
-- **PAL-TIR**: Palasa → Tirupati (548 km)
-- **PAL-RAJ**: Palasa → Rajahmundry (238 km)
+Palasa Hub Routes (Mandatory)
+1. PAL-VIS: Palasa → Visakhapatnam (156 km)
+2. PAL-VIJ: Palasa → Vijayawada (428 km)
+3. PAL-TIR: Palasa → Tirupati (548 km)
+4. PAL-RAJ: Palasa → Rajahmundry (238 km)
 
-### Regional Routes
-- North Andhra, Coastal, Central, South Coastal routes
+Regional Routes
+1. North, Coastal, Central, South Coastal routes
+
 ---
 
-## 📱 PWA Installation
+PWA Installation
 
-### Android (Chrome)
+Android (Chrome)
 1. Open TransPulse in Chrome
 2. Tap the address bar
 3. Tap "Install" button
 4. Confirm installation
 5. App appears on home screen
 
-### iOS (Safari)
+iOS (Safari)
 1. Open TransPulse in Safari
 2. Tap Share button
 3. Tap "Add to Home Screen"
@@ -47,131 +46,74 @@ Visit: http://localhost:5000
 
 ---
 
-## 🎯 Feature Locations
+Feature Locations
 
-### Admin Dashboard
-- **URL**: `/dashboard/admin`
-- **Shows**: Fleet KPIs, active buses, route stats
-- **Actions**: Manage buses, routes, notifications
+Admin Dashboard
+1. URL: `/dashboard/admin`
+2. Shows: Fleet KPIs, active buses, route stats
+3. Actions: Manage buses, routes, notifications
 
-### Driver Dashboard
-- **URL**: `/dashboard/driver`
-- **Shows**: Assigned bus, route, trip progress
-- **Actions**: Start/end trips, update status
+Driver Dashboard
+1. URL: `/dashboard/driver`
+2. Shows: Assigned bus, route, trip progress
+3. Actions: Start/end trips, update status
 
-### Passenger Dashboard
-- **URL**: `/dashboard/passenger`
-- **Shows**: Live map, routes, ETAs
-- **Actions**: Search routes, track buses
+Passenger Dashboard
+1. URL: `/dashboard/passenger`
+2. Shows: Live map, routes, ETAs
+3. Actions: Search routes, track buses
 
-### Admin Bus Management
-- **URL**: `/admin/buses`
-- **Shows**: All buses, assignments
-- **Actions**: Add, edit, delete buses
+Admin Bus Management
+1. URL: `/admin/buses`
+2. Shows: All buses, assignments
+3. Actions: Add, edit, delete buses
 
-### Admin Route Management
-- **URL**: `/admin/routes`
-- **Shows**: All routes
-- **Actions**: Add, edit, delete routes
+Admin Route Management
+1. URL: `/admin/routes`
+2. Shows: All routes
+3. Actions: Add, edit, delete routes
 
-### Analytics Dashboard
-- **URL**: `/dashboard/analytics`
-- **Shows**: Statistics, charts, insights
-- **Actions**: View performance data
+Analytics Dashboard
+1. URL: `/dashboard/analytics`
+2. Shows: Statistics, charts, insights
+3. Actions: View performance data
 
-### Notifications Center
-- **URL**: `/notifications`
-- **Shows**: Recent notifications
-- **Actions**: View, send (admin only)
+Notifications Center
+1. URL: `/notifications`
+2. Shows: Recent notifications
+3. Actions: View, send (admin only)
 
 ---
 
-## 🛠️ Configuration
+Configuration
 
-### Customize Center Map
+Customize Center Map
 Edit `app.py`:
-```python
-AP_DEFAULT_CENTER = {"lat": 15.9129, "lng": 79.7400}
-```
 
-### Customize Colors
+Customize Colors
 Edit `static/css/style.css`:
-```css
---tp-accent: #34d2ff;        /* Primary color */
---tp-accent-2: #4f8dff;      /* Secondary */
---tp-success: #22d39a;       /* Success */
-```
 
-### Add Routes
+Add Routes
 Edit `app.py` ROUTE_GEOMETRY:
-```python
-"NEW-ROUTE": [
-    {"name": "City1", "lat": 15.123, "lng": 78.456},
-    {"name": "City2", "lat": 16.789, "lng": 79.012},
-]
-```
 
 ---
 
-## 💻 File Structure
-
-```
-Transpulse/
-├── app.py                    # Flask app + routes
-├── config.py                 # Configuration
-├── requirements.txt          # Dependencies
-├── README.md                 # Documentation
-├── UPGRADES.md               # Change log
-├── IMPLEMENTATION_SUMMARY.md # Implementation details
-├── models/
-│   ├── bus.py
-│   ├── route.py
-│   ├── trip.py
-│   ├── stop.py
-│   ├── user.py
-│   ├── notification.py
-│   └── feedback.py
-├── static/
-│   ├── css/
-│   │   ├── style.css         # Enhanced styles
-│   │   └── dashboard.css     # Dashboard theme
-│   ├── js/
-│   │   ├── dashboard.js      # Dashboard utilities
-│   │   ├── enhanced-utils.js # PWA & animations
-│   │   ├── tracking.js       # Map tracking
-│   │   ├── analytics.js      # Analytics
-│   │   └── notifications.js  # Notifications
-│   ├── manifest.json         # PWA manifest
-│   └── service-worker.js     # Service Worker
-└── templates/
-    ├── base.html             # Base template
-    ├── index.html            # Landing page
-    ├── login.html            # Login page
-    ├── register.html         # Register page
-    ├── offline.html          # Offline page
-    ├── admin_dashboard.html
-    ├── driver_dashboard.html
-    ├── passenger_dashboard.html
-    ├── admin_buses.html
-    ├── admin_routes.html
-    ├── notifications.html
-    └── analytics_dashboard.html
-```
+File Structure
 
 ---
 
-## 🔧 Common Tasks
+Common Tasks
 
-### Add a New Bus
+Add a New Bus
 1. Go to Admin Dashboard → Bus Management
 2. Click "Add Bus"
-3. Enter bus number (e.g., APSRTC-111)
+3. Enter bus number (e.g., BUS-111)
 4. Enter registration number
 5. Enter capacity
 6. Select driver
 7. Click "Add"
 
-### Add a New Route
+Add a New Route
 1. Go to Admin Dashboard → Route Management
 2. Click "Add Route"
 3. Enter route code (e.g., NEW-01)
@@ -180,14 +122,14 @@ Transpulse/
 6. Enter distance
 7. Click "Add"
 
-### Create a Trip
+Create a Trip
 1. Admin creates route and assigns bus
 2. Driver gets assignment
 3. Driver starts trip in dashboard
 4. Bus appears on live map
 5. Passengers can track in real-time
 
-### Send Notification
+Send Notification
 1. Go to Notifications Center
 2. Click "Create Notification"
 3. Enter message
@@ -196,125 +138,116 @@ Transpulse/
 
 ---
 
-## 📊 Dashboard Metrics
+Dashboard Metrics
 
-### Admin Dashboard Shows
-- Total buses
-- Total routes
-- Total drivers
-- Total passengers
-- Active buses
-- Active routes
-- Active trips
-- Average feedback rating
+Admin Dashboard Shows
+1. Total buses
+2. Total routes
+3. Total drivers
+4. Total passengers
+5. Active buses
+6. Active routes
+7. Active trips
+8. Average feedback rating
 
-### Analytics Dashboard Shows
-- User breakdown by role
-- Trip status distribution
-- Routes and trip counts
-- Performance charts
+Analytics Dashboard Shows
+1. User breakdown by role
+2. Trip status distribution
+3. Routes and trip counts
+4. Performance charts
 
-### Driver Dashboard Shows
-- Assigned bus
-- Current route
-- Trip status
-- Trip progress
-- Next stop info
-- Recent notifications
+Driver Dashboard Shows
+1. Assigned bus
+2. Current route
+3. Trip status
+4. Trip progress
+5. Next stop info
+6. Recent notifications
 
-### Passenger Dashboard Shows
-- Live bus tracking map
-- Route search
-- Bus search
-- ETA predictions
-- Live route list
+Passenger Dashboard Shows
+1. Live bus tracking map
+2. Route search
+3. Bus search
+4. ETA predictions
+5. Live route list
 
 ---
 
-## 🎨 Customization Tips
+Customization Tips
 
-### Change Theme
+Change Theme
 Edit root CSS variables in `style.css`
 
-### Modify Landing Page
+Modify Landing Page
 Edit `templates/index.html`
 
-### Add Custom Routes
+Add Custom Routes
 Update ROUTE_GEOMETRY in `app.py`
 
-### Change Map Center
+Change Map Center
 Update SOUTH_INDIA_CENTER in `app.py`
 
-### Customize PWA
+Customize PWA
 Edit `static/manifest.json`
 
 ---
 
-## 🔐 Security
+Security
 
-### Change Secret Key
+Change Secret Key
 Edit `config.py`:
-```python
-SECRET_KEY = "your-secret-key-here"
-```
 
-### Change Database
+Change Database
 Edit `config.py`:
-```python
-SQLALCHEMY_DATABASE_URI = "sqlite:///your-db.db"
-```
 
-### Enable HTTPS
+Enable HTTPS
 Set in production:
-```python
-app.run(ssl_context='adhoc')
-```
 
 ---
 
-## 📈 Performance Tips
+Performance Tips
 
-1. **Cache API Responses**: Service Worker auto-caches
-2. **Optimize Images**: Use SVG for icons
-3. **Minimize CSS**: Production minification
-4. **Use CDNs**: Bootstrap, Leaflet via CDN
-5. **Monitor Performance**: Check DevTools
-
----
-
-## 🐛 Troubleshooting
-
-### Map Not Loading
-- Check Leaflet CDN is accessible
-- Verify map container element exists
-- Check browser console for errors
-
-### Routes Not Showing
-- Verify ROUTE_GEOMETRY is populated
-- Check route codes match in database
-- Inspect API response `/api/routes/live`
-
-### PWA Not Installing
-- Use HTTPS in production
-- Check manifest.json syntax
-- Verify service-worker.js registers
-- Check browser requirements (Chrome 42+)
-
-### Buses Not Appearing
-- Check database has active trips
-- Verify bus simulation is running
-- Check trip status is "in_progress"
-- Inspect API response `/api/buses/live`
-
-### Offline Not Working
-- Check service worker registered
-- Verify assets cached (DevTools → Application)
-- Check offline.html exists
-- Test on actual offline (dev tools)
+1. Cache API Responses: Service Worker auto-caches
+2. Optimize Images: Use SVG for icons
+3. Minimize CSS: Production minification
+4. Use CDNs: Bootstrap, Leaflet via CDN
+5. Monitor Performance: Check DevTools
 
 ---
 
-## 📚 Documentation Files
+Troubleshooting
+
+Map Not Loading
+1. Check Leaflet CDN is accessible
+2. Verify map container element exists
+3. Check browser console for errors
+
+Routes Not Showing
+1. Verify ROUTE_GEOMETRY is populated
+2. Check route codes match in database
+3. Inspect API response `/api/routes/live`
+
+PWA Not Installing
+1. Use HTTPS in production
+2. Check manifest.json syntax
+3. Verify service-worker.js registers
+4. Check browser requirements (Chrome 42+)
+
+Buses Not Appearing
+1. Check database has active trips
+2. Verify bus simulation is running
+3. Check trip status is "in_progress"
+4. Inspect API response `/api/buses/live`
+
+Offline Not Working
+1. Check service worker registered
+2. Verify assets cached (DevTools → Application)
+3. Check offline.html exists
+4. Test on actual offline (dev tools)
+
+---
+
+Documentation Files
 
 | File | Purpose |
 |------|---------|
@@ -326,61 +259,27 @@ app.run(ssl_context='adhoc')
 
 ---
 
-## 🎯 Key Endpoints
-
-```
-GET  /                          Landing page
-POST /register                  User registration
-POST /login                     User login
-POST /logout                    User logout
-
-GET  /dashboard/admin           Admin dashboard
-GET  /dashboard/driver          Driver dashboard
-GET  /dashboard/passenger       Passenger dashboard
-
-GET  /admin/buses               Bus management
-POST /admin/buses               Add bus
-GET  /admin/buses/<id>/edit     Edit bus
-POST /admin/buses/<id>/edit     Update bus
-POST /admin/buses/<id>/delete   Delete bus
-
-GET  /admin/routes              Route management
-POST /admin/routes              Add route
-GET  /admin/routes/<id>/edit    Edit route
-POST /admin/routes/<id>/edit    Update route
-POST /admin/routes/<id>/delete  Delete route
-
-GET  /notifications             Notifications center
-POST /notifications             Send notification
-
-GET  /dashboard/analytics       Analytics dashboard
-
-GET  /routes/<id>               Route details
-
-GET  /api/buses/live            Live buses JSON
-GET  /api/routes/live           Live routes JSON
-GET  /api/eta/<bus_id>          Bus ETA JSON
-```
+Key Endpoints
 
 ---
 
-## ✨ New Features
+New Features
 
-✅ Palasa as mandatory routing hub
-✅ 95 Andhra Pradesh routes (from 10)
-✅ PWA mobile app capability
-✅ Offline route viewing
-✅ Service Worker caching
-✅ Enhanced animations
-✅ Glassmorphic UI
-✅ Bottom navigation (mobile)
-✅ Counter animations
-✅ Status indicators
-✅ Premium styling
-✅ Better documentation
+1. Palasa as mandatory routing hub
+2. 95 strategic routes (from 10)
+3. PWA mobile app capability
+4. Offline route viewing
+5. Service Worker caching
+6. Enhanced animations
+7. Glassmorphic UI
+8. Bottom navigation (mobile)
+9. Counter animations
+10. Status indicators
+11. Premium styling
+12. Better documentation
 
 ---
 
-**For more details, see README.md, UPGRADES.md, and IMPLEMENTATION_SUMMARY.md**
+For more details, see README.md, UPGRADES.md, and IMPLEMENTATION_SUMMARY.md
 
 Last Updated: June 3, 2026

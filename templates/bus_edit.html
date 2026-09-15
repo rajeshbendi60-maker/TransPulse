@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}TransPulse | Bus Management{% endblock %}
+{% block title %}TransPulse | Edit Bus Mapping{% endblock %}
 {% block content %}
 <div class="container pb-5">
     
-    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
-        <a href="{{ url_for('admin_buses') }}" class="btn btn-outline-info me-3 px-4 rounded-pill fw-bold text-white" style="border-color:#34d2ff; background:rgba(52,210,255,0.1);">← Back to Fleet List</a>
+    <div class="d-flex flex-wrap align-items-center mb-4 mt-3 fade-up gap-2">
+        <a href="{{ url_for('admin_buses') }}" class="btn btn-link text-white text-decoration-none p-0 me-3 d-none d-lg-inline-block"><i class="fa-solid fa-chevron-left fs-5"></i></a>
         <div>
-            <h2 class="fw-bold mb-1 text-white">Bus Management Center</h2>
-            <p class="text-muted mb-0">Unified operations panel for route architecture, bus registry telemetry, and driver assignments.</p>
+            <h2 class="fw-bold mb-1 text-white">Edit Bus Mapping: {{ bus.bus_number }}</h2>
+            <p class="text-muted mb-0 small">Make adjustments to the bus's core info or operational constraints</p>
         </div>
     </div>
 
@@ -37,8 +37,8 @@
                                 <input type="number" name="capacity" class="form-control bg-dark text-white border-secondary" value="{{ bus.capacity }}" required>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label text-light small mb-1">Assigned Driver ID (DTP-XXXXX)</label>
-                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" value="{{ bus.assigned_driver_code or '' }}" placeholder="e.g. DTP-001">
+                                <label class="form-label text-light small mb-1">Assigned Driver ID *</label>
+                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" value="{{ bus.assigned_driver_code or '' }}" placeholder="e.g. DTP-001" required>
                             </div>
                         </div>
 
@@ -46,40 +46,97 @@
                         <h6 class="text-info pb-2 mb-3 mt-2" style="border-bottom: 1px solid rgba(52, 210, 255, 0.3);">Route Assignment</h6>
                         <div class="row g-3 mb-3">
                             <div class="col-md-12">
-                                <label class="form-label text-light small mb-1">Select Existing Route (Recommended)</label>
-                                <select name="existing_route_id" class="form-select bg-dark text-white border-secondary">
-                                    <option value="">— Select Existing Route OR Create New Below —</option>
-                                    {% for r in routes %}
-                                        <option value="{{ r.id }}" {% if assigned_route and assigned_route.id == r.id %}selected{% endif %}>{{ r.route_code }} — {{ r.origin }} ➜ {{ r.destination }}</option>
-                                    {% endfor %}
-                                </select>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label class="form-label text-light small mb-0">Existing Route</label>
+                                    <button type="button" class="btn btn-sm btn-outline-info py-0 px-2 small" onclick="resetRouteForm()">
+                                        <i class="fa-solid fa-rotate-left"></i> Reset
+                                    </button>
+                                </div>
+                                <div class="dropdown">
+                                    <input type="hidden" name="existing_route_id" id="tp-existing-route-id" value="{{ assigned_route.id if assigned_route else '' }}">
+                                    <button class="form-select bg-dark text-white border-secondary text-start dropdown-toggle text-truncate" type="button" id="routeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside">
+                                        {% if assigned_route %}
+                                            <span class="text-info fw-bold">{{ assigned_route.route_code }}</span> {{ assigned_route.origin }} ➜ {{ assigned_route.destination }}
+                                        {% else %}
+                                            Search existing routes...
+                                        {% endif %}
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-dark w-100 p-2 shadow-lg" aria-labelledby="routeDropdownBtn" style="max-height: 350px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);">
+                                        <input type="text" class="form-control form-control-sm mb-2 border-secondary bg-dark text-white" id="routeSearchInput" placeholder="Type to search..." autocomplete="off">
+                                        <div id="routeDropdownList">
+                                            <a class="dropdown-item route-option text-muted small text-wrap lh-sm" href="#" data-value="">Clear selection...</a>
+                                            {% for r in routes %}
+                                            <a class="dropdown-item route-option {% if assigned_route and r.id == assigned_route.id %}active{% endif %} small text-wrap lh-sm border-bottom border-secondary border-opacity-25 py-2" href="#" data-value="{{ r.id }}" data-search-text="{{ r.route_code | lower }} {{ r.origin | lower }} {{ r.destination | lower }}">
+                                                <span class="text-info fw-bold">{{ r.route_code }}</span> <br class="d-md-none"> {{ r.origin }} ➜ {{ r.destination }}
+                                            </a>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <h6 class="text-muted pb-2 mb-3 mt-2 small">— OR Create New Route —</h6>
+                        <h6 class="text-muted pb-2 mb-3 mt-2 small">— OR Modify Assigned Route / Create New —</h6>
                         <div class="row g-3 mb-3">
-                            <div class="col-md-3">
+                            <div class="col-md-6">
                                 <label class="form-label text-light small mb-1">Route Code</label>
                                 <input type="text" name="route_code" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.route_code if assigned_route else '' }}" placeholder="e.g. 01004">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-6">
                                 <label class="form-label text-light small mb-1">Route Name</label>
                                 <input type="text" name="route_name" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.name if assigned_route else '' }}" placeholder="Express Link">
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label text-light small mb-1">Source City</label>
-                                <input type="text" name="origin" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.origin if assigned_route else '' }}" placeholder="Visakhapatnam">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label text-light small mb-1">Destination City</label>
-                                <input type="text" name="destination" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.destination if assigned_route else '' }}" placeholder="Vijayawada">
-                            </div>
                         </div>
-                        
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-12">
-                                <label class="form-label text-light small mb-1">Intermediate Stops (Comma separated order)</label>
-                                <input type="text" name="intermediate_stops" class="form-control bg-dark text-white border-secondary" value="{{ intermediates_str }}" placeholder="Anakapalle, Tuni, Rajahmundry">
+
+                        <div class="p-3 mb-4 rounded" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05);">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Source City / Stop *</label>
+                                    <input type="text" name="origin" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.origin if assigned_route else '' }}" placeholder="Origin">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Departure Time *</label>
+                                    <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" name="departure_time" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.departure_time if assigned_route and assigned_route.departure_time else '' }}" placeholder="Select Time">
+                                </div>
+                            </div>
+                            
+                            <input type="hidden" name="intermediate_stops" id="tp-hidden-intermediate-stops">
+                            
+                            <div id="tp-dynamic-stops-container" class="mb-3">
+                                {% if intermediate_stops_data %}
+                                    {% for stop in intermediate_stops_data %}
+                                    <div class="row g-3 mb-2 dynamic-stop-row align-items-end">
+                                        <div class="col-md-5">
+                                            <label class="form-label text-light small mb-1">Intermediate Stop Name</label>
+                                            <input type="text" class="form-control bg-dark text-white border-secondary dynamic-stop-name" value="{{ stop.name }}" placeholder="Stop Name">
+                                        </div>
+                                        <div class="col-md-5">
+                                            <label class="form-label text-light small mb-1">Arrival Time</label>
+                                            <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" class="form-control bg-dark text-white border-secondary dynamic-stop-time" value="{{ stop.time }}" placeholder="Select Time">
+                                        </div>
+                                        <div class="col-md-2 text-end">
+                                            <button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.dynamic-stop-row').remove()"><i class="fa-solid fa-trash"></i></button>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% endif %}
+                            </div>
+                            
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-sm btn-outline-info" onclick="addDynamicStop()">
+                                    <i class="fa-solid fa-plus me-1"></i> Add Intermediate Stop
+                                </button>
+                            </div>
+
+                            <div class="row g-3 pt-3" style="border-top: 1px dashed rgba(255,255,255,0.1);">
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Destination City / Stop *</label>
+                                    <input type="text" name="destination" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.destination if assigned_route else '' }}" placeholder="Destination">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Arrival Time *</label>
+                                    <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" name="arrival_time" class="form-control bg-dark text-white border-secondary" value="{{ assigned_route.arrival_time if assigned_route and assigned_route.arrival_time else '' }}" placeholder="Select Time">
+                                </div>
                             </div>
                         </div>
 
@@ -92,4 +149,145 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.TP_ROUTES = {
+        {% for r in routes %}
+        "{{ r.id }}": {
+            route_code: {{ r.route_code|tojson }},
+            name: {{ (r.name or '')|tojson }},
+            origin: {{ r.origin|tojson }},
+            destination: {{ r.destination|tojson }},
+            departure_time: {{ (r.departure_time or '')|tojson }},
+            arrival_time: {{ (r.arrival_time or '')|tojson }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.getElementById('routeSearchInput');
+        const routeOptions = document.querySelectorAll('.route-option');
+        const hiddenInput = document.getElementById('tp-existing-route-id');
+        const dropdownBtn = document.getElementById('routeDropdownBtn');
+
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                routeOptions.forEach(opt => {
+                    const searchData = opt.dataset.searchText || '';
+                    if (!term || searchData.includes(term) || !opt.dataset.value) {
+                        opt.style.display = 'block';
+                    } else {
+                        opt.style.display = 'none';
+                    }
+                });
+            });
+            
+            const dropdownEl = document.getElementById('routeDropdownBtn');
+            dropdownEl.addEventListener('shown.bs.dropdown', () => {
+                searchInput.focus();
+            });
+        }
+
+        routeOptions.forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.preventDefault();
+                const id = opt.dataset.value;
+                hiddenInput.value = id;
+                dropdownBtn.innerHTML = opt.innerHTML;
+                
+                const dropdown = bootstrap.Dropdown.getInstance(dropdownBtn) || new bootstrap.Dropdown(dropdownBtn);
+                dropdown.hide();
+
+                if (id) {
+                    const route = window.TP_ROUTES[id];
+                    if (route) {
+                        document.querySelector('input[name="route_code"]').value = route.route_code || '';
+                        document.querySelector('input[name="route_name"]').value = route.name || '';
+                        document.querySelector('input[name="origin"]').value = route.origin || '';
+                        document.querySelector('input[name="destination"]').value = route.destination || '';
+                        
+                        const depInput = document.querySelector('input[name="departure_time"]');
+                        if (route.departure_time) {
+                            depInput.type = 'time';
+                            depInput.value = route.departure_time;
+                        } else {
+                            depInput.value = '';
+                        }
+                        
+                        const arrInput = document.querySelector('input[name="arrival_time"]');
+                        if (route.arrival_time) {
+                            arrInput.type = 'time';
+                            arrInput.value = route.arrival_time;
+                        } else {
+                            arrInput.value = '';
+                        }
+                    }
+                } else {
+                    document.getElementById('tp-assign-bus-form')?.reset();
+                    document.getElementById('tp-dynamic-stops-container').innerHTML = '';
+                    hiddenInput.value = '';
+                    dropdownBtn.innerHTML = 'Search existing routes...';
+                    searchInput.value = '';
+                    routeOptions.forEach(o => o.style.display = 'block');
+                }
+            });
+        });
+    });
+
+    window.resetRouteForm = function() {
+        document.getElementById('tp-assign-bus-form')?.reset();
+        document.getElementById('tp-dynamic-stops-container').innerHTML = '';
+        document.getElementById('tp-existing-route-id').value = '';
+        const dropdownBtn = document.getElementById('routeDropdownBtn');
+        if (dropdownBtn) dropdownBtn.innerHTML = 'Search existing routes...';
+        const searchInput = document.getElementById('routeSearchInput');
+        if (searchInput) {
+            searchInput.value = '';
+            document.querySelectorAll('.route-option').forEach(o => o.style.display = 'block');
+        }
+    };
+
+    window.addDynamicStop = function() {
+        const container = document.getElementById('tp-dynamic-stops-container');
+        const row = document.createElement('div');
+        row.className = 'row g-3 mb-2 dynamic-stop-row align-items-end';
+        row.innerHTML = `
+            <div class="col-md-5">
+                <label class="form-label text-light small mb-1">Intermediate Stop Name</label>
+                <input type="text" class="form-control bg-dark text-white border-secondary dynamic-stop-name" placeholder="Stop Name">
+            </div>
+            <div class="col-md-5">
+                <label class="form-label text-light small mb-1">Arrival Time</label>
+                <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" class="form-control bg-dark text-white border-secondary dynamic-stop-time" placeholder="Select Time">
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.dynamic-stop-row').remove()"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        `;
+        container.appendChild(row);
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.querySelector('form');
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                const dynamicStops = document.querySelectorAll('.dynamic-stop-row');
+                const compiled = Array.from(dynamicStops).map(row => {
+                    const name = row.querySelector('.dynamic-stop-name').value.trim();
+                    const time = row.querySelector('.dynamic-stop-time').value.trim();
+                    if (!name) return null;
+                    return time ? `${name}|${time}` : name;
+                }).filter(s => s).join(',');
+                
+                const hiddenInput = document.getElementById('tp-hidden-intermediate-stops');
+                if (hiddenInput) {
+                    hiddenInput.value = compiled;
+                }
+            });
+        }
+    });
+</script>
 {% endblock %}

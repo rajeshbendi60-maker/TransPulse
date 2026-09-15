@@ -20,19 +20,12 @@
 {% endblock %}
 
 {% block content %}
-<div class="container pb-5">
+<div class="container pb-5 mb-5" style="min-height: 85vh;">
     
-    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
-        {% if current_user.role == "admin" %}
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
-        {% elif current_user.role == "driver" %}
-            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
-        {% else %}
-            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
-        {% endif %}
+    <div class="d-flex align-items-center mb-4 pb-2 mt-3 fade-up border-bottom border-secondary border-opacity-25">
+        <a href="javascript:history.back()" class="btn btn-link text-white text-decoration-none p-0 me-3 d-none d-lg-inline-block"><i class="fa-solid fa-chevron-left fs-5"></i></a>
         <div>
-            <h2 class="fw-bold mb-0 text-white">🎒 Lost & Found</h2>
-            <p class="text-muted mb-0">Report and track missing items on the APSRTC network.</p>
+            <h4 class="m-0 fw-bold text-white fs-5">Lost & Found</h4>
         </div>
     </div>
 
@@ -95,14 +88,14 @@
                         <textarea name="description" id="standard-desc-input" class="form-control bg-dark text-white border-secondary" rows="3" placeholder="Describe the item in detail..."></textarea>
                     </div>
 
-                    <div class="col-12">
-                        <label class="form-label text-muted small fw-bold">Reference / Evidence Image (Optional)</label>
-                        <input type="file" id="lnf-image-input" class="form-control bg-dark text-white border-secondary" accept="image/jpeg, image/png, image/webp" capture="environment">
-                        <div class="form-text text-secondary mb-2">Upload a clear image of the lost item to help identify it.</div>
+                    <div class="col-12 mb-3">
+                        <label class="form-label text-info fw-bold small">Reference / Evidence Image *</label>
+                        <input type="file" name="reference_image" id="reference_image" class="form-control bg-dark text-white border-secondary" accept="image/*" required>
+                        <small class="text-muted d-block mt-1">Upload a clear image of the lost item to help identify it.</small>
                         <input type="hidden" name="evidence_image" id="lnf-image-data" value="">
                         <div class="position-relative d-inline-block mt-2">
                             <img id="lnf-image-preview" alt="Item photo preview" class="img-fluid rounded border border-secondary d-none" style="max-height:180px;object-fit:contain;">
-                            <button type="button" id="remove-lnf-image-btn" class="remove-image-btn" style="position: absolute; top: -10px; right: -10px; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.8); color: white; border: 1px solid rgba(255,255,255,0.2); align-items: center; justify-content: center; font-size: 14px; cursor: pointer; z-index: 10; display: none;" onclick="document.getElementById('lnf-image-input').value=''; document.getElementById('lnf-image-input').dispatchEvent(new Event('change'))">✕</button>
+                            <button type="button" id="remove-lnf-image-btn" class="remove-image-btn" style="position: absolute; top: -10px; right: -10px; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.8); color: white; border: 1px solid rgba(255,255,255,0.2); align-items: center; justify-content: center; font-size: 14px; cursor: pointer; z-index: 10; display: none;" onclick="document.getElementById('reference_image').value=''; document.getElementById('reference_image').dispatchEvent(new Event('change'))">✕</button>
                         </div>
                         <style>
                             #lnf-image-preview:not(.d-none) + #remove-lnf-image-btn {
@@ -129,52 +122,58 @@
     </div>
     {% endif %}
 
-    <h5 class="text-white fw-bold mb-4">Active Reports</h5>
+    <h5 class="text-white fw-bold mb-3 fs-6 fs-md-5">Active Reports</h5>
     <div id="items-container" class="row g-3">
-        <div class="col-12 text-center text-muted py-5">
+        <div class="col-12 text-center text-muted py-4">
             <div class="spinner-border text-info mb-2" role="status"></div>
-            <p>Loading active reports...</p>
+            <p class="small">Loading active reports...</p>
         </div>
     </div>
 
-    <h5 class="text-white fw-bold mb-4 mt-5">Returned Items</h5>
-    <div id="items-history-container" class="row g-3">
-        <div class="col-12 text-center text-muted py-4">Loading returned items...</div>
+    <div class="d-flex justify-content-between align-items-center mb-3 mt-4 mt-md-5">
+        <h5 class="text-white fw-bold mb-0 fs-6 fs-md-5">Returned Items</h5>
+        <button class="btn btn-sm btn-outline-danger" onclick="clearLostAndFoundHistory()" title="Clear History">
+            <i class="fa-solid fa-trash"></i>
+        </button>
+    </div>
+    <div id="items-history-container" class="row g-3 pb-5 mb-5">
+        <div class="col-12 text-center text-muted py-4 small">Loading returned items...</div>
     </div>
 </div>
 
 <!-- BEAUTIFUL SUCCESS MODAL -->
-<div id="successModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
-    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#22d39a; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
-        <div class="card-body p-5 text-center">
-            <div style="background: #22d39a; border-radius: 12px; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px auto; box-shadow: 0 10px 20px rgba(34,211,154,0.3);">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            </div>
-            <h3 class="text-white fw-bold mb-3" id="modal-title-text">Report Submitted</h3>
-            <p class="text-muted mb-4" id="modal-desc-text">Your lost item report has been successfully recorded. Notifications have been dispatched to available driver teams immediately.</p>
-            <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" style="background: #22d39a; color: #040b18; border: none; font-size: 1.1rem; box-shadow: 0 8px 15px rgba(34,211,154,0.2);" onclick="document.getElementById('successModal').style.display='none'">Got It!</button>
-        </div>
-    </div>
-</div>
 
-<!-- BEAUTIFUL CUSTOM DELETE CONFIRMATION MODAL -->
-<div id="deleteConfirmModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
-    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#ff5d6c; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
-        <div class="card-body p-4 p-md-5 text-center">
-            <div style="background: rgba(255, 93, 108, 0.2); border-radius: 12px; width: 65px; height: 65px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; border: 1px solid #ff5d6c;">
-                <span style="font-size: 28px;">🗑️</span>
-            </div>
-            <h4 class="text-white fw-bold mb-3">Delete Report?</h4>
-            <p class="text-muted mb-4">Are you sure you want to permanently delete this record? This action cannot be undone and will drop it from the system entirely.</p>
-            <div class="d-flex gap-3">
-                <button type="button" class="btn btn-outline-secondary w-50 fw-bold rounded-pill" onclick="closeDeleteModal()">Cancel</button>
-                <button type="button" class="btn w-50 fw-bold rounded-pill" style="background: #ff5d6c; color: #fff; border: none; box-shadow: 0 8px 15px rgba(255, 93, 108, 0.2);" onclick="confirmDeleteAction()">Yes, Delete</button>
-            </div>
-        </div>
-    </div>
+
+<!-- IMAGE VIEWER MODAL -->
+<div id="imageViewerModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.95); z-index:100005; align-items:center; justify-content:center; backdrop-filter: blur(8px);">
+    <button type="button" onclick="document.getElementById('imageViewerModal').style.display='none'" style="position:absolute; top:20px; right:20px; background:transparent; border:none; color:white; font-size:36px; cursor:pointer; z-index:100006;">&times;</button>
+    <img id="viewer-img-element" src="" style="max-width:95vw; max-height:90vh; object-fit:contain; border-radius:8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
 </div>
 
 <script>
+function openImageModal(dataUrl) {
+    document.getElementById('viewer-img-element').src = dataUrl;
+    document.getElementById('imageViewerModal').style.display = 'flex';
+}
+
+async function clearLostAndFoundHistory() {
+    if(!confirm("Are you sure you want to clear your returned items history?")) return;
+    try {
+        const res = await fetch('/api/lost-and-found', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': window.TransPulseCSRF},
+            body: JSON.stringify({ action: 'clear_history' })
+        });
+        if(res.ok) {
+            loadItems('history', 'items-history-container');
+        } else {
+            alert("Failed to clear history.");
+        }
+    } catch(e) {
+        console.error(e);
+    }
+}
+
 const activeUserId = parseInt("{{ current_user.id }}");
 const activeUserRole = "{{ current_user.role }}";
 let activeFleetCache = [];
@@ -200,22 +199,22 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleCategoryVisibilityToggle(val) {
         if (brandRequiredCategories.includes(val)) {
             brandGroup.classList.remove('d-none');
-            brandInput.required = true;
+            if(brandInput) brandInput.required = true;
         } else {
             brandGroup.classList.add('d-none');
-            brandInput.required = false;
+            if(brandInput) brandInput.required = false;
         }
 
         if (val === 'Other') {
             otherDescGroup.classList.remove('d-none');
-            otherDescInput.required = true;
+            if(otherDescInput) otherDescInput.required = true;
             standardDescGroup.classList.add('d-none');
-            standardDescInput.required = false;
+            if(standardDescInput) standardDescInput.required = false;
         } else {
             otherDescGroup.classList.add('d-none');
-            otherDescInput.required = false;
+            if(otherDescInput) otherDescInput.required = false;
             standardDescGroup.classList.remove('d-none');
-            standardDescInput.required = false;
+            if(standardDescInput) standardDescInput.required = false;
         }
     }
 
@@ -226,17 +225,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeFleetCache = data.buses || [];
                 loadItems();
             })
-            .catch(() => loadItems());
+            .catch((e) => {
+                console.error("Error loading fleet cache:", e);
+                loadItems();
+            });
     }
 
     function loadItems(view = 'active', targetId = 'items-container') {
-        fetch(`/api/lost-and-found?view=${encodeURIComponent(view)}`)
-            .then(r => r.json())
+        fetch(`/api/lost-and-found?view=${view}&_t=${new Date().getTime()}`)
+            .then(async r => {
+                if (!r.ok) {
+                    const text = await r.text();
+                    console.error("API Error Text:", text);
+                    document.getElementById(targetId).innerHTML = `<div class="col-12 text-center text-danger py-4">Error loading reports: ${text.substring(0, 100)}</div>`;
+                    throw new Error("API returned " + r.status);
+                }
+                return r.json();
+            })
             .then(items => {
                 const container = document.getElementById(targetId);
                 container.innerHTML = '';
                 if (!items.length) {
-                    const emptyText = view === 'history' ? 'No returned items found.' : 'No active reports found.';
+                    const emptyText = view === 'history' ? 'No returned items.' : 'No active reports.';
                     container.innerHTML = `<div class="col-12 text-center text-muted py-4">${emptyText}</div>`;
                     return;
                 }
@@ -247,20 +257,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (!filteredItems.length) {
-                    container.innerHTML = '<div class="col-12 text-center text-muted py-4">No active logs synchronized to your active route footprint registry.</div>';
+                    container.innerHTML = '<div class="col-12 text-center text-muted py-4">No active reports.</div>';
                     return;
                 }
 
                 filteredItems.forEach(item => {
                     let actionControls = '';
-                    
                     if (view === 'active' && (item.user_id === activeUserId || activeUserRole === 'admin')) {
-                        actionControls = `
-                            <div class="d-flex gap-2 mt-3 pt-2 border-top border-secondary border-opacity-25">
-                                <button class="btn btn-sm btn-outline-info text-info fw-bold" onclick='triggerReportEditInitialization(${JSON.stringify(item).replace(/'/g, "&apos;")})'>✏️ Edit</button>
-                                <button class="btn btn-sm btn-outline-danger text-danger fw-bold" onclick="executeReportDeletion(${item.id})">🗑️ Delete</button>
-                            </div>
-                        `;
+                        // Lock down editing if the driver has already processed it
+                        const isEditable = activeUserRole === 'admin' || (item.status && item.status.toLowerCase() === 'open');
+                        if (isEditable) {
+                            actionControls = `
+                                <div class="d-flex gap-2 mt-3 pt-2 border-top border-secondary border-opacity-25">
+                                    <button class="btn btn-sm btn-outline-info text-info fw-bold" onclick='triggerReportEditInitialization(${JSON.stringify(item).replace(/'/g, "&apos;")})'>✏️ Edit</button>
+                                    <button class="btn btn-sm btn-outline-danger text-danger fw-bold" onclick="executeReportDeletion(${item.id})">🗑️ Delete</button>
+                                </div>
+                            `;
+                        } else {
+                             actionControls = `
+                                <div class="d-flex gap-2 mt-3 pt-2 border-top border-secondary border-opacity-25">
+                                    <span class="text-muted small">🔒 Locked (Driver processing)</span>
+                                </div>
+                            `;
+                        }
                     }
                     
                     if (view === 'active' && activeUserRole === 'driver') {
@@ -280,14 +299,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <span class="badge bg-secondary text-uppercase" style="font-size: 0.65rem;">${item.status}</span>
                                     </div>
                                     <p class="text-light small mb-2">${item.description || 'No additional details provided.'}</p>
-                                    ${item.evidence_image && String(item.evidence_image).startsWith('data:image/') ? `<a href="${item.evidence_image}" target="_blank" class="text-info d-block mt-1 mb-2" style="font-size:0.8rem;">📸 View Evidence Image</a>` : ''}
+                                    ${item.evidence_image && String(item.evidence_image).startsWith('data:image/') ? `<a href="javascript:void(0)" onclick="openImageModal('${item.evidence_image}')" class="text-info fw-bold d-block mt-1 mb-2 text-decoration-none" style="font-size:0.8rem;">📸 View evidence image</a>` : ''}
                                     ${item.driver_reply ? `<p class="text-success small mb-2"><strong>Driver Reply:</strong> ${item.driver_reply}</p>` : ''}
                                     <div class="d-flex justify-content-between text-muted" style="font-size: 0.75rem;">
                                         <span>Bus: ${item.bus_number || item.bus_id}</span>
                                         <span>${new Date(item.incident_date).toLocaleDateString()}</span>
                                     </div>
                                     <div class="text-muted mt-2" style="font-size: 0.72rem;">
-                                        <div>Driver: <span class="text-info">${item.driver_code || '--'}</span></div>
                                         <div>Route: ${item.route_name || '--'} | Trip: ${item.trip_id || '--'}</div>
                                         <div>Current Stop: ${item.current_stop || '--'}</div>
                                     </div>
@@ -297,7 +315,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     `;
                 });
-            }).catch(e => console.error("Error loading items:", e));
+            }).catch(e => {
+                console.error("Error loading items:", e);
+                const container = document.getElementById(targetId);
+                if (container) {
+                    container.innerHTML = `<div class="col-12 text-center text-danger py-4">Failed to load reports: ${e.message}</div>`;
+                }
+            });
     }
 
     window.openLostFoundDriverReport = function(item) {
@@ -316,7 +340,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div id="driver-lnf-detail-body" class="small" style="color:#d9e8ff;"></div>
                         <div class="mt-4">
                             <label class="form-label text-muted small fw-bold">Reply Message</label>
-                            <textarea id="driver-lnf-reply-message" class="form-control bg-dark text-white border-secondary" rows="3"></textarea>
+                            <textarea id="driver-lnf-reply-message" class="form-control bg-dark text-white border-secondary mb-2" rows="3"></textarea>
+                            <div class="d-flex flex-wrap gap-2 mt-1">
+                                <span class="badge rounded-pill" style="cursor:pointer; background: rgba(52,210,255,0.15); border: 1px solid rgba(52,210,255,0.4); color: #34d2ff; font-weight: normal; padding: 5px 10px;" onclick="document.getElementById('driver-lnf-reply-message').value = 'Handed to Depot Manager'">Handed to Depot</span>
+                                <span class="badge rounded-pill" style="cursor:pointer; background: rgba(52,210,255,0.15); border: 1px solid rgba(52,210,255,0.4); color: #34d2ff; font-weight: normal; padding: 5px 10px;" onclick="document.getElementById('driver-lnf-reply-message').value = 'Not found in the bus'">Not Found in Bus</span>
+                                <span class="badge rounded-pill" style="cursor:pointer; background: rgba(52,210,255,0.15); border: 1px solid rgba(52,210,255,0.4); color: #34d2ff; font-weight: normal; padding: 5px 10px;" onclick="document.getElementById('driver-lnf-reply-message').value = 'Left at Terminal Counter'">Left at Terminal</span>
+                            </div>
                         </div>
                         <div class="mt-3">
                             <label class="form-label text-muted small fw-bold">Status</label>
@@ -379,19 +408,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
             if (res.ok) {
-                const modal = document.getElementById('driver-lnf-detail-modal');
-                if (modal) modal.style.display = 'none';
-                const data = await res.json();
-                document.getElementById('modal-title-text').textContent = "Report Updated";
-                document.getElementById('modal-desc-text').textContent = data.status === 'Returned'
-                    ? "The passenger has been notified and the report was moved to returned history."
-                    : "The passenger has been notified and the report remains active.";
-                document.getElementById('successModal').style.display = 'flex';
-                syncFleetThenLoadItems();
-                loadItems('history', 'items-history-container');
+                document.getElementById('driver-lnf-detail-modal').style.display = 'none';
+                loadItems();
+            } else {
+                alert('Failed to update report.');
             }
         } catch (e) {
             console.error(e);
+            alert('Error updating report.');
         } finally {
             if (button) {
                 button.disabled = false;
@@ -401,80 +425,87 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.triggerReportEditInitialization = function(item) {
+        document.getElementById('form-action-title').textContent = "✏️ Edit Report";
         document.getElementById('edit-report-id').value = item.id;
-        document.getElementById('form-action-title').textContent = "✏️ Modify Lost Item Report";
-        document.getElementById('submit-action-btn').textContent = "Save Modified Changes";
-        document.getElementById('cancel-edit-btn').classList.remove('d-none');
 
-        categorySelect.value = item.item_name;
-        handleCategoryVisibilityToggle(item.item_name);
+        const catSelect = document.getElementById('item-category');
+        const standardOptions = Array.from(catSelect.options).map(o => o.value);
+        if (standardOptions.includes(item.item_name)) {
+            catSelect.value = item.item_name;
+            document.getElementById('other-desc-input').value = '';
+        } else {
+            catSelect.value = "Other";
+            document.getElementById('other-desc-input').value = item.item_name || '';
+        }
 
         document.getElementById('item-color').value = item.color || '';
         document.getElementById('brand-input').value = item.brand || '';
+        document.getElementById('item-lost-date').value = item.incident_date ? item.incident_date.split('T')[0] : '';
+        document.getElementById('item-lost-location').value = item.route_name || '';
+        document.getElementById('item-bus-id').value = item.bus_number || item.bus_id || '';
+        document.getElementById('standard-desc-input').value = item.description || '';
+        const contactEl = document.getElementById('item-contact-number');
+        if(contactEl) contactEl.value = item.contact_phone || '';
         
-        if (item.incident_date) {
-            document.getElementById('item-lost-date').value = item.incident_date.substring(0, 10);
-        }
-        
-        const matchingBusMeta = activeFleetCache.find(b => b.bus_id === item.bus_id);
-        document.getElementById('item-bus-id').value = matchingBusMeta ? matchingBusMeta.bus_number : (item.bus_number || item.bus_id || '');
-        document.getElementById('item-lost-location').value = item.route_name || (matchingBusMeta ? `${matchingBusMeta.source_stop} to ${matchingBusMeta.destination_stop}` : '');
-        
-        if (item.item_name === 'Other') {
-            document.getElementById('other-desc-input').value = item.description || '';
-        } else {
-            document.getElementById('standard-desc-input').value = item.description || '';
-        }
-        
-        document.getElementById('item-contact-number').value = item.contact_phone || '';
-        
-        const imageData = document.getElementById('lnf-image-data');
-        const imagePreview = document.getElementById('lnf-image-preview');
-        imageData.value = item.evidence_image || '';
         if (item.evidence_image) {
-            imagePreview.src = item.evidence_image;
-            imagePreview.classList.remove('d-none');
-        } else {
-            imagePreview.removeAttribute('src');
-            imagePreview.classList.add('d-none');
+            document.getElementById('lnf-image-data').value = item.evidence_image;
+            const imgPreview = document.getElementById('lnf-image-preview');
+            imgPreview.src = item.evidence_image;
+            imgPreview.classList.remove('d-none');
         }
 
-        document.getElementById('lost-found-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('submit-action-btn').textContent = "Save Changes";
+        document.getElementById('cancel-edit-btn').classList.remove('d-none');
+        handleCategoryVisibilityToggle(document.getElementById('item-category').value);
+        
+        const refImg = document.getElementById('reference_image');
+        if(refImg) refImg.required = false;
+        
+        window.scrollTo({top: 0, behavior: 'smooth'});
     };
 
     window.resetFormState = function() {
-        document.getElementById('lost-found-form').reset();
-        document.getElementById('edit-report-id').value = '';
         document.getElementById('form-action-title').textContent = "📋 Report an Item";
+        document.getElementById('edit-report-id').value = "";
+        document.getElementById('lost-found-form').reset();
         document.getElementById('submit-action-btn').textContent = "Report Item";
         document.getElementById('cancel-edit-btn').classList.add('d-none');
         
-        brandGroup.classList.add('d-none');
-        brandInput.required = false;
-        otherDescGroup.classList.add('d-none');
-        otherDescInput.required = false;
-        standardDescGroup.classList.remove('d-none');
-        
         document.getElementById('lnf-image-data').value = '';
-        document.getElementById('lnf-image-input').value = '';
-        document.getElementById('lnf-image-preview').removeAttribute('src');
-        document.getElementById('lnf-image-preview').classList.add('d-none');
+        const imgPreview = document.getElementById('lnf-image-preview');
+        if(imgPreview) {
+            imgPreview.classList.add('d-none');
+            imgPreview.src = '';
+        }
+        
+        const refImg = document.getElementById('reference_image');
+        if(refImg) refImg.required = true;
+        handleCategoryVisibilityToggle('');
     };
+
+    function showNativeAlert(message, category='success') {
+        const container = document.querySelector('main .container') || document.querySelector('.container');
+        if (!container) return;
+        const alertHtml = `
+            <div class="alert alert-${category} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        container.insertAdjacentHTML('afterbegin', alertHtml);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 
     window.executeReportDeletion = function(id) {
-        itemToDeleteId = id;
-        document.getElementById('deleteConfirmModal').style.display = 'flex';
-    };
-
-    window.closeDeleteModal = function() {
-        itemToDeleteId = null;
-        document.getElementById('deleteConfirmModal').style.display = 'none';
+        if (confirm("Are you sure you want to permanently delete this record? This action cannot be undone.")) {
+            itemToDeleteId = id;
+            confirmDeleteAction();
+        }
     };
 
     window.confirmDeleteAction = async function() {
         if (!itemToDeleteId) return;
         const id = itemToDeleteId;
-        closeDeleteModal(); 
         
         try {
             const response = await fetch(`/api/lost-and-found`, {
@@ -483,9 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ action: 'delete', report_id: id })
             });
             if (response.ok) {
-                document.getElementById('modal-title-text').textContent = "Report Removed";
-                document.getElementById('modal-desc-text').textContent = "The item log matrix registration signature was dropped from systems successfully.";
-                document.getElementById('successModal').style.display = 'flex';
+                showNativeAlert('Record Removed successfully.', 'success');
                 syncFleetThenLoadItems();
                 loadItems('history', 'items-history-container');
             }
@@ -513,10 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify(data)
                 });
                 if (response.ok) {
-                    document.getElementById('modal-title-text').textContent = isEditingMode ? "Report Modifications Saved" : "Report Submitted";
-                    document.getElementById('modal-desc-text').textContent = isEditingMode ? "Your report adjustments were completely updated and saved across all relevant logs." : "Your lost item report has been successfully recorded. Notifications have been dispatched to available driver teams immediately.";
-                    
-                    document.getElementById('successModal').style.display = 'flex';
+                    showNativeAlert(isEditingMode ? 'Report Updated successfully.' : 'Report Submitted successfully.', 'success');
                     resetFormState();
                     syncFleetThenLoadItems();
                     loadItems('history', 'items-history-container');
@@ -528,7 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const imageInput = document.getElementById('lnf-image-input');
+    const imageInput = document.getElementById('reference_image');
     const imageData = document.getElementById('lnf-image-data');
     const imagePreview = document.getElementById('lnf-image-preview');
     if (imageInput && imageData && imagePreview) {
@@ -548,9 +574,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const reader = new FileReader();
             reader.onload = () => {
-                imageData.value = reader.result || '';
-                imagePreview.src = reader.result;
-                imagePreview.classList.remove('d-none');
+                const canvas = document.createElement('canvas');
+                const img = new Image();
+                img.onload = () => {
+                    let w = img.width;
+                    let h = img.height;
+                    const maxW = 800;
+                    if (w > maxW) { h = Math.round(h * (maxW / w)); w = maxW; }
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    const resizedUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    imageData.value = resizedUrl;
+                    imagePreview.src = resizedUrl;
+                    imagePreview.classList.remove('d-none');
+                };
+                img.src = reader.result;
             };
             reader.readAsDataURL(file);
         });

@@ -501,8 +501,6 @@ def process_extracted_gtfs():
                 "stop_name": (row.get("stop_name") or "Unknown Stop")[:120],
                 "stop_lat": _float_value(row.get("stop_lat")),
                 "stop_lon": _float_value(row.get("stop_lon")),
-                "route_id": None,
-                "stop_order": None,
                 "eta_minutes": 0,
                 "stop_desc": row.get("stop_desc"),
                 "zone_id": row.get("zone_id"),

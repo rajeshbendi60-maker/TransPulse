@@ -26,35 +26,22 @@
 {% block content %}
 <div class="container pb-5">
     
-    <div class="d-flex align-items-center mb-4 mt-3 fade-up">
-        {% if current_user.role == "admin" %}
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
-        {% elif current_user.role == "driver" %}
-            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
-        {% else %}
-            <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-info me-3 px-4 rounded-pill fw-bold text-dark" style="background:#34d2ff; border-color:#34d2ff;">← Back</a>
-        {% endif %}
+    <div class="d-flex align-items-center mb-4 pb-2 mt-3 fade-up border-bottom border-secondary border-opacity-25">
+        <a href="javascript:history.back()" class="btn btn-link text-white text-decoration-none p-0 me-3 d-none d-lg-inline-block"><i class="fa-solid fa-chevron-left fs-5"></i></a>
         <div>
-            <h2 class="fw-bold mb-1 text-white">Complaints Management</h2>
-            <p class="text-muted mb-0">
-                {% if current_user.role == "admin" %}
-                    View complaints, reply, update status, resolve, and close records.
-                {% else %}
-                    Submit and track service complaints across the TransPulse network.
-                {% endif %}
-            </p>
+            <h4 class="m-0 fw-bold text-white fs-5">Complaints Management</h4>
         </div>
     </div>
 
     {% if current_user.role in ["passenger", "driver"] %}
-    <div class="card dark-glass-card mb-5 fade-up">
-        <div class="card-body p-4">
-            <h5 class="card-title text-white fw-bold mb-4 d-flex align-items-center gap-2" id="form-action-title">
-                📝 File an Operational Dispute Form Profile
+    <div class="card dark-glass-card mb-4 fade-up">
+        <div class="card-body p-3 p-md-4">
+            <h5 class="card-title text-white fw-bold mb-3 d-flex align-items-center gap-2" id="form-action-title">
+                📝 File a Complaint
             </h5>
             <form id="complaint-form">
                 <input type="hidden" name="complaint_id" id="edit-complaint-id" value="">
-                <div class="row g-4">
+                <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label text-muted small fw-bold">Complaint Classification Category Type</label>
                         <select name="complaint_type" id="complaint-category" class="form-select bg-dark text-white border-secondary shadow-sm" required>
@@ -103,7 +90,6 @@
                         <div class="p-3 rounded border border-secondary bg-dark bg-opacity-50 small">
                             <span class="text-muted me-3">Origin: <strong class="text-white" data-complaint-origin>--</strong></span>
                             <span class="text-muted me-3">Destination: <strong class="text-white" data-complaint-destination>--</strong></span>
-                            <span class="text-muted me-3">Driver: <strong class="text-info" data-complaint-driver>--</strong></span>
                             <span class="text-muted">Trip: <strong class="text-warning" data-complaint-trip>--</strong></span>
                         </div>
                     </div>
@@ -156,97 +142,67 @@
         <div class="card-body p-4">
             <h5 class="card-title text-white fw-bold mb-4">
                 {% if current_user.role == "admin" %}
-                    Global System Operations Complaints Listing
+                    System Complaints
                 {% else %}
-                    Your Logs & Admin Notes Responses
+                    Your Complaints
                 {% endif %}
             </h5>
             
-            <div class="table-responsive">
-                <table class="table table-dark table-hover align-middle mb-0" style="background: transparent; border-color: rgba(255,255,255,0.05);">
-                    <thead style="background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(52,210,255,0.2);">
-                        <tr>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">ID</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Type</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Severity</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Status</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Assignment Context</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Issue Details</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Actions / Admin Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody id="complaints-list" style="border-top: none;">
-                        <tr>
-                            <td colspan="7" class="text-center text-muted py-5">
-                                <div class="spinner-border spinner-border-sm text-info" role="status"></div>
-                                <span class="ms-2">Loading complaints data matrix...</span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div id="complaints-list" class="row g-3 mt-1">
+                <div class="col-12 text-center text-muted py-5">
+                    <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                    <span class="ms-2">Loading complaints data matrix...</span>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="card dark-glass-card fade-up-1 mt-4">
         <div class="card-body p-4">
-            <h5 class="card-title text-white fw-bold mb-4">Complaint History</h5>
-            <div class="table-responsive">
-                <table class="table table-dark table-hover align-middle mb-0" style="background: transparent; border-color: rgba(255,255,255,0.05);">
-                    <thead style="background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(52,210,255,0.2);">
-                        <tr>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">ID</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Type</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Severity</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Status</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Assignment Context</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Issue Details</th>
-                            <th class="text-muted small fw-bold text-uppercase pb-3">Admin Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody id="complaints-history-list" style="border-top: none;">
-                        <tr>
-                            <td colspan="7" class="text-center text-muted py-5">Loading complaint history...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="card-title text-white fw-bold mb-0">Complaint History</h5>
+                <button class="btn btn-sm btn-outline-danger" onclick="clearComplaintsHistory()" title="Clear History">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
+            <div id="complaints-history-list" class="row g-3 mt-1">
+                <div class="col-12 text-center text-muted py-5">Loading complaint history...</div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- BEAUTIFUL SUCCESS MODAL -->
-<div id="successModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
-    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#22d39a; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
-        <div class="card-body p-5 text-center">
-            <div style="background: #22d39a; border-radius: 12px; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px auto; box-shadow: 0 10px 20px rgba(34,211,154,0.3);">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            </div>
-            <h3 class="text-white fw-bold mb-3" id="modal-title-text">Complaint Logged</h3>
-            <p class="text-muted mb-4" id="modal-desc-text">Your operational dispute has been successfully recorded. Notifications have been dispatched to the administration seamlessly.</p>
-            <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" style="background: #22d39a; color: #040b18; border: none; font-size: 1.1rem; box-shadow: 0 8px 15px rgba(34,211,154,0.2);" onclick="document.getElementById('successModal').style.display='none'">Got It!</button>
-        </div>
-    </div>
-</div>
 
-<!-- BEAUTIFUL CUSTOM DELETE CONFIRMATION MODAL -->
-<div id="deleteConfirmModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
-    <div class="card glass-panel shadow-lg" style="width:90%; max-width:400px; border-color:#ff5d6c; border-radius:16px; background: linear-gradient(135deg, #0b1d36, #040b18);">
-        <div class="card-body p-4 p-md-5 text-center">
-            <div style="background: rgba(255, 93, 108, 0.2); border-radius: 12px; width: 65px; height: 65px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; border: 1px solid #ff5d6c;">
-                <span style="font-size: 28px;">🗑️</span>
-            </div>
-            <h4 class="text-white fw-bold mb-3">Delete Complaint?</h4>
-            <p class="text-muted mb-4">Are you sure you want to permanently delete this record? This action cannot be undone and will drop it from the system entirely.</p>
-            <div class="d-flex gap-3">
-                <button type="button" class="btn btn-outline-secondary w-50 fw-bold rounded-pill" onclick="closeDeleteModal()">Cancel</button>
-                <button type="button" class="btn w-50 fw-bold rounded-pill" style="background: #ff5d6c; color: #fff; border: none; box-shadow: 0 8px 15px rgba(255, 93, 108, 0.2);" onclick="confirmDeleteAction()">Yes, Delete</button>
-            </div>
-        </div>
-    </div>
+
+<!-- IMAGE VIEWER MODAL -->
+<div id="imageViewerModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.95); z-index:100005; align-items:center; justify-content:center; backdrop-filter: blur(8px);">
+    <button type="button" onclick="document.getElementById('imageViewerModal').style.display='none'" style="position:absolute; top:20px; right:20px; background:transparent; border:none; color:white; font-size:36px; cursor:pointer; z-index:100006;">&times;</button>
+    <img id="viewer-img-element" src="" style="max-width:95vw; max-height:90vh; object-fit:contain; border-radius:8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
 </div>
 
 <script>
+function openImageModal(dataUrl) {
+    document.getElementById('viewer-img-element').src = dataUrl;
+    document.getElementById('imageViewerModal').style.display = 'flex';
+}
+
+async function clearComplaintsHistory() {
+    if(!confirm("Are you sure you want to clear your complaint history?")) return;
+    try {
+        const res = await fetch('/api/complaints', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': window.TransPulseCSRF},
+            body: JSON.stringify({ action: 'clear_history' })
+        });
+        if(res.ok) {
+            loadComplaints('history', 'complaints-history-list');
+        } else {
+            alert("Failed to clear history.");
+        }
+    } catch(e) {
+        console.error(e);
+    }
+}
 const currentRole = "{{ current_user.role }}";
 const currentUserId = parseInt("{{ current_user.id }}");
 let itemToDeleteId = null;
@@ -326,22 +282,21 @@ function syncComplaintRouteToBus() {
     };
     setText('[data-complaint-origin]', selected.dataset.origin);
     setText('[data-complaint-destination]', selected.dataset.destination);
-    setText('[data-complaint-driver]', selected.dataset.driver);
     setText('[data-complaint-trip]', selected.dataset.trip);
     contextPanel.classList.remove('d-none');
 }
 
-function loadComplaints(view = 'active', targetId = 'complaints-list') {
-    fetch(`/api/complaints?view=${encodeURIComponent(view)}`)
-        .then(r => r.json())
+function loadComplaints(view = 'active', containerId = 'complaints-list') {
+    fetch(`/api/complaints?view=${view}&_t=${new Date().getTime()}`)
+        .then(res => res.json())
         .then(complaints => {
-            const tbody = document.getElementById(targetId);
+            const tbody = document.getElementById(containerId);
             if (!tbody) return;
             tbody.innerHTML = '';
             
             if (!complaints.length) {
-                const emptyText = view === 'history' ? 'No resolved complaints in history.' : 'No active complaints registered in system profile logs.';
-                tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-5">${emptyText}</td></tr>`;
+                const emptyText = view === 'history' ? 'No resolved complaints.' : 'No active complaints.';
+                tbody.innerHTML = `<div class="col-12 text-center text-muted py-5">${emptyText}</div>`;
                 return;
             }
             
@@ -359,8 +314,8 @@ function loadComplaints(view = 'active', targetId = 'complaints-list') {
                 let operationalButtons = '';
                 
                 // FIXED: Removed the condition that allowed Admins to see the Edit/Delete buttons.
-                // Now, only the user who created the complaint sees these options.
-                if (view === 'active' && c.passenger_id === currentUserId && currentRole !== 'admin') {
+                // Now, only the user who created the complaint sees these options, AND only if it is still Open.
+                if (view === 'active' && c.passenger_id === currentUserId && currentRole !== 'admin' && statusNormalized === 'open') {
                     operationalButtons = `
                         <div class="mt-2 d-flex gap-2">
                             <button class="btn btn-xs btn-outline-info text-info py-0 px-2 small" style="font-size:0.75rem;" onclick='triggerComplaintFormPrepopulation(${JSON.stringify(c).replace(/'/g, "&apos;")})'>✏️ Edit</button>
@@ -369,8 +324,7 @@ function loadComplaints(view = 'active', targetId = 'complaints-list') {
                     `;
                 }
 
-                let replySection = c.admin_notes ? `<span class="text-info fw-bold">${c.admin_notes}</span>` : `<span class="text-muted fst-italic">Awaiting Admin notes resolution update...</span>`;
-                replySection += operationalButtons;
+                let replySection = operationalButtons;
                 
                 if(currentRole === "admin" && view === 'active') {
                     replySection = `
@@ -388,26 +342,40 @@ function loadComplaints(view = 'active', targetId = 'complaints-list') {
                     `;
                 }
 
-                const assignmentCtx = `
-                    <small class="text-muted d-block">Bus: <span class="text-white">${c.bus_number || c.bus_id || '--'}</span></small>
-                    <small class="text-muted d-block">Driver: <span class="text-info">${c.driver_code || '--'}</span></small>
-                    <small class="text-muted d-block">Route: <span class="text-info">${c.route_code || c.route_name || c.route_id || '--'}</span></small>
-                    <small class="text-muted d-block">Trip: <span class="text-white">${c.trip_id || '--'}</span> | Stop: <span class="text-warning">${c.current_stop || '--'}</span></small>
-                `;
                 const evidenceLink = c.evidence_image && String(c.evidence_image).startsWith('data:image/')
-                    ? `<a href="${c.evidence_image}" target="_blank" class="text-info d-block mt-2">View Image</a>`
+                    ? `<a href="javascript:void(0)" onclick="openImageModal('${c.evidence_image}')" class="text-info d-block mt-2 fw-bold text-decoration-none">📸 View image</a>`
                     : '';
 
-                const row = document.createElement('tr');
-                row.className = 'complaint-row';
+                let adminNotesHtml = '';
+                if (c.admin_notes) {
+                    adminNotesHtml = `<div class="mt-2 text-warning small p-2 rounded" style="background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3);"><strong>Admin Note:</strong> ${c.admin_notes}</div>`;
+                }
+
+                const row = document.createElement('div');
+                row.className = 'col-md-6 col-lg-4';
                 row.innerHTML = `
-                    <td class="text-white fw-bold">#${c.id}</td>
-                    <td class="text-white">📝 ${c.complaint_type} <br><small class="text-muted">By: ${c.author_name || 'User'} (${c.author_role || 'Role'})</small></td>
-                    <td><span class="severity-${c.severity}">${c.severity.toUpperCase()}</span></td>
-                    <td><span class="badge rounded-pill ${statusClass} shadow-sm">${statusNormalized.toUpperCase()}</span></td>
-                    <td class="text-light">${assignmentCtx}</td>
-                    <td class="text-light"><small>${c.description}</small>${evidenceLink}</td>
-                    <td>${replySection}</td>
+                    <div class="card bg-dark bg-opacity-50 border-secondary h-100 p-3" style="border-radius: 12px; position: relative;">
+                        <span class="${statusClass} rounded-pill position-absolute" style="top: 15px; right: 15px; font-size: 0.7rem; text-transform: uppercase;">${statusNormalized}</span>
+                        <div class="mb-2 pe-5">
+                            <div class="text-white fw-bold fs-5">#${c.id}</div>
+                            <div class="text-info fw-bold small mt-1">${c.complaint_type}</div>
+                            <div class="text-muted small mt-1"><strong>By:</strong> ${c.author_name || 'User'} (${c.author_role || 'Role'})</div>
+                        </div>
+                        <div class="mb-2">
+                            <span class="small fw-bold severity-${c.severity}">Severity: ${c.severity.toUpperCase()}</span>
+                        </div>
+                        <div class="mb-2 text-light small">
+                            <strong>Route information:</strong><br>
+                            Bus: ${c.bus_number || c.bus_id || '--'} | Route: ${c.route_code || c.route_name || c.route_id || '--'}<br>
+                            Trip: ${c.trip_id || '--'} | Stop: ${c.current_stop || '--'}<br>
+                            <span class="mt-1 d-block">${c.description || ''}</span>
+                        </div>
+                        ${evidenceLink}
+                        ${adminNotesHtml}
+                        <div class="mt-auto pt-3">
+                            ${replySection}
+                        </div>
+                    </div>
                 `;
                 tbody.appendChild(row);
             });
@@ -416,7 +384,7 @@ function loadComplaints(view = 'active', targetId = 'complaints-list') {
 
 window.triggerComplaintFormPrepopulation = function(c) {
     document.getElementById('edit-complaint-id').value = c.id;
-    document.getElementById('form-action-title').textContent = "✏️ Modify Operational Dispute Form Profile";
+    document.getElementById('form-action-title').textContent = "✏️ Edit Complaint";
     document.getElementById('submit-action-btn').textContent = "Save Changes";
     document.getElementById('cancel-edit-btn').classList.remove('d-none');
 
@@ -428,15 +396,15 @@ window.triggerComplaintFormPrepopulation = function(c) {
     const normalDescGroup = document.getElementById('normal-desc-group');
     const normalDescInput = document.getElementById('normal-desc-input');
 
-    const standardOptions = Array.from(categorySelect.options).map(o => o.value);
+    const standardOptions = Array.from(catSelect.options).map(o => o.value);
     if (standardOptions.includes(c.complaint_type)) {
-        categorySelect.value = c.complaint_type;
+        catSelect.value = c.complaint_type;
         customTypeGroup.classList.add('d-none');
         detailedDescGroup.classList.add('d-none');
         normalDescGroup.classList.remove('d-none');
         normalDescInput.value = c.description;
     } else {
-        categorySelect.value = "Other";
+        catSelect.value = "Other";
         customTypeGroup.classList.remove('d-none');
         customTypeInput.value = c.complaint_type;
         detailedDescGroup.classList.remove('d-none');
@@ -471,7 +439,7 @@ window.triggerComplaintFormPrepopulation = function(c) {
 window.resetFormState = function() {
     document.getElementById('complaint-form').reset();
     document.getElementById('edit-complaint-id').value = '';
-    document.getElementById('form-action-title').textContent = "📝 File an Operational Dispute Form Profile";
+    document.getElementById('form-action-title').textContent = "📝 File a Complaint";
     document.getElementById('submit-action-btn').textContent = "Submit Complaint";
     document.getElementById('cancel-edit-btn').classList.add('d-none');
     
@@ -490,22 +458,29 @@ window.resetFormState = function() {
     if (contextPanel) contextPanel.classList.add('d-none');
 };
 
-// NEW: Opens custom modal instead of native confirm()
+function showNativeAlert(message, category='success') {
+    const container = document.querySelector('main .container') || document.querySelector('.container');
+    if (!container) return;
+    const alertHtml = `
+        <div class="alert alert-${category} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 window.executeComplaintDeletion = function(id) {
-    itemToDeleteId = id;
-    document.getElementById('deleteConfirmModal').style.display = 'flex';
+    if (confirm("Are you sure you want to permanently delete this record? This action cannot be undone.")) {
+        itemToDeleteId = id;
+        confirmDeleteAction();
+    }
 };
 
-window.closeDeleteModal = function() {
-    itemToDeleteId = null;
-    document.getElementById('deleteConfirmModal').style.display = 'none';
-};
-
-// Execution logic tied to the red modal button
 window.confirmDeleteAction = async function() {
     if (!itemToDeleteId) return;
     const id = itemToDeleteId;
-    closeDeleteModal(); // Hide modal right away
 
     try {
         const response = await fetch(`/api/complaints`, {
@@ -514,9 +489,7 @@ window.confirmDeleteAction = async function() {
             body: JSON.stringify({ action: 'delete', complaint_id: id })
         });
         if (response.ok) {
-            document.getElementById('modal-title-text').textContent = "Record Removed";
-            document.getElementById('modal-desc-text').textContent = "The complaint operational ticket signature was cleanly dropped from registries.";
-            document.getElementById('successModal').style.display = 'flex';
+            showNativeAlert('Complaint deleted successfully.', 'success');
             loadComplaints();
             loadComplaints('history', 'complaints-history-list');
         }
@@ -538,9 +511,7 @@ async function submitAdminReply(id) {
             body: JSON.stringify({ reply_message: msg, status: statusVal })
         });
         if(res.ok) {
-            document.getElementById('modal-title-text').textContent = "Response Saved";
-            document.getElementById('modal-desc-text').textContent = "Your administrative note and status changes have been correctly updated onto the log profile.";
-            document.getElementById('successModal').style.display = 'flex';
+            showNativeAlert('Response Saved successfully.', 'success');
             loadComplaints();
             loadComplaints('history', 'complaints-history-list');
         }
@@ -603,13 +574,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 imageInput.value = '';
                 imageData.value = '';
                 imagePreview.classList.add('d-none');
+                alert("Please upload a valid image file.");
                 return;
             }
             const reader = new FileReader();
-            reader.onload = () => {
-                imageData.value = reader.result || '';
-                imagePreview.src = reader.result;
-                imagePreview.classList.remove('d-none');
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    
+                    imageData.value = compressedDataUrl;
+                    imagePreview.src = compressedDataUrl;
+                    imagePreview.classList.remove('d-none');
+                };
+                img.src = e.target.result;
             };
             reader.readAsDataURL(file);
         });
@@ -637,16 +622,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: { 'Content-Type': 'application/json', "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || '' },
                     body: JSON.stringify(data)
                 });
+                
+                const origBtnText = document.getElementById('submit-action-btn').textContent;
+                document.getElementById('submit-action-btn').textContent = "Submitting...";
+                document.getElementById('submit-action-btn').disabled = true;
+
                 if (response.ok) {
-                    document.getElementById('modal-title-text').textContent = isEditingMode ? "Changes Saved" : "Complaint Logged";
-                    document.getElementById('modal-desc-text').textContent = isEditingMode ? "Your dispute ticket specifications were modified across system paths cleanly." : "Your operational dispute has been successfully recorded. Notifications have been dispatched to the administration seamlessly.";
-                    
-                    document.getElementById('successModal').style.display = 'flex';
+                    showNativeAlert(isEditingMode ? 'Changes Saved successfully.' : 'Complaint Logged successfully.', 'success');
                     resetFormState();
                     loadComplaints();
                     loadComplaints('history', 'complaints-history-list');
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    alert("Submission Failed: " + (errorData.error || "Please check your inputs and try again."));
                 }
-            } catch (err) { console.error(err); }
+            } catch (err) { 
+                console.error(err); 
+                alert("Network error. Please try again.");
+            } finally {
+                document.getElementById('submit-action-btn').textContent = "Submit Complaint";
+                document.getElementById('submit-action-btn').disabled = false;
+            }
         });
     }
 });

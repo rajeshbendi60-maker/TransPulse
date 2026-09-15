@@ -1,173 +1,62 @@
-# TransPulse Database Schema
+TransPulse Database Schema
 
 This document details the database models, their fields, and relationships within the TransPulse system.
 
----
+1. User and Authorization Roles
 
-## 1. User & Authorization Roles
-
-### `User` Table
+User Table
 Stores login credentials and roles for Driver, Admin, Passenger, and Auditor accounts.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `username` (String, Unique, Index)
-  - `password_hash` (String, Nullable=False)
-  - `role` (String, Default="passenger") - Enforced values: `admin`, `driver`, `passenger`, `auditor`
-  - `driver_code` (String, Unique, Nullable=True) - Assigned to drivers
-  - `created_at` (DateTime)
+Fields include id, username, password_hash, role (enforced as admin, driver, passenger, auditor), driver_code, and created_at.
 
----
+2. Transit Network and GTFS Infrastructure
 
-## 2. Transit Network & GTFS Infrastructure
-
-### `Bus` Table
+Bus Table
 Represents a physical vehicle in the fleet.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `bus_number` (String, Unique, Index)
-  - `registration_number` (String, Unique)
-  - `route_id` (Integer, ForeignKey to `Route.id`)
-  - `assigned_driver_id` (Integer, ForeignKey to `User.id`)
-  - `is_active` (Boolean, Default=True)
-- **Relationships:**
-  - `route` (Many-to-One with `Route`)
-  - `driver` (Many-to-One with `User`)
+Fields include id, bus_number, registration_number, route_id, assigned_driver_id, and is_active.
+It relates to the Route and User tables.
 
-### `Route` Table
+Route Table
 Corresponds to a GTFS route mapping.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `route_code` (String, Unique, Index)
-  - `name` (String)
-  - `origin` (String)
-  - `destination` (String)
-  - `distance_km` (Float)
-  - `departure_time` (String)
-  - `arrival_time` (String)
-  - `is_operational` (Boolean)
-- **Relationships:**
-  - `stops` (One-to-Many with `Stop`)
-  - `trips` (One-to-Many with `Trip`)
-  - `buses` (One-to-Many with `Bus`)
+Fields include id, route_code, name, origin, destination, distance_km, departure_time, arrival_time, and is_operational.
+It relates to Stop, Trip, and Bus tables.
 
-### `Trip` Table
+Trip Table
 Represents a scheduled or active dispatch of a Route.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `route_id` (Integer, ForeignKey to `Route.id`)
-  - `bus_id` (Integer, ForeignKey to `Bus.id`)
-  - `service_id` (String)
-  - `trip_id` (String, Unique)
-  - `trip_headsign` (String)
-  - `direction_id` (Integer) - `0` for Forward, `1` for Return
-  - `shape_id` (String)
-  - `start_time` (DateTime)
-  - `end_time` (DateTime)
-  - `status` (String) - `waiting_to_depart`, `active`, `completed`, `return_ready`, `return_running`, `return_completed`
-- **Relationships:**
-  - `route` (Many-to-One with `Route`)
-  - `bus` (Many-to-One with `Bus`)
+Fields include id, route_id, bus_id, service_id, trip_id, trip_headsign, direction_id, shape_id, start_time, end_time, and status.
+It relates to Route and Bus tables.
 
-### `Stop` Table
+Stop Table
 Stores geographical checkpoints.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `stop_id` (String, Unique)
-  - `stop_code` (String)
-  - `stop_name` (String)
-  - `stop_desc` (String)
-  - `stop_lat` (Float)
-  - `stop_lon` (Float)
-  - `zone_id` (String)
-- **Relationships:**
-  - `route_stops` (One-to-Many with `StopTime`)
+Fields include id, stop_id, stop_code, stop_name, stop_desc, stop_lat, stop_lon, and zone_id.
+It relates to the StopTime table.
 
-### `StopTime` Table
+StopTime Table
 Maps the ordered sequence of Stops for a Trip.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `trip_id` (Integer, ForeignKey to `Trip.id`)
-  - `stop_id` (Integer, ForeignKey to `Stop.id`)
-  - `arrival_time` (String)
-  - `departure_time` (String)
-  - `stop_sequence` (Integer)
-- **Relationships:**
-  - `trip` (Many-to-One with `Trip`)
-  - `stop` (Many-to-One with `Stop`)
+Fields include id, trip_id, stop_id, arrival_time, departure_time, and stop_sequence.
+It relates to Trip and Stop tables.
 
-### `Shape` Table
+Shape Table
 Stores coordinates forming the line path of a route.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `shape_id` (String, Index)
-  - `shape_pt_lat` (Float)
-  - `shape_pt_lon` (Float)
-  - `shape_pt_sequence` (Integer)
-  - `shape_dist_traveled` (Float)
+Fields include id, shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, and shape_dist_traveled.
 
----
+3. Operations and Support
 
-## 3. Operations & Support
-
-### `Complaint` Table
+Complaint Table
 Passenger complaints.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `user_id` (Integer, ForeignKey to `User.id`)
-  - `route_id` (Integer, ForeignKey to `Route.id`)
-  - `bus_id` (Integer, ForeignKey to `Bus.id`)
-  - `category` (String)
-  - `description` (Text)
-  - `status` (String)
-  - `created_at` (DateTime)
+Fields include id, user_id, route_id, bus_id, category, description, status, and created_at.
 
-### `Notification` Table
+Notification Table
 System broadcasts or alert notifications.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `title` (String)
-  - `message` (Text)
-  - `is_read` (Boolean)
-  - `created_at` (DateTime)
+Fields include id, title, message, is_read, and created_at.
 
-### `LostAndFound` Table
+LostAndFound Table
 Reports for items lost during trips.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `user_id` (Integer, ForeignKey to `User.id`)
-  - `route_id` (Integer, ForeignKey to `Route.id`)
-  - `item_name` (String)
-  - `description` (Text)
-  - `status` (String) - `reported`, `found`, `claimed`
-  - `created_at` (DateTime)
+Fields include id, user_id, route_id, item_name, description, status, and created_at.
 
-### `SOSAlert` Table
-Emergency signals triggered by passengers/drivers.
-- **Fields:**
-  - `id` (Integer, Primary Key)
-  - `bus_id` (Integer, ForeignKey to `Bus.id`)
-  - `route_id` (Integer, ForeignKey to `Route.id`)
-  - `lat` (Float)
-  - `lon` (Float)
-  - `status` (String)
-  - `created_at` (DateTime)
+SOSAlert Table
+Emergency signals triggered by passengers or drivers.
+Fields include id, bus_id, route_id, lat, lon, status, and created_at.
 
----
+4. Entity Relationship Mapping
 
-## 4. Entity Relationship Diagram
-
-```mermaid
-erDiagram
-    User ||--o{ Bus : "assigns"
-    User ||--o{ Complaint : "files"
-    User ||--o{ LostAndFound : "reports"
-    Route ||--o{ Bus : "maps"
-    Route ||--o{ Trip : "has"
-    Route ||--o{ Complaint : "has"
-    Route ||--o{ LostAndFound : "has"
-    Route ||--o{ SOSAlert : "has"
-    Bus ||--o{ Trip : "serves"
-    Bus ||--o{ SOSAlert : "triggers"
-    Trip ||--o{ StopTime : "sequences"
-    Stop ||--o{ StopTime : "checkpoint"
-```
+The database links users to buses, complaints, and lost/found reports. A route contains multiple buses, trips, complaints, lost/found items, and SOS alerts. A bus serves trips and can trigger SOS alerts. A trip contains an ordered sequence of stop times, and each stop time corresponds to a specific stop checkpoint.
