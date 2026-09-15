@@ -36,7 +36,7 @@ class ManualRouteIntegrationTests(unittest.TestCase):
 
     def test_7_8_9_manual_route_integration(self):
         # Create route 01003
-        r = Route(route_code="01003", origin="Palasa", destination="Srikakulam", departure_time="10:00", arrival_time="12:00")
+        r = Route(route_code="01003", name="Palasa - Srikakulam", origin="Palasa", destination="Srikakulam", distance_km=80.0, departure_time="10:00", arrival_time="12:00")
         db.session.add(r)
         db.session.flush()
 
@@ -58,7 +58,7 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         self.assertGreater(shape_count, 0)
 
         # Assign a bus
-        b = Bus(bus_number="APSRTC-102", route_id=r.id, is_active=True, fleet_type="Express")
+        b = Bus(bus_number="APSRTC-102", registration_number="AP-02-Y-5678", capacity=40, route_id=r.id, is_active=True)
         db.session.add(b)
         db.session.commit()
 

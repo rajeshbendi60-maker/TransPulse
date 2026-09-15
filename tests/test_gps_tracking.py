@@ -28,11 +28,11 @@ class GPSTrackingTests(unittest.TestCase):
 
     def _setup_mock_data(self):
         # Route 1: Nellore to Tirupati (GTFS)
-        r1 = Route(route_code="01004", origin="Nellore", destination="Tirupati")
+        r1 = Route(route_code="01004", name="Nellore - Tirupati", origin="Nellore", destination="Tirupati", distance_km=100.0)
         db.session.add(r1)
         
         # Route 2: Palasa to Srikakulam (Manual)
-        r2 = Route(route_code="01003", origin="Palasa", destination="Srikakulam")
+        r2 = Route(route_code="01003", name="Palasa - Srikakulam", origin="Palasa", destination="Srikakulam", distance_km=80.0)
         db.session.add(r2)
         
         db.session.flush()
@@ -68,7 +68,7 @@ class GPSTrackingTests(unittest.TestCase):
         db.session.add_all([st1, st2, st3, st4])
 
         # Bus Assignment
-        b1 = Bus(bus_number="APSRTC-101", route_id=r1.id, is_active=True, fleet_type="Express")
+        b1 = Bus(bus_number="APSRTC-101", registration_number="AP-01-X-1234", capacity=40, route_id=r1.id, is_active=True)
         db.session.add(b1)
         db.session.commit()
 
