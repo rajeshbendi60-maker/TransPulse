@@ -8898,7 +8898,21 @@ def _backfill_transpulse_ids() -> None:
 
 
 def initialize_database() -> None:
-    db.create_all()
+    import time
+    from sqlalchemy.exc import OperationalError, DatabaseError
+    
+    # Render Gunicorn starts 4 workers simultaneously. They all hit db.create_all.
+    # We catch the race condition and wait for the winning worker to finish.
+    for i in range(5):
+        try:
+            db.create_all()
+            break
+        except (OperationalError, DatabaseError) as e:
+            if "already exists" in str(e) or "database is locked" in str(e):
+                logger.warning(f"db.create_all concurrency collision (attempt {i+1}), waiting... {e}")
+                time.sleep(1.5)
+            else:
+                raise
     _ensure_lost_found_columns()
     _ensure_default_admin()
     _ensure_shared_driver_account()
