@@ -3,7 +3,7 @@ from extensions import db, login_manager
 from .user import User
 from .bus import Bus
 from .route import Route
-from .stop import Stop
+from .stop import Stop, StopTime
 from .trip import Trip
 from .notification import Notification
 from .complaint import Complaint
