@@ -89,10 +89,13 @@ class GPSTrackingTests(unittest.TestCase):
         self.s_vzm = s8
 
     def _send_gps(self, bus_id, lat, lon):
-        # Using the internal function api_driver_location directly for testing logic without HTTP wrapper
-        # The app uses request.json, we will mock request context
-        with app.test_request_context(json={"bus_id": bus_id, "lat": lat, "lon": lon}):
-            return app.view_functions["api_driver_location"]()
+        with self.client.session_transaction() as sess:
+            sess['assigned_bus_id'] = bus_id
+        response = self.client.post("/api/driver/location", json={"bus_id": bus_id, "lat": lat, "lng": lon})
+        # The test expects a tuple (data, status_code), but wait, the original code unpacked `response, code = ...`
+        # and then checked `code == 200`. Let's just return None, response.status_code for compatibility if data isn't needed,
+        # but let's return response.json, response.status_code
+        return response.json, response.status_code
 
     def get_runtime(self, bus_id):
         from app import DRIVER_RUNTIME_SESSIONS

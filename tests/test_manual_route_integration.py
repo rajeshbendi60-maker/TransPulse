@@ -27,8 +27,10 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         self.app_context.pop()
 
     def _send_gps(self, bus_id, lat, lon):
-        with app.test_request_context(json={"bus_id": bus_id, "lat": lat, "lon": lon}):
-            return app.view_functions["api_driver_location"]()
+        with self.client.session_transaction() as sess:
+            sess['assigned_bus_id'] = bus_id
+        response = self.client.post("/api/driver/location", json={"bus_id": bus_id, "lat": lat, "lng": lon})
+        return response.json, response.status_code
 
     def get_runtime(self, bus_id):
         from app import DRIVER_RUNTIME_SESSIONS
