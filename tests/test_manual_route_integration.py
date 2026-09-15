@@ -12,6 +12,7 @@ from models import db, Route, Trip, Stop, StopTime, Bus, Shape
 class ManualRouteIntegrationTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
+        app.config['LOGIN_DISABLED'] = True
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         app.config['ROUTE_MATCH_THRESHOLD_KM'] = 2.0
         app.config['STOP_RADIUS_KM'] = 0.03
@@ -26,9 +27,8 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         self.app_context.pop()
 
     def _send_gps(self, bus_id, lat, lon):
-        from app import api_driver_location
         with app.test_request_context(json={"bus_id": bus_id, "lat": lat, "lon": lon}):
-            return api_driver_location()
+            return app.view_functions["api_driver_location"]()
 
     def get_runtime(self, bus_id):
         from app import DRIVER_RUNTIME_SESSIONS
@@ -42,7 +42,7 @@ class ManualRouteIntegrationTests(unittest.TestCase):
 
         # Simulate manual stop schedule generation (Test 7)
         # Passing mock stop names
-        _apply_manual_route_schedule(r, ["Palasa", "Tekkali", "Srikakulam"])
+        _apply_manual_route_schedule(r, "Tekkali")
         db.session.commit()
 
         # Verify generated Service, Trip, StopTimes, Shape

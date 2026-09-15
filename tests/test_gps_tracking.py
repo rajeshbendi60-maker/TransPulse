@@ -12,6 +12,7 @@ from models import db, Route, Trip, Stop, StopTime, Bus
 class GPSTrackingTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
+        app.config['LOGIN_DISABLED'] = True
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         app.config['ROUTE_MATCH_THRESHOLD_KM'] = 2.0
         app.config['STOP_RADIUS_KM'] = 0.03
@@ -88,11 +89,10 @@ class GPSTrackingTests(unittest.TestCase):
         self.s_vzm = s8
 
     def _send_gps(self, bus_id, lat, lon):
-        from app import api_driver_location
         # Using the internal function api_driver_location directly for testing logic without HTTP wrapper
         # The app uses request.json, we will mock request context
         with app.test_request_context(json={"bus_id": bus_id, "lat": lat, "lon": lon}):
-            return api_driver_location()
+            return app.view_functions["api_driver_location"]()
 
     def get_runtime(self, bus_id):
         from app import DRIVER_RUNTIME_SESSIONS
