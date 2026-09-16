@@ -15,7 +15,10 @@ class Config:
         secrets.token_hex(32)
     )
 
-    db_url = os.environ.get("DATABASE_URL", f"sqlite:///{DATABASE_PATH.as_posix()}")
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        db_url = f"sqlite:///{DATABASE_PATH.as_posix()}"
+        
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
