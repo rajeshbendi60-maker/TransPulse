@@ -2170,7 +2170,9 @@ def _find_or_create_route(route_code: str, route_name: str, origin: str, destina
     return route
 
 def create_app() -> Flask:
+    from werkzeug.middleware.proxy_fix import ProxyFix
     app = Flask(__name__, instance_relative_config=True)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
     app.config.from_object(Config)
     if app.config.get("SESSION_COOKIE_SECURE") and app.config.get("SECRET_KEY") and os.getenv("SECRET_KEY") is None:
         logger.warning("[SECURITY] Production should set a stable SECRET_KEY environment variable.")
