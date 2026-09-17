@@ -2803,7 +2803,7 @@ def _ensure_trip_shape_from_stop_times(trip) -> bool:
         return False
         
     # If the trip is manual, it shouldn't keep the original long GTFS shape ID
-    if getattr(trip, "gtfs_trip_id", "").startswith("TRIP_MANUAL_"):
+    if (trip.gtfs_trip_id or "").startswith("TRIP_MANUAL_"):
         if trip.shape_id and not trip.shape_id.startswith("tp-generated"):
             trip.shape_id = None
             
