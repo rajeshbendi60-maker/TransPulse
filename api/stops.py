@@ -32,26 +32,25 @@ def get_nearby_stops():
         nearby = []
         seen = set()
         for stop in all_stops:
-            # Create a unique key using name and rough coordinates to deduplicate exact matches
             stop_key = f"{str(stop.stop_name).strip().upper()}_{round(stop.stop_lat, 4)}_{round(stop.stop_lon, 4)}"
-            
             if stop_key in seen:
                 continue
                 
             dist = haversine_distance(lat, lng, stop.stop_lat, stop.stop_lon)
-            if dist <= radius_km:
-                seen.add(stop_key)
-                nearby.append({
-                    "id": stop.id,
-                    "stop_name": stop.stop_name,
-                    "stop_code": stop.stop_code,
-                    "lat": stop.stop_lat,
-                    "lng": stop.stop_lon,
-                    "distance_km": round(dist, 2)
-                })
+            seen.add(stop_key)
+            nearby.append({
+                "id": stop.id,
+                "stop_name": stop.stop_name,
+                "stop_code": stop.stop_code,
+                "lat": stop.stop_lat,
+                "lng": stop.stop_lon,
+                "distance_km": round(dist, 2)
+            })
                 
         nearby.sort(key=lambda x: x["distance_km"])
         
+        # If the closest stops are very far, still return them so the UI isn't empty, 
+        # but the UI can decide how to display them.
         return jsonify({
             "success": True,
             "stops": nearby[:20]

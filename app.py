@@ -6085,7 +6085,6 @@ def register_routes(app: Flask) -> None:
         return redirect(url_for(_dashboard_route_for_role(current_user.role)))
 
     @app.post("/logout")
-    @login_required
     def logout_page():
         session.pop("driver_code", None)
         session.pop("assigned_bus_id", None)

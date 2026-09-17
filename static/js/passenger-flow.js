@@ -567,7 +567,7 @@ window.Workflow = {
                             </div>
                             <p class="text-white mb-2 fw-semibold">${title}</p>
                             <span class="badge bg-dark border border-secondary text-muted">
-                                <i class="fa-solid fa-bus me-1"></i> APSRTC Route
+                                <i class="fa-solid fa-bus me-1"></i> Public Transit Route
                             </span>
                         </div>
                     </div>
@@ -878,7 +878,7 @@ window.Workflow = {
                 if (statusEl) {
                     statusEl.style.display = 'block';
                     statusEl.className = 'alert alert-warning mb-3';
-                    statusEl.innerHTML = `<i class="fa-solid fa-bus-slash me-2"></i> No APSRTC stops found within 20km of <b>${locationLabel}</b>. Try a nearby town name.`;
+                    statusEl.innerHTML = `<i class="fa-solid fa-bus-slash me-2"></i> No Nearby stops found within 20km of <b>${locationLabel}</b>. Try a nearby town name.`;
                 }
                 return;
             }
