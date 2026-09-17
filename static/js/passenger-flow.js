@@ -865,7 +865,7 @@ window.Workflow = {
          .bindPopup(`<b>📍 ${locationLabel}</b>`);
 
         try {
-            const res = await fetch(`/api/stops/nearby?lat=${lat}&lng=${lng}&radius=20`);
+            const res = await fetch(`/api/stops/nearby?lat=${lat}&lng=${lng}&radius=5`);
             const data = await res.json();
 
             if(!data.success) throw new Error(data.error);
@@ -878,7 +878,7 @@ window.Workflow = {
                 if (statusEl) {
                     statusEl.style.display = 'block';
                     statusEl.className = 'alert alert-warning mb-3';
-                    statusEl.innerHTML = `<i class="fa-solid fa-bus-slash me-2"></i> No Nearby stops found within 20km of <b>${locationLabel}</b>. Try a nearby town name.`;
+                    statusEl.innerHTML = `<i class="fa-solid fa-bus-slash me-2"></i> No Transit stops found within 5km of <b>${locationLabel}</b>. Try exploring the map.`;
                 }
                 return;
             }
@@ -894,7 +894,7 @@ window.Workflow = {
 
             let listHtml = `
             <div class="mt-3">
-                <h6 class="text-white mb-2"><i class="fa-solid fa-map-pin me-2 text-info"></i>Found ${data.stops.length} stop(s) near <span class="text-info">${locationLabel}</span></h6>
+                <h6 class="text-white mb-2"><i class="fa-solid fa-map-pin me-2 text-info"></i>Found ${data.stops.length} stop(s) within 5km of <span class="text-info">${locationLabel}</span></h6>
                 <div class="row g-2">`;
 
             data.stops.forEach(stop => {
