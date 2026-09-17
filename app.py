@@ -6097,6 +6097,13 @@ def register_routes(app: Flask) -> None:
     @role_required("admin")
     def admin_dashboard():
         return render_template('admin_dashboard.html', **_admin_shell_metrics(),
+                               active_section='dashboard',
+                               role_counts=_get_role_counts(),
+                               route_count=Route.query.count(),
+                               bus_count=Bus.query.count(),
+                               complaint_count=Complaint.query.count(),
+                               pending_complaints=Complaint.query.filter_by(status='OPEN').count(),
+                               active_sos_count=SOSAlert.query.filter(SOSAlert.status.in_(ACTIVE_SOS_STATUSES)).count(),
                                show_fleet_only_table=False, show_tracking_search=False)
 
     @app.route("/admin/live-fleet", methods=["GET"])

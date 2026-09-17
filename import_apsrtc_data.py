@@ -370,6 +370,22 @@ def process_extracted_gtfs():
         )
 
         logger.info("[GTFS ETL] Purging existing GTFS-backed tables")
+        
+        # Prevent ForeignKeyViolation by nullifying references to trips, stops, routes
+        from models.notification import Notification
+        from models.occupancy import BusOccupancy
+        from models.sos_alert import SOSAlert
+        from models.complaint import Complaint
+        from models.subscription import Subscription
+        
+        db.session.query(Notification).filter(Notification.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
+        db.session.query(BusOccupancy).filter(BusOccupancy.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
+        db.session.query(SOSAlert).filter(SOSAlert.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
+        db.session.query(Complaint).filter(Complaint.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
+        db.session.query(Subscription).filter(Subscription.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
+        
+        db.session.query(Subscription).filter(Subscription.stop_id.isnot(None)).update({"stop_id": None}, synchronize_session=False)
+        
         db.session.query(StopTime).delete(synchronize_session=False)
         db.session.query(Trip).delete(synchronize_session=False)
         db.session.query(Stop).delete(synchronize_session=False)
