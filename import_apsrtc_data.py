@@ -371,7 +371,7 @@ def process_extracted_gtfs():
 
         logger.info("[GTFS ETL] Purging existing GTFS-backed tables")
         
-        # Prevent ForeignKeyViolation by nullifying references to trips, stops, routes
+        # Prevent ForeignKeyViolation by deleting operational data that points to old mock GTFS entities
         from models.notification import Notification
         from models.occupancy import BusOccupancy
         from models.sos_alert import SOSAlert
@@ -379,18 +379,15 @@ def process_extracted_gtfs():
         from models.subscription import Subscription
         from models.bus import Bus
         
-        # Nullify trip references
-        db.session.query(Notification).filter(Notification.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
+        logger.info("[GTFS ETL] Clearing mock operational data to safely purge old GTFS entities")
+        db.session.query(Notification).delete(synchronize_session=False)
+        db.session.query(BusOccupancy).delete(synchronize_session=False)
+        db.session.query(SOSAlert).delete(synchronize_session=False)
+        db.session.query(Complaint).delete(synchronize_session=False)
+        db.session.query(Subscription).delete(synchronize_session=False)
         
-        # Nullify route references for non-custom routes before we delete them
-        db.session.query(Notification).filter(Notification.related_route_id.isnot(None)).update({"related_route_id": None}, synchronize_session=False)
-        db.session.query(BusOccupancy).filter(BusOccupancy.route_id.isnot(None)).update({"route_id": None}, synchronize_session=False)
-        db.session.query(SOSAlert).filter(SOSAlert.route_id.isnot(None)).update({"route_id": None}, synchronize_session=False)
-        db.session.query(Complaint).filter(Complaint.route_id.isnot(None)).update({"route_id": None}, synchronize_session=False)
+        # Nullify bus route references
         db.session.query(Bus).filter(Bus.route_id.isnot(None)).update({"route_id": None}, synchronize_session=False)
-        
-        # Nullify stop references
-        db.session.query(Subscription).filter(Subscription.stop_id.isnot(None)).update({"stop_id": None}, synchronize_session=False)
         
         db.session.query(StopTime).delete(synchronize_session=False)
         db.session.query(Trip).delete(synchronize_session=False)
