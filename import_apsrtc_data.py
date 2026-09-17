@@ -377,13 +377,19 @@ def process_extracted_gtfs():
         from models.sos_alert import SOSAlert
         from models.complaint import Complaint
         from models.subscription import Subscription
+        from models.bus import Bus
         
+        # Nullify trip references
         db.session.query(Notification).filter(Notification.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
-        db.session.query(BusOccupancy).filter(BusOccupancy.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
-        db.session.query(SOSAlert).filter(SOSAlert.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
-        db.session.query(Complaint).filter(Complaint.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
-        db.session.query(Subscription).filter(Subscription.trip_id.isnot(None)).update({"trip_id": None}, synchronize_session=False)
         
+        # Nullify route references for non-custom routes before we delete them
+        db.session.query(Notification).filter(Notification.related_route_id.isnot(None)).update({"related_route_id": None}, synchronize_session=False)
+        db.session.query(BusOccupancy).filter(BusOccupancy.route_id.isnot(None)).update({"route_id": None}, synchronize_session=False)
+        db.session.query(SOSAlert).filter(SOSAlert.route_id.isnot(None)).update({"route_id": None}, synchronize_session=False)
+        db.session.query(Complaint).filter(Complaint.route_id.isnot(None)).update({"route_id": None}, synchronize_session=False)
+        db.session.query(Bus).filter(Bus.route_id.isnot(None)).update({"route_id": None}, synchronize_session=False)
+        
+        # Nullify stop references
         db.session.query(Subscription).filter(Subscription.stop_id.isnot(None)).update({"stop_id": None}, synchronize_session=False)
         
         db.session.query(StopTime).delete(synchronize_session=False)
