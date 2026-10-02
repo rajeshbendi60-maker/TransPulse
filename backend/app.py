@@ -8004,6 +8004,7 @@ def register_routes(app: Flask) -> None:
     @login_required
     @role_required("admin")
     def api_admin_stops_search():
+        from sqlalchemy import text
         query = request.args.get("q", "").strip()
         if len(query) < 2:
             return jsonify([])
