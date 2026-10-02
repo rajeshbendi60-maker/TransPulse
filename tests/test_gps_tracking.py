@@ -112,7 +112,7 @@ class GPSTrackingTests(unittest.TestCase):
         return response.json, response.status_code
 
     def get_runtime(self, bus_id):
-        from app import DRIVER_RUNTIME_SESSIONS
+        from backend.app import DRIVER_RUNTIME_SESSIONS
         return DRIVER_RUNTIME_SESSIONS.get(bus_id)
 
     def test_1_wrong_global_location(self):
