@@ -23,6 +23,6 @@ EXPOSE 5000
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 
-# Run with Gunicorn (4 workers binding to 0.0.0.0:5000)
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:app"]
+# Run with Gunicorn (1 worker to prevent memory isolation of LIVE GPS data)
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:5000", "app:app"]
 

@@ -1,0 +1,671 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Bus Management{% endblock %}
+{% block content %}
+<div class="container pb-5">
+    
+    <div class="d-flex flex-wrap align-items-center mb-4 mt-3 fade-up gap-2">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-link text-white text-decoration-none p-0 me-3 d-none d-lg-inline-block"><i class="fa-solid fa-chevron-left fs-5"></i></a>
+        <div>
+            <h4 class="fw-bold mb-0 text-white">Bus Management Center</h4>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-5 fade-up-1">
+        <div class="col-lg-12">
+            <div class="card" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <div class="card-body p-4 p-md-5">
+                    <h5 class="text-white fw-bold mb-4 d-flex align-items-center gap-2">
+                        Bus Assignment
+                    </h5>
+                    
+                    <form method="POST" action="{{ url_for('admin_buses') }}" id="tp-assign-bus-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="assign_bus">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Bus Config Number *</label>
+                                <input type="text" name="bus_number" class="form-control bg-dark text-white border-secondary" placeholder="e.g. APSRTC-101" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Registration Plate *</label>
+                                <input type="text" name="registration_number" class="form-control bg-dark text-white border-secondary" placeholder="e.g. AP31XX1234" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Seat Capacity *</label>
+                                <input type="number" name="capacity" class="form-control bg-dark text-white border-secondary" value="45" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-light small mb-1">Assigned Driver ID *</label>
+                                <input type="text" name="assigned_driver_code" class="form-control bg-dark text-white border-secondary" placeholder="e.g. DTP-001" required>
+                            </div>
+                        </div>
+
+                        <h6 class="text-info pb-2 mb-3 mt-2" style="border-bottom: 1px solid rgba(52, 210, 255, 0.3);">Route Assignment</h6>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-12">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label class="form-label text-light small mb-0">Existing Route</label>
+                                    <button type="button" class="btn btn-sm btn-outline-info py-0 px-2 small" onclick="resetRouteForm()">
+                                        <i class="fa-solid fa-rotate-left"></i> Reset
+                                    </button>
+                                </div>
+                                <div class="dropdown">
+                                    <input type="hidden" name="existing_route_id" id="tp-existing-route-id">
+                                    <button class="form-select bg-dark text-white border-secondary text-start dropdown-toggle text-truncate" type="button" id="routeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside">
+                                        Search existing routes...
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-dark w-100 p-2 shadow-lg" aria-labelledby="routeDropdownBtn" style="max-height: 350px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);">
+                                        <input type="text" class="form-control form-control-sm mb-2 border-secondary bg-dark text-white" id="routeSearchInput" placeholder="Type to search..." autocomplete="off">
+                                        <div id="routeDropdownList">
+                                            <a class="dropdown-item route-option text-muted small text-wrap lh-sm" href="#" data-value="">Clear selection...</a>
+                                            {% for r in routes %}
+                                            <a class="dropdown-item route-option small text-wrap lh-sm border-bottom border-secondary border-opacity-25 py-2" href="#" data-value="{{ r.id }}" data-search-text="{{ (r.route_code|default('')|string)|lower }} {{ (r.origin|default('')|string)|lower }} {{ (r.destination|default('')|string)|lower }}">
+                                                <span class="text-info fw-bold">{{ r.route_code }}</span> <br class="d-md-none"> {{ r.origin }} ➜ {{ r.destination }}
+                                            </a>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h6 class="text-muted pb-2 mb-3 mt-2 small">— OR Create New Route —</h6>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label text-light small mb-1">Route Code</label>
+                                <input type="text" name="route_code" class="form-control bg-dark text-white border-secondary" placeholder="e.g. 01004">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-light small mb-1">Route Name</label>
+                                <input type="text" name="route_name" class="form-control bg-dark text-white border-secondary" placeholder="Express Link">
+                            </div>
+                        </div>
+
+                        <div class="p-3 mb-4 rounded" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05);">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Source City / Stop *</label>
+                                    <input type="text" name="origin" class="form-control bg-dark text-white border-secondary" placeholder="Origin">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Departure Time *</label>
+                                    <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" name="departure_time" class="form-control bg-dark text-white border-secondary" placeholder="Select Time">
+                                </div>
+                            </div>
+                            
+                            <input type="hidden" name="intermediate_stops" id="tp-hidden-intermediate-stops">
+                            <div id="tp-dynamic-stops-container" class="mb-3"></div>
+                            
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-sm btn-outline-info" onclick="addDynamicStop()">
+                                    <i class="fa-solid fa-plus me-1"></i> Add Intermediate Stop
+                                </button>
+                            </div>
+
+                            <div class="row g-3 pt-3" style="border-top: 1px dashed rgba(255,255,255,0.1);">
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Destination City / Stop *</label>
+                                    <input type="text" name="destination" class="form-control bg-dark text-white border-secondary" placeholder="Destination">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-light small mb-1">Arrival Time *</label>
+                                    <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" name="arrival_time" class="form-control bg-dark text-white border-secondary" placeholder="Select Time">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-end mt-4">
+                            <button type="submit" id="tp-assign-bus-submit" class="btn text-dark fw-bold px-5 py-2 rounded-3 shadow" style="background: linear-gradient(135deg, #34d2ff, #4f8dff); border: none;">Assign Bus</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card fade-up-2" style="background: rgba(8, 22, 40, 0.6); border: 1px solid var(--tp-border);">
+        <div class="card-body p-4">
+            <h4 class="text-white fw-bold mb-4">Assignment Buses Logs</h4>
+            <!-- Desktop Table View -->
+            <div class="table-responsive d-none d-lg-block">
+                <table class="table table-dark table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Bus ID / Plate</th>
+                            <th>Driver</th>
+                            <th>Route Detail Map</th>
+                            <th>Intermediate Nodes</th>
+                            <th>Live Telemetry Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tp-bus-table-body">
+                        {% for bus in buses %}
+                            <tr id="tp-bus-row-{{ bus.id }}" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td class="text-white">
+                                    <span class="text-info fw-bold">{{ loop.index }}.</span> {{ bus.bus_number }}<br>
+                                    <small class="text-muted">Plate: {{ bus.registration_number }} | Cap: {{ bus.capacity }}</small>
+                                </td>
+                                <td class="text-light">
+                                    {% if bus.assigned_driver_code %}
+                                        {{ bus.assigned_driver_code }}<br>
+                                        <small class="text-muted">All drivers use driver@transpulse.com</small>
+                                    {% else %}
+                                        <span class="text-muted fst-italic">Unassigned</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-light">
+                                    {% if bus.route %}
+                                        <strong class="text-info">{{ bus.route.route_code }}</strong><br>
+                                        <small class="text-muted">{{ bus.route.origin }} ➔ {{ bus.route.destination }}</small>
+                                    {% else %}
+                                        <span class="text-muted fst-italic">Depot Idle</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if bus.route %}
+                                        <div class="small text-muted text-truncate d-inline-block" style="max-width: 150px;" title="{{ bus.route.intermediate_stops }}">
+                                            {{ bus.route.intermediate_stops or 'None' }}
+                                        </div>
+                                    {% else %}
+                                        --
+                                    {% endif %}
+                                </td>
+                                <td class="tp-live-status-cell" data-live-status-bus-id="{{ bus.id }}">
+                                    <span class="badge bg-secondary">LOADING TELEMETRY</span>
+                                    <br><small class="text-muted">Live status will update shortly.</small>
+                                </td>
+                                <td>
+                                    <div class="d-flex gap-2">
+                                        <a href="{{ url_for('edit_bus', bus_id=bus.id) }}"
+                                           class="btn btn-sm btn-outline-info" title="Edit Bus Mapping">
+                                            Edit
+                                        </a>
+
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-outline-danger tp-delete-bus-btn"
+                                            data-bus-id="{{ bus.id }}"
+                                            data-bus-number="{{ bus.bus_number|e }}">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">No active registered vehicles configured in system database schema.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Mobile Card View -->
+            <div class="d-lg-none d-flex flex-column gap-3 mt-3" id="tp-bus-card-container">
+                {% for bus in buses %}
+                <div class="card bg-dark bg-opacity-50 border-secondary border-opacity-25 rounded-3" id="tp-bus-card-{{ bus.id }}">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <span class="text-info fw-bold">{{ loop.index }}.</span> <span class="text-white fw-bold">{{ bus.bus_number }}</span>
+                                <div class="small text-muted mt-1">Plate: {{ bus.registration_number }} | Cap: {{ bus.capacity }}</div>
+                            </div>
+                            <div class="tp-live-status-cell text-end" data-live-status-bus-id="{{ bus.id }}">
+                                <span class="badge bg-secondary">LOADING...</span>
+                            </div>
+                        </div>
+                        <div class="mb-2 text-light small">
+                            <strong>Driver:</strong> 
+                            {% if bus.assigned_driver_code %}
+                                <span class="text-info">{{ bus.assigned_driver_code }}</span>
+                            {% else %}
+                                <span class="text-muted fst-italic">Unassigned</span>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3 text-light small">
+                            <strong>Route:</strong> 
+                            {% if bus.route %}
+                                <span class="text-info fw-bold">{{ bus.route.route_code }}</span> ({{ bus.route.origin }} ➔ {{ bus.route.destination }})
+                            {% else %}
+                                <span class="text-muted fst-italic">Depot Idle</span>
+                            {% endif %}
+                        </div>
+                        <div class="d-flex gap-2 border-top border-secondary border-opacity-25 pt-3 mt-2">
+                            <a href="{{ url_for('edit_bus', bus_id=bus.id) }}" class="btn btn-sm btn-outline-info flex-grow-1 fw-bold">Edit</a>
+                            <button type="button" class="btn btn-sm btn-outline-danger tp-delete-bus-btn flex-grow-1 fw-bold" data-bus-id="{{ bus.id }}" data-bus-number="{{ bus.bus_number|e }}">Delete</button>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">No active registered vehicles configured.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="tp-assignment-loading-modal" style="display:none; position:fixed; inset:0; z-index:260000; background:rgba(0,0,0,0.82); backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:18px;">
+    <div class="card glass-panel shadow-lg" style="width:100%; max-width:390px; border-color:#34d2ff; border-radius:16px; background:linear-gradient(135deg,#071d34,#040b18);">
+        <div class="card-body p-4 p-md-5 text-center">
+            <div class="spinner-border text-info mb-4" role="status" aria-label="Saving assignment"></div>
+            <h3 class="text-white fw-bold mb-3">Opening Assignment</h3>
+            <p class="text-muted mb-0">Saving the bus and driver assignment now.</p>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.TP_ROUTES = {
+        {% for r in routes %}
+        "{{ r.id }}": {
+            route_code: {{ r.route_code|tojson }},
+            name: {{ (r.name or '')|tojson }},
+            origin: {{ r.origin|tojson }},
+            destination: {{ r.destination|tojson }},
+            departure_time: {{ (r.departure_time or '')|tojson }},
+            arrival_time: {{ (r.arrival_time or '')|tojson }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.getElementById('routeSearchInput');
+        const routeOptions = document.querySelectorAll('.route-option');
+        const hiddenInput = document.getElementById('tp-existing-route-id');
+        const dropdownBtn = document.getElementById('routeDropdownBtn');
+
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                routeOptions.forEach(opt => {
+                    const searchData = opt.dataset.searchText || '';
+                    if (!term || searchData.includes(term) || !opt.dataset.value) {
+                        opt.style.display = 'block';
+                    } else {
+                        opt.style.display = 'none';
+                    }
+                });
+            });
+            
+            // Focus search input when dropdown opens
+            const dropdownEl = document.getElementById('routeDropdownBtn');
+            dropdownEl.addEventListener('shown.bs.dropdown', () => {
+                searchInput.focus();
+            });
+        }
+
+        routeOptions.forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.preventDefault();
+                const id = opt.dataset.value;
+                hiddenInput.value = id;
+                dropdownBtn.innerHTML = opt.innerHTML;
+                
+                // Hide dropdown
+                const dropdown = bootstrap.Dropdown.getInstance(dropdownBtn) || new bootstrap.Dropdown(dropdownBtn);
+                dropdown.hide();
+
+                if (id) {
+                    const route = window.TP_ROUTES[id];
+                    if (route) {
+                        document.querySelector('input[name="route_code"]').value = route.route_code || '';
+                        document.querySelector('input[name="route_name"]').value = route.name || '';
+                        document.querySelector('input[name="origin"]').value = route.origin || '';
+                        document.querySelector('input[name="destination"]').value = route.destination || '';
+                        
+                        const depInput = document.querySelector('input[name="departure_time"]');
+                        if (route.departure_time) {
+                            depInput.type = 'time';
+                            depInput.value = route.departure_time;
+                        } else {
+                            depInput.value = '';
+                        }
+                        
+                        const arrInput = document.querySelector('input[name="arrival_time"]');
+                        if (route.arrival_time) {
+                            arrInput.type = 'time';
+                            arrInput.value = route.arrival_time;
+                        } else {
+                            arrInput.value = '';
+                        }
+
+                        // Load existing intermediate stops so admin can see/edit before saving
+                        const stopsContainer = document.getElementById('tp-dynamic-stops-container');
+                        stopsContainer.innerHTML = '<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm me-1"></span>Loading existing stops...</div>';
+                        fetch(`/api/admin/routes/${encodeURIComponent(id)}/stops`)
+                            .then(r => r.ok ? r.json() : Promise.reject())
+                            .then(data => {
+                                stopsContainer.innerHTML = '';
+                                const intermediates = data.intermediate_stops || [];
+                                if (intermediates.length > 0) {
+                                    intermediates.forEach(stop => {
+                                        const row = document.createElement('div');
+                                        row.className = 'row g-3 mb-2 dynamic-stop-row align-items-end';
+                                        row.innerHTML = `
+                                            <div class="col-md-4 position-relative">
+                                                <label class="form-label text-light small mb-1">Intermediate Stop Name</label>
+                                                <input type="text" class="form-control bg-dark text-white border-secondary dynamic-stop-name" placeholder="Search Stop..." value="${stop.name || ''}" oninput="searchAdminStops(this)" onfocus="searchAdminStops(this)">
+                                                <input type="hidden" class="dynamic-stop-id" value="${stop.id || ''}">
+                                                <div class="list-group position-absolute w-100 shadow tp-stop-suggestions" style="z-index: 1000; display:none; max-height: 200px; overflow-y: auto;"></div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label text-light small mb-1">Arrival Time</label>
+                                                <input type="time" class="form-control bg-dark text-white border-secondary dynamic-stop-time-arr" value="${stop.arrival_time || ''}">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label text-light small mb-1">Departure Time</label>
+                                                <input type="time" class="form-control bg-dark text-white border-secondary dynamic-stop-time-dep" value="${stop.departure_time || ''}">
+                                            </div>
+                                            <div class="col-md-2 text-end">
+                                                <button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.dynamic-stop-row').remove()"><i class="fa-solid fa-trash"></i></button>
+                                            </div>
+                                        `;
+                                        stopsContainer.appendChild(row);
+                                    });
+                                } else {
+                                    stopsContainer.innerHTML = '';
+                                }
+                            })
+                            .catch(() => {
+                                stopsContainer.innerHTML = '';
+                            });
+                    }
+                } else {
+                    document.getElementById('tp-assign-bus-form').reset();
+                    document.getElementById('tp-dynamic-stops-container').innerHTML = '';
+                    hiddenInput.value = '';
+                    dropdownBtn.innerHTML = 'Search existing routes...';
+                    searchInput.value = '';
+                    routeOptions.forEach(o => o.style.display = 'block');
+                }
+            });
+        });
+    });
+
+    window.resetRouteForm = function() {
+        document.getElementById('tp-assign-bus-form').reset();
+        document.getElementById('tp-dynamic-stops-container').innerHTML = '';
+        document.getElementById('tp-existing-route-id').value = '';
+        const dropdownBtn = document.getElementById('routeDropdownBtn');
+        if (dropdownBtn) dropdownBtn.innerHTML = 'Search existing routes...';
+        const searchInput = document.getElementById('routeSearchInput');
+        if (searchInput) {
+            searchInput.value = '';
+            document.querySelectorAll('.route-option').forEach(o => o.style.display = 'block');
+        }
+    };
+
+    window.searchAdminStops = function(inputEl) {
+        const query = inputEl.value.trim();
+        const container = inputEl.parentElement;
+        let suggestionBox = container.querySelector('.tp-stop-suggestions');
+        
+        if (query.length < 2) {
+            suggestionBox.style.display = 'none';
+            return;
+        }
+        
+        fetch('/api/admin/stops/search?q=' + encodeURIComponent(query))
+            .then(r => r.json())
+            .then(data => {
+                if (data.length === 0) {
+                    suggestionBox.style.display = 'none';
+                    return;
+                }
+                suggestionBox.innerHTML = '';
+                data.forEach(stop => {
+                    const item = document.createElement('a');
+                    item.className = 'list-group-item list-group-item-action bg-dark text-white border-secondary small';
+                    item.href = '#';
+                    let descText = stop.desc ? ` <small class="text-info">(${stop.desc})</small>` : '';
+                    item.innerHTML = `<strong>${stop.name}</strong>${descText}`;
+                    item.onclick = (e) => {
+                        e.preventDefault();
+                        inputEl.value = stop.name;
+                        container.querySelector('.dynamic-stop-id').value = stop.id;
+                        suggestionBox.style.display = 'none';
+                    };
+                    suggestionBox.appendChild(item);
+                });
+                suggestionBox.style.display = 'block';
+            });
+    };
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.position-relative')) {
+            document.querySelectorAll('.tp-stop-suggestions').forEach(el => el.style.display = 'none');
+        }
+    });
+
+    window.addDynamicStop = function() {
+        const container = document.getElementById('tp-dynamic-stops-container');
+        const row = document.createElement('div');
+        row.className = 'row g-3 mb-2 dynamic-stop-row align-items-end';
+        row.innerHTML = `
+            <div class="col-md-4 position-relative">
+                <label class="form-label text-light small mb-1">Intermediate Stop Name</label>
+                <input type="text" class="form-control bg-dark text-white border-secondary dynamic-stop-name" placeholder="Search Stop..." oninput="searchAdminStops(this)" onfocus="searchAdminStops(this)">
+                <input type="hidden" class="dynamic-stop-id" value="">
+                <div class="list-group position-absolute w-100 shadow tp-stop-suggestions" style="z-index: 1000; display:none; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-light small mb-1">Arrival Time</label>
+                <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" class="form-control bg-dark text-white border-secondary dynamic-stop-time-arr" placeholder="Time">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-light small mb-1">Departure Time</label>
+                <input type="text" onfocus="(this.type='time')" onblur="if(!this.value) this.type='text'" class="form-control bg-dark text-white border-secondary dynamic-stop-time-dep" placeholder="Time">
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.dynamic-stop-row').remove()"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        `;
+        container.appendChild(row);
+        
+        document.getElementById('tp-existing-route-id').value = '';
+        const dropdownBtn = document.getElementById('routeDropdownBtn');
+        if (dropdownBtn) dropdownBtn.innerHTML = 'Search existing routes...';
+    };
+
+    (function() {
+        if (window.__tpBusManagementBound) return;
+        window.__tpBusManagementBound = true;
+        
+        // Clear existing route selection if user starts typing in Create New Route fields
+        document.querySelectorAll('input[name="route_code"], input[name="route_name"], input[name="origin"], input[name="destination"], input[name="departure_time"], input[name="arrival_time"]').forEach(input => {
+            input.addEventListener('input', () => {
+                document.getElementById('tp-existing-route-id').value = '';
+                const dropdownBtn = document.getElementById('routeDropdownBtn');
+                if (dropdownBtn) dropdownBtn.innerHTML = 'Search existing routes...';
+            });
+        });
+
+        const state = {
+            assignmentSubmitting: false,
+            deleteInFlight: false,
+            pendingDelete: null,
+            assignButtonHtml: ''
+        };
+
+        const ready = (callback) => {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', callback, { once: true });
+            } else {
+                callback();
+            }
+        };
+
+        const escapeText = (value) => String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        const renderTelemetryStatus = (cell, snap) => {
+            if (!cell) return;
+            if (!snap) {
+                cell.innerHTML = '<span class="badge bg-secondary">OFFLINE / UNCONNECTED</span>';
+                return;
+            }
+
+            let badge = `<span class="badge bg-success">RUNNING (${escapeText(snap.speed || 0)}km/h)</span>`;
+            if (snap.service_status === 'delayed') {
+                badge = `<span class="badge bg-danger">DELAYED (${escapeText(snap.speed || 0)}km/h)</span>`;
+            } else if (snap.service_status === 'maintenance') {
+                badge = '<span class="badge bg-warning text-dark">MAINTENANCE</span>';
+            } else if (snap.service_status === 'offline') {
+                badge = '<span class="badge bg-secondary">OFFLINE</span>';
+            }
+            cell.innerHTML = `${badge}<br><small class="text-muted">Loc: ${escapeText(snap.current_stop || '--')} | Occ: ${escapeText(snap.occupancy_pct || 0)}%</small>`;
+        };
+
+        const loadBusTelemetryStatuses = () => {
+            const cells = Array.from(document.querySelectorAll('.tp-live-status-cell'));
+            if (!cells.length) return;
+
+            fetch('/api/buses/live')
+                .then(response => response.ok ? response.json() : Promise.reject(new Error('Telemetry unavailable')))
+                .then(data => {
+                    const byBusId = new Map((data.buses || []).map(item => [String(item.bus_id), item]));
+                    cells.forEach(cell => renderTelemetryStatus(cell, byBusId.get(String(cell.dataset.liveStatusBusId))));
+                })
+                .catch(() => {
+                    cells.forEach(cell => {
+                        cell.innerHTML = '<span class="badge bg-secondary">OFFLINE / UNCONNECTED</span>';
+                    });
+                });
+        };
+
+        const showModal = (element) => {
+            if (element) element.style.display = 'flex';
+        };
+
+        const hideModal = (element) => {
+            if (element) element.style.display = 'none';
+        };
+
+        const rememberHandledDeleteFlash = (busNumber) => {
+            try {
+                sessionStorage.setItem('tp-suppress-next-bus-delete-flash', `Bus ${busNumber} deleted.`);
+            } catch (error) {
+                console.warn('Unable to store delete flash suppression flag.', error);
+            }
+        };
+
+        ready(() => {
+            const assignForm = document.getElementById('tp-assign-bus-form');
+            const assignButton = document.getElementById('tp-assign-bus-submit');
+            const assignmentModal = document.getElementById('tp-assignment-loading-modal');
+            loadBusTelemetryStatuses();
+
+            if (assignForm && assignButton) {
+                state.assignButtonHtml = assignButton.innerHTML;
+                assignForm.addEventListener('submit', (event) => {
+                    if (state.assignmentSubmitting) {
+                        event.preventDefault();
+                        return;
+                    }
+                    if (!assignForm.checkValidity()) return;
+
+                    event.preventDefault();
+                    
+                    const dynamicStops = document.querySelectorAll('.dynamic-stop-row');
+                    const compiled = Array.from(dynamicStops).map(row => {
+                        const name = row.querySelector('.dynamic-stop-name').value.trim();
+                        const timeArr = (row.querySelector('.dynamic-stop-time-arr')?.value || '').trim();
+                        const timeDep = (row.querySelector('.dynamic-stop-time-dep')?.value || '').trim();
+                        const stopId = (row.querySelector('.dynamic-stop-id')?.value || '').trim();
+                        if (!name) return null;
+                        return `${name}|${timeArr}|${timeDep}|${stopId}`;
+                    }).filter(s => s).join(',');
+                    
+                    const hiddenInput = document.getElementById('tp-hidden-intermediate-stops');
+                    if (hiddenInput) {
+                        hiddenInput.value = compiled;
+                    }
+
+                    state.assignmentSubmitting = true;
+                    assignButton.disabled = true;
+                    assignButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Assigning...';
+                    showModal(assignmentModal);
+                    window.setTimeout(() => {
+                        HTMLFormElement.prototype.submit.call(assignForm);
+                    }, 120);
+                });
+
+                window.addEventListener('pageshow', () => {
+                    state.assignmentSubmitting = false;
+                    assignButton.disabled = false;
+                    assignButton.innerHTML = state.assignButtonHtml;
+                    hideModal(assignmentModal);
+                });
+            }
+
+            const tableBody = document.getElementById('tp-bus-table-body');
+            
+            const removeDeletedRow = (busId) => {
+                const row = document.getElementById(`tp-bus-row-${busId}`);
+                if (row) row.remove();
+                
+                const card = document.getElementById(`tp-bus-card-${busId}`);
+                if (card) card.remove();
+                
+                if (tableBody && !tableBody.querySelector('tr')) {
+                    tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No active registered vehicles configured in system database schema.</td></tr>';
+                }
+                const cardContainer = document.getElementById('tp-bus-card-container');
+                if (cardContainer && !cardContainer.querySelector('.card')) {
+                    cardContainer.innerHTML = '<div class="text-center text-muted py-4">No active registered vehicles configured.</div>';
+                }
+            };
+
+            document.addEventListener('click', async (event) => {
+                const button = event.target.closest('.tp-delete-bus-btn');
+                if (!button) return;
+                event.preventDefault();
+                if (state.deleteInFlight) return;
+
+                const busId = button.dataset.busId;
+                const busNumber = button.dataset.busNumber || '--';
+                
+                if (!window.confirm(`Are you sure you want to delete bus ${busNumber}?`)) {
+                    return;
+                }
+
+                state.deleteInFlight = true;
+                const originalHtml = button.innerHTML;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+                button.disabled = true;
+
+                try {
+                    const response = await fetch(`/admin/buses/delete/${encodeURIComponent(busId)}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                        }
+                    });
+                    if (!response.ok) throw new Error(`Delete failed with status ${response.status}`);
+
+                    removeDeletedRow(busId);
+                    alert(`Bus ${busNumber} deleted successfully.`);
+                } catch (error) {
+                    console.error('Error deleting bus:', error);
+                    alert('Unable to delete bus. Please try again.');
+                    button.innerHTML = originalHtml;
+                    button.disabled = false;
+                } finally {
+                    state.deleteInFlight = false;
+                }
+            });
+        });
+    })();
+</script>
+{% endblock %}
+<!-- TP-v2.0-Release -->

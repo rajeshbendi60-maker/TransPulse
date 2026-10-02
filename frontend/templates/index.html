@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}TransPulse{% endblock %}
+{% block content %}
+
+<div class="hero-section" style="margin-top: -1.5rem;">
+    <section class="d-flex align-items-center" style="min-height: calc(100vh - 76px); padding-bottom: 3rem; padding-top: 1.5rem;">
+        <div class="container position-relative">
+            <div class="row align-items-center g-5">
+                <div class="col-lg-5 fade-up">
+                    <div class="tp-hero-logo">
+                        <span class="tp-logo-text">TransPulse</span>
+                    </div>
+                    <p class="hero-tagline">The Pulse of Public Transportation</p>
+                    <p class="hero-sub mb-4">A complete mobility ecosystem featuring real-time live tracking, interactive transport heatmaps, nearby stops, favorite routes, lost & found, and dedicated dashboards for passengers, drivers, and admins.</p>
+                    
+                    <!-- Desktop Buttons (Hidden on mobile) -->
+                    <div class="d-none d-lg-flex flex-wrap gap-2">
+                        {% if current_user.is_authenticated %}
+                            {% if current_user.role == 'admin' %}
+                                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                            {% elif current_user.role == 'driver' %}
+                                <a href="{{ url_for('driver_dashboard') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                            {% else %}
+                                <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                            {% endif %}
+                        {% else %}
+                            <a href="{{ url_for('login_page') }}" class="btn btn-accent btn-lg">Launch Dashboard</a>
+                        {% endif %}
+                        <a href="#" id="pwa-install-link-desktop" class="btn btn-outline-light btn-lg" onclick="if(window.TransPulseUtils && window.TransPulseUtils.triggerManualInstall) { window.TransPulseUtils.triggerManualInstall(); }; return false;">Install App</a>
+                    </div>
+                </div>
+
+                <div class="col-lg-7 fade-up-2 position-relative d-flex flex-column justify-content-center align-items-center hero-bus-wrapper">
+                    <!-- HD Realistic Transparent Bus -->
+                    <div class="hero-bus-container w-100 text-center" style="position: relative; z-index: 10;">
+                        <img id="hero-bus-img" class="responsive-bus" src="{{ url_for('static', filename='images/hero-bus.png') }}?v=clean_volvo_new" alt="Smart City Bus">
+                    </div>
+                    
+                    <!-- Mobile Buttons (Hidden on desktop, placed immediately down the bus) -->
+                    <div class="row w-100 mx-0 mt-4 px-3 d-flex d-lg-none" style="z-index: 20;">
+                        <div class="col-6 pe-2">
+                            {% if current_user.is_authenticated %}
+                                {% if current_user.role == 'admin' %}
+                                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-accent w-100 py-3" style="font-weight: 700;">Explore</a>
+                                {% elif current_user.role == 'driver' %}
+                                    <a href="{{ url_for('driver_dashboard') }}" class="btn btn-accent w-100 py-3" style="font-weight: 700;">Explore</a>
+                                {% else %}
+                                    <a href="{{ url_for('passenger_dashboard') }}" class="btn btn-accent w-100 py-3" style="font-weight: 700;">Explore</a>
+                                {% endif %}
+                            {% else %}
+                                <a href="{{ url_for('login_page') }}" class="btn btn-accent w-100 py-3" style="font-weight: 700;">Explore</a>
+                            {% endif %}
+                        </div>
+                        <div class="col-6 ps-2">
+                            <a href="#" id="pwa-install-link-mobile" class="btn btn-outline-light w-100 py-3" onclick="if(window.TransPulseUtils && window.TransPulseUtils.triggerManualInstall) { window.TransPulseUtils.triggerManualInstall(); }; return false;" style="font-weight: 700;">Install App</a>
+                        </div>
+                    </div>
+                    
+                    <style>
+                        .responsive-bus {
+                            width: min(850px, 115%);
+                            max-width: none !important; /* Fixes the squishing bug */
+                            height: auto !important;
+                            display: block;
+                            margin: 0 auto;
+                            margin-left: -5%;
+                            filter: drop-shadow(0 25px 35px rgba(52,210,255,0.3));
+                        }
+                        /* Force responsive behavior directly to bypass browser caching */
+                        @media (max-width: 991px) {
+                            .tp-hero-logo .tp-logo-icon { width: 52px !important; height: 52px !important; flex-basis: 52px !important; border-radius: 10px !important; }
+                            .tp-hero-logo .tp-logo-icon::after { display: none !important; }
+                            .tp-hero-logo .tp-logo-text { font-size: 2.2rem !important; }
+                            .hero-tagline { font-size: 1.2rem !important; margin-bottom: 0.5rem !important; }
+                            .hero-sub { font-size: 0.95rem !important; line-height: 1.4; margin-bottom: 1rem !important; }
+                            .responsive-bus { width: 100% !important; max-width: 100% !important; margin-left: 0 !important; margin-top: 1rem !important; transform: none !important; }
+                            .hero-bus-wrapper { min-height: auto !important; padding-left: 0 !important; margin-top: 1rem !important; }
+                        }
+                    </style>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="how-it-works pb-5 pt-3 position-relative" style="z-index: 5; background: transparent;">
+    <div class="container pb-5">
+        <div class="text-center mb-5 fade-up">
+            <h2 class="fw-bold text-white mb-2" style="letter-spacing: -0.5px;">How It Works</h2>
+            <p class="text-info text-opacity-75">Three simple steps to seamless public transportation.</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-4 fade-up" style="transition-delay: 0.1s;">
+                <div class="card text-white h-100 border-info border-opacity-25 shadow-lg text-center p-4 glass-panel" style="backdrop-filter: blur(15px); background: rgba(11, 29, 54, 0.4) !important;">
+                    <div class="rounded-circle bg-info bg-opacity-10 d-inline-flex justify-content-center align-items-center mx-auto mb-3 border border-info border-opacity-25" style="width: 65px; height: 65px;">
+                        <i class="fa-solid fa-map-location-dot text-info fs-3"></i>
+                    </div>
+                    <h5 class="fw-bold mb-3">1. Real-Time Tracking</h5>
+                    <p class="text-muted small mb-0">See buses moving live on the interactive map with precise GPS locations.</p>
+                </div>
+            </div>
+            <div class="col-md-4 fade-up" style="transition-delay: 0.2s;">
+                <div class="card text-white h-100 border-info border-opacity-25 shadow-lg text-center p-4 glass-panel" style="backdrop-filter: blur(15px); background: rgba(11, 29, 54, 0.4) !important;">
+                    <div class="rounded-circle bg-info bg-opacity-10 d-inline-flex justify-content-center align-items-center mx-auto mb-3 border border-info border-opacity-25" style="width: 65px; height: 65px;">
+                        <i class="fa-solid fa-border-all text-info fs-3"></i>
+                    </div>
+                    <h5 class="fw-bold mb-3">2. Smart Dashboards</h5>
+                    <p class="text-muted small mb-0">Dedicated interfaces for passengers to find routes, drivers to manage trips, and admins to oversee the fleet.</p>
+                </div>
+            </div>
+            <div class="col-md-4 fade-up" style="transition-delay: 0.3s;">
+                <div class="card text-white h-100 border-info border-opacity-25 shadow-lg text-center p-4 glass-panel" style="backdrop-filter: blur(15px); background: rgba(11, 29, 54, 0.4) !important;">
+                    <div class="rounded-circle bg-info bg-opacity-10 d-inline-flex justify-content-center align-items-center mx-auto mb-3 border border-info border-opacity-25" style="width: 65px; height: 65px;">
+                        <i class="fa-solid fa-bolt text-info fs-3"></i>
+                    </div>
+                    <h5 class="fw-bold mb-3">3. Instant Alerts</h5>
+                    <p class="text-muted small mb-0">Stay informed with live occupancy levels, SOS emergencies, and lost & found updates.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+</div>
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const heroSection = document.querySelector('.hero-section');
+        if (heroSection) {
+            window.addEventListener('scroll', () => {
+                const scrollY = window.scrollY;
+                // Fade out the grid over the first 600px of scrolling
+                const opacity = Math.max(0, 1 - (scrollY / 600));
+                heroSection.style.setProperty('--grid-opacity', opacity);
+                
+                // Subtle parallax effect for the grid
+                heroSection.style.setProperty('--grid-translate', `${scrollY * 0.25}px`);
+            }, { passive: true });
+        }
+    });
+</script>
+{% endblock %}
+<!-- TP-v2.0-Release -->

@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}TransPulse | Notifications{% endblock %}
+{% block head_extras %}
+<style>
+    .dark-glass-card {
+        background: linear-gradient(135deg, rgba(11,29,54,0.6), rgba(4,11,24,0.8));
+        border: 1px solid rgba(52,210,255,0.15);
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .notif-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(52, 210, 255, 0.1);
+        border-radius: 12px;
+        padding: 1.25rem;
+        transition: transform 0.2s;
+    }
+    .notif-card:hover { transform: translateY(-2px); border-color: rgba(52, 210, 255, 0.3); }
+    .priority-high { color: #ff5d6c; }
+    .priority-medium { color: #f5b342; }
+    .priority-low { color: #22d39a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container pb-5">
+    
+    <div class="d-flex align-items-center mb-4 pb-2 mt-3 fade-up border-bottom border-secondary border-opacity-25">
+        <a href="javascript:history.back()" class="btn btn-link text-white text-decoration-none p-0 me-3 d-none d-lg-inline-block"><i class="fa-solid fa-chevron-left fs-5"></i></a>
+        <div>
+            <h4 class="m-0 fw-bold text-white fs-5">Notifications Center</h4>
+        </div>
+    </div>
+
+    {% if current_user.role == "admin" %}
+    <div class="card dark-glass-card mb-5 fade-up">
+        <div class="card-body p-4">
+            <h5 class="text-white fw-bold mb-3">Broadcast Announcement</h5>
+            <form method="POST" action="{{ url_for('notifications_center') }}" id="announcement-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label text-muted small fw-bold">Announcement Title</label>
+                        <input type="text" name="title" class="form-control bg-dark text-white border-secondary" placeholder="e.g. Weather Interruption, Maintenance Shift" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-muted small fw-bold">Target Recipient Scope Classification</label>
+                        <select name="target" class="form-select bg-dark text-white border-secondary" required>
+                            <option value="all">All Connected Network Profiles</option>
+                            <option value="passengers">Passengers Subscribed Scope Only</option>
+                            <option value="drivers">Drivers Duty Shift Group Only</option>
+                        </select>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label text-muted small fw-bold">Broadcast Message Text</label>
+                        <textarea name="message" class="form-control bg-dark text-white border-secondary" rows="3" placeholder="Provide full announcement text parameter details here..." required></textarea>
+                    </div>
+                    <div class="col-12 text-end">
+                        <button type="submit" id="announcement-submit-btn" class="btn btn-primary text-dark fw-bold px-4">
+                            <span id="announcement-submit-label">Transmit Broadcast Alert</span>
+                            <span id="announcement-submit-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-4 justify-content-center">
+        <div class="col-lg-10">
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="text-white fw-bold m-0">Recent Notifications</h5>
+                    <span id="unread-count-badge" class="badge bg-info d-none">0</span>
+                </div>
+                <div id="unified-list" class="d-flex flex-column gap-3">
+                    <div class="text-center py-4 text-muted">Checking for new alerts...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const userRole = "{{ current_user.role }}";
+
+function showAnnouncementModal(type, title, message, reference) {
+    const isError = type === 'danger';
+    const body = isError ? message : `
+        <span class="d-block mb-3">Your announcement has been delivered successfully.</span>
+        <span class="d-block text-start fw-bold mb-2 text-light">Recipients:</span>
+        <span class="d-block text-start text-light mb-1">&#10003; Passengers</span>
+        <span class="d-block text-start text-light mb-1">&#10003; Drivers</span>
+        <span class="d-block text-start text-light mb-3">&#10003; Administrators</span>
+        <span class="d-block small text-muted mb-1">Reference:</span>
+        <span class="d-block fw-bold text-info">${reference || 'ANN-PENDING'}</span>
+    `;
+
+    if (window.TransPulseUtils && typeof window.TransPulseUtils.showPremiumModal === 'function') {
+        window.TransPulseUtils.showPremiumModal({
+            type,
+            title,
+            message: body,
+            icon: isError ? '&#9888;' : '&#10003;',
+            buttonText: 'Got It'
+        });
+        return;
+    }
+    let modal = document.getElementById('announcement-feedback-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'announcement-feedback-modal';
+        modal.style.cssText = 'display:none; position:fixed; inset:0; z-index:250000; background:rgba(0,0,0,0.84); align-items:center; justify-content:center; padding:18px;';
+        document.body.appendChild(modal);
+    }
+    const accent = isError ? '#ff5d6c' : '#34d2ff';
+    modal.innerHTML = `
+        <div class="card glass-panel shadow-lg" style="width:100%; max-width:430px; border-color:${accent}; border-radius:16px; background:#071d34;">
+            <div class="card-body p-4 text-center">
+                <h3 class="text-white fw-bold mb-3">${title}</h3>
+                <p class="text-muted mb-4">${body}</p>
+                <button type="button" class="btn fw-bold px-5 py-2 rounded-pill" style="background:${accent}; color:#03101d; border:0;">Got It</button>
+            </div>
+        </div>`;
+    modal.querySelector('button').addEventListener('click', () => { modal.style.display = 'none'; }, { once: true });
+    modal.style.display = 'flex';
+}
+
+function initAnnouncementForm() {
+    const form = document.getElementById('announcement-form');
+    const button = document.getElementById('announcement-submit-btn');
+    const label = document.getElementById('announcement-submit-label');
+    const spinner = document.getElementById('announcement-submit-spinner');
+    if (!form || !button) return;
+
+    let isSubmitting = false;
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (isSubmitting) return;
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        isSubmitting = true;
+        button.disabled = true;
+        label.textContent = 'Sending...';
+        spinner.classList.remove('d-none');
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                body: new FormData(form)
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Announcement could not be delivered right now.');
+            }
+            form.reset();
+            showAnnouncementModal('success', 'Announcement Sent', data.message, data.reference);
+            loadNotifications();
+        } catch (error) {
+            showAnnouncementModal('danger', 'Announcement Failed', error.message || 'Announcement could not be delivered right now.');
+        } finally {
+            isSubmitting = false;
+            button.disabled = false;
+            label.textContent = 'Transmit Broadcast Alert';
+            spinner.classList.add('d-none');
+        }
+    });
+}
+
+async function loadNotifications() {
+    try {
+        const response = await fetch('/api/notifications'); 
+        const data = await response.json();
+        
+        const unifiedList = document.getElementById('unified-list');
+        const badge = document.getElementById('unread-count-badge');
+        
+        if (!unifiedList) return;
+        unifiedList.innerHTML = '';
+
+        let count = 0;
+
+        if (data.notifications && data.notifications.length > 0) {
+            data.notifications.forEach(n => {
+                const safeMsg = n.message.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const card = `
+                    <div class="notif-card">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-info fw-bold">${n.title || 'Notification'}</span>
+                            <small class="text-muted">${n.timestamp || new Date().toLocaleTimeString()}</small>
+                        </div>
+                        <p class="text-light my-2">${safeMsg}</p>
+                    </div>
+                `;
+                unifiedList.innerHTML += card;
+                count++;
+            });
+        } else {
+            unifiedList.innerHTML = '<div class="text-center py-4 text-muted">No recent notifications.</div>';
+        }
+
+        if (count > 0) {
+            badge.textContent = count;
+            badge.classList.remove('d-none');
+        } else {
+            badge.classList.add('d-none');
+        }
+    } catch(e) { console.error(e); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initAnnouncementForm();
+    loadNotifications();
+    const intervalMs = userRole === 'passenger' ? 15000 : 10000;
+    setInterval(loadNotifications, intervalMs); 
+});
+</script>
+{% endblock %}
+<!-- TP-v2.0-Release -->

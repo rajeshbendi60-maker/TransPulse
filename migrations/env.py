@@ -6,8 +6,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from config import Config
-from models import db
+from database.config import Config
+from backend.extensions import db
 
 config = context.config
 config.set_main_option(
@@ -15,7 +15,7 @@ config.set_main_option(
     os.getenv("ALEMBIC_DATABASE_URL") or Config.SQLALCHEMY_DATABASE_URI,
 )
 
-if config.config_file_name is not None:
+if config.config_file_name is not None and os.path.exists(config.config_file_name):
     fileConfig(config.config_file_name)
 
 target_metadata = db.metadata

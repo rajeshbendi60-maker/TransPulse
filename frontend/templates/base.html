@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
+    <meta name="description" content="Mobility Platform - Real-time bus tracking and transport management">
+    <meta name="theme-color" content="#040b18">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TransPulse">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}TransPulse{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}?v=tp-refined-square" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=tp-refined-square">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}?v=tp-refined-square">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=tp-refined-square">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v=11">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    {% block head_extras %}{% endblock %}
+    
+    <!-- Utilities loaded first! -->
+    {% if current_user.is_authenticated and current_user.role == 'passenger' %}
+        <script src="{{ url_for('static', filename='js/passenger-flow.js') }}?v=8.0"></script>
+    {% endif %}
+    {% if current_user.is_authenticated and current_user.role == 'driver' %}
+        <script src="{{ url_for('static', filename='js/driver-flow.js') }}?v=8.0"></script>
+    {% endif %}
+    
+    <style>
+        /* New Sidebar CSS */
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            transition: all 150ms ease;
+            text-decoration: none;
+            font-weight: 500;
+            color: #a0b2c6;
+            margin-bottom: 4px;
+        }
+        .sidebar-link svg {
+            flex-shrink: 0;
+            stroke-width: 2px;
+            width: 18px;
+            height: 18px;
+        }
+        .sidebar-link.active {
+            background: rgba(14, 203, 240, 0.08);
+            border: 1px solid rgba(14, 203, 240, 0.3);
+            color: #ffffff;
+            position: relative;
+        }
+        .sidebar-link:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+        }
+        .btn-logout-ghost {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #a0b2c6;
+            border-radius: 8px;
+            padding: 10px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 150ms ease;
+            font-weight: 600;
+        }
+        .btn-logout-ghost:hover {
+            border-color: #ffffff;
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        /* Mobile Bottom Navigation Bar */
+        .mobile-bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: linear-gradient(180deg, rgba(11,29,54,0.95), #040b14);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(52, 210, 255, 0.2);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 8px 0;
+            padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+            z-index: 99999 !important;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.4);
+        }
+        
+        .mobile-bottom-nav .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #8892b0;
+            text-decoration: none;
+            font-size: 1.15rem;
+            transition: color 0.2s, transform 0.2s;
+            flex: 1;
+        }
+        
+        .mobile-bottom-nav .nav-item span {
+            font-size: 0.65rem;
+            margin-top: 4px;
+            font-weight: 600;
+        }
+        
+        .mobile-bottom-nav .nav-item.active {
+            color: #34d2ff;
+            transform: translateY(-2px);
+        }
+        
+        .mobile-bottom-nav .nav-item.active i {
+            filter: drop-shadow(0 0 5px rgba(52, 210, 255, 0.5));
+        }
+
+        /* Pad body so content isn't hidden behind the bar on mobile */
+        @media (max-width: 991.98px) {
+            body {
+                padding-bottom: 75px !important;
+            }
+            /* Convert dynamic global popups to full-page screens on mobile */
+            #tp-premium-action-modal,
+            #sos-detail-modal {
+                background: #040b18 !important;
+                align-items: flex-start !important;
+                padding: 0 !important;
+            }
+            #tp-premium-action-modal > div,
+            #sos-detail-modal > div {
+                width: 100% !important;
+                max-width: 100% !important;
+                height: 100vh !important;
+                border-radius: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+                background: transparent !important;
+                padding-top: 3rem !important;
+            }
+        }
+        
+        .btn-primary-custom[aria-disabled="true"],
+        .btn-primary-custom[aria-disabled="true"]:hover,
+        .btn-primary-custom.is-disabled,
+        .btn-primary-custom.is-disabled:hover {
+            background: rgba(255,255,255,0.1) !important;
+            color: rgba(255,255,255,0.4) !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+    </style>
+</head>
+<body class="transport-theme">
+    {% if current_user.is_authenticated and request.endpoint != 'index' %}
+        <div class="app-shell">
+            <aside class="sidebar d-none d-lg-flex">
+                <div class="w-100 d-flex flex-column h-100">
+                    <a class="brand tp-logo-lockup text-decoration-none mb-4" href="{{ url_for('index') }}">
+                        {% include "_logo_icon.html" %}
+                        <span>
+                            <strong class="tp-logo-text">TransPulse</strong><br>
+                            <small class="text-secondary">Smart Transport</small>
+                        </span>
+                    </a>
+
+                    <div class="sidebar-group mb-3">
+                        {% if current_user.role in ["admin", "district_admin", "state_admin"] %}
+                            <small class="sidebar-label">Navigation</small>
+                            <a class="sidebar-link active" aria-current="page" href="{{ url_for('admin_dashboard') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                                Overview
+                            </a>
+                            <small class="sidebar-label mt-3">Operations</small>
+                            <a class="sidebar-link" href="{{ url_for('admin_buses') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+                                Bus Management
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('live_fleet_monitoring') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                                Live Fleet Monitoring
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('admin_tracking_search') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                                Live Tracking
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('heatmap_page') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                                Transport Heatmap
+                            </a>
+
+                            <small class="sidebar-label mt-3">Safety & Support</small>
+                            <a class="sidebar-link" href="{{ url_for('admin_dashboard') }}#sosCenterModal" style="color: var(--danger, #ff3232);">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                                SOS Center
+                                <span class="badge bg-danger ms-auto rounded-pill" id="sidebar-sos-badge" style="display:none;">0</span>
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('complaints_page') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+                                Complaints Center
+                            </a>
+
+                            <small class="sidebar-label mt-3">Insights</small>
+                            <a class="sidebar-link" href="{{ url_for('analytics_dashboard') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                                Analytics
+                            </a>
+                        {% elif current_user.role == "driver" %}
+                            <small class="sidebar-label">Navigation</small>
+                            <a class="sidebar-link active" href="{{ url_for('driver_dashboard') }}" onclick="if(window.hideDriverScreen) { event.preventDefault(); hideDriverScreen(); }">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                                Overview
+                            </a>
+                            <small class="sidebar-label mt-3">Trip</small>
+                            <a class="sidebar-link" href="{{ url_for('driver_dashboard') }}#ops" onclick="if(window.showDriverScreen) { event.preventDefault(); window.location.hash = 'ops'; showDriverScreen('ops'); }">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="m5 3 14 9-14 9V3z"/></svg>
+                                Trip Operations
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('driver_dashboard') }}#sequence" onclick="if(window.showDriverScreen) { event.preventDefault(); window.location.hash = 'sequence'; showDriverScreen('sequence'); }">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                                Route Sequence
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('driver_dashboard') }}#details" onclick="if(window.showDriverScreen) { event.preventDefault(); window.location.hash = 'details'; showDriverScreen('details'); }">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                                Trip Details
+                            </a>
+
+                            <small class="sidebar-label mt-3">Support</small>
+                            <a class="sidebar-link" href="{{ url_for('complaints_page') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+                                Complaints
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('driver_dashboard') }}#lost" onclick="if(window.showDriverScreen) { event.preventDefault(); window.location.hash = 'lost'; showDriverScreen('lost'); }">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="M12 22v-9"/><path d="M15.17 2.38 12.5 13H11l-2.67-10.62A2 2 0 0 0 6.38 1h-.42a2 2 0 0 0-1.89 1.34L1.13 13.5a2 2 0 0 0 .52 2.22l8.84 8.84a2 2 0 0 0 2.82 0l8.84-8.84a2 2 0 0 0 .52-2.22l-2.94-11.16a2 2 0 0 0-1.89-1.34h-.42a2 2 0 0 0-1.95 1.38z"/></svg>
+                                Lost & Found
+                            </a>
+                            <a class="sidebar-link text-danger fw-bold" href="{{ url_for('driver_dashboard') }}#sos" style="color: #ef4444 !important;" onclick="if(window.showDriverScreen) { event.preventDefault(); window.location.hash = 'sos'; showDriverScreen('sos'); }">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                                SOS
+                            </a>
+                        {% elif current_user.role == "passenger" %}
+                            <small class="sidebar-label">Navigation</small>
+                            <a class="sidebar-link active" aria-current="page" href="{{ url_for('passenger_dashboard') }}#home">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                                Overview
+                            </a>
+                            <small class="sidebar-label mt-3">Travel</small>
+                            <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-search-bus">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                                Search Bus
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-routes">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                                Major Routes
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-nearby-stops">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                                Nearby Stops
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-live-tracking">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                                Live Tracking
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-favorites">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                Favorite Routes
+                            </a>
+
+                            <small class="sidebar-label mt-3">Support</small>
+                            <a class="sidebar-link" href="{{ url_for('lost_and_found_page') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-9"/><path d="M15.17 2.38 12.5 13H11l-2.67-10.62A2 2 0 0 0 6.38 1h-.42a2 2 0 0 0-1.89 1.34L1.13 13.5a2 2 0 0 0 .52 2.22l8.84 8.84a2 2 0 0 0 2.82 0l8.84-8.84a2 2 0 0 0 .52-2.22l-2.94-11.16a2 2 0 0 0-1.89-1.34h-.42a2 2 0 0 0-1.95 1.38z"/></svg>
+                                Lost & Found
+                            </a>
+                            <a class="sidebar-link" href="{{ url_for('complaints_page') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+                                Complaints
+                            </a>
+                            <a href="{{ url_for('passenger_dashboard') }}#screen-sos" class="sidebar-link sos-link" onclick="if(typeof executePremiumSOSTrigger === 'function'){executePremiumSOSTrigger(); return false;}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                SOS
+                            </a>
+                        {% else %}
+                            <a class="sidebar-link" href="{{ url_for('complaints_page') }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+                                Complaints
+                            </a>
+                        {% endif %}
+                    </div>
+
+                    <form action="{{ url_for('logout_page') }}" method="post" class="mt-auto pb-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn-logout-ghost" type="submit">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                            Logout
+                        </button>
+                    </form>
+                </div>
+            </aside>
+
+            <div class="content-shell">
+                <!-- Global Desktop Header removed -->
+
+                {% if current_user.role != 'passenger' or request.endpoint == 'index' %}
+                <nav class="topbar d-lg-none">
+                    <div class="container-fluid px-3">
+                        <div class="d-flex justify-content-between align-items-center py-2">
+                            <a class="navbar-brand tp-logo-lockup m-0" href="{{ url_for('index') }}">
+                                {% include "_logo_icon.html" %}
+                                <span class="tp-logo-text">TransPulse</span>
+                            </a>
+                            <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu">Menu</button>
+                        </div>
+                    </div>
+                </nav>
+                {% endif %}
+
+                <div class="offcanvas offcanvas-start text-bg-dark" tabindex="-1" id="mobileMenu">
+                    <div class="offcanvas-header border-bottom border-secondary-subtle">
+                        <h5 class="offcanvas-title tp-logo-lockup">
+                            {% include "_logo_icon.html" %}
+                            <span class="tp-logo-text">TransPulse</span>
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+                    </div>
+                    <div class="offcanvas-body">
+                        <div class="d-grid gap-2">
+                            <a class="sidebar-link" href="{{ url_for('index') }}" data-bs-dismiss="offcanvas">Home</a>
+                            {% if current_user.role in ["admin", "district_admin", "state_admin"] %}
+                                <a class="sidebar-link" href="{{ url_for('admin_dashboard') }}" data-bs-dismiss="offcanvas">Admin Dashboard</a>
+                                <a class="sidebar-link" href="{{ url_for('admin_buses') }}" data-bs-dismiss="offcanvas">Bus Management</a>
+                                <a class="sidebar-link" href="{{ url_for('analytics_dashboard') }}" data-bs-dismiss="offcanvas">Analytics</a>
+                            {% elif current_user.role == "driver" %}
+                                <a class="sidebar-link" href="{{ url_for('driver_dashboard') }}" data-bs-dismiss="offcanvas">Driver Dashboard</a>
+                            {% elif current_user.role == "passenger" %}
+                                <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#home" data-bs-dismiss="offcanvas">Overview</a>
+                                <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-search-bus" data-bs-dismiss="offcanvas">Search Bus</a>
+                                <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-routes" data-bs-dismiss="offcanvas">Major Routes</a>
+                                <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-nearby-stops" data-bs-dismiss="offcanvas">Nearby Stops</a>
+                                <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-live-tracking" data-bs-dismiss="offcanvas">Live Tracking</a>
+                                <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-favorites" data-bs-dismiss="offcanvas">Favorite Routes</a>
+                                <a class="sidebar-link" href="{{ url_for('lost_and_found_page') }}" data-bs-dismiss="offcanvas">Lost & Found</a>
+                                <a class="sidebar-link" href="{{ url_for('complaints_page') }}" data-bs-dismiss="offcanvas">Complaints</a>
+                                <a class="sidebar-link" href="{{ url_for('passenger_dashboard') }}#screen-sos" data-bs-dismiss="offcanvas" onclick="if(typeof executePremiumSOSTrigger === 'function'){executePremiumSOSTrigger();}">SOS</a>
+                            {% endif %}
+                            <form action="{{ url_for('logout_page') }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="btn btn-accent w-100 mt-2" type="submit">Logout</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+    {% else %}
+        <nav class="navbar navbar-expand-lg navbar-dark topbar">
+            <div class="container d-flex justify-content-between align-items-center">
+                <a class="navbar-brand tp-logo-lockup m-0" href="{{ url_for('index') }}">
+                    {% include "_logo_icon.html" %}
+                    <span class="tp-logo-text">TransPulse</span>
+                </a>
+                <div class="d-flex gap-2">
+                    {% if current_user.is_authenticated %}
+                        {% if current_user.role in ["admin", "district_admin", "state_admin"] %}
+                            <a class="btn btn-accent btn-sm" href="{{ url_for('admin_dashboard') }}">Launch Dashboard</a>
+                        {% elif current_user.role == "driver" %}
+                            <a class="btn btn-accent btn-sm" href="{{ url_for('driver_dashboard') }}">Launch Dashboard</a>
+                        {% else %}
+                            <a class="btn btn-accent btn-sm" href="{{ url_for('passenger_dashboard') }}">Launch Dashboard</a>
+                        {% endif %}
+                    {% else %}
+                        <a class="btn btn-outline-info btn-sm" href="{{ url_for('login_page') }}">Login</a>
+                        <a class="btn btn-accent btn-sm" href="{{ url_for('register_page') }}">Register</a>
+                    {% endif %}
+                </div>
+            </div>
+        </nav>
+    {% endif %}
+
+    <main class="page-content py-4">
+        <div class="container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        
+        <dialog id="sosDialog" class="p-4" style="background: var(--surface, #1e293b); color: var(--text, #f8fafc); border: 1px solid var(--border, #334155); border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); margin: auto; max-width: 400px; width: 90%;">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div style="background: rgba(239, 68, 68, 0.12); color: var(--danger, #ef4444); width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fa-solid fa-triangle-exclamation fs-4"></i>
+                </div>
+                <h5 class="m-0 fw-bold">Send distress signal to the control room?</h5>
+            </div>
+            <p class="text-muted small mb-4">This will alert the administration and broadcast your location immediately. Do not test this in production.</p>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('sosDialog').close()">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="document.getElementById('sosDialog').close(); if(typeof executePremiumSOSTrigger === 'function'){executePremiumSOSTrigger();}else{window.location.href='{{ url_for('passenger_dashboard') }}#screen-sos';}">Send SOS</button>
+            </div>
+        </dialog>
+        
+        {% block content %}{% endblock %}
+    </main>
+
+    {% if current_user.is_authenticated and request.endpoint != 'index' %}
+            </div>
+        </div>
+        
+        {% if current_user.role == 'passenger' and request.endpoint != 'index' %}
+        <!-- Mobile Bottom Navigation Bar (Shown on Mobile Only) -->
+        <nav class="mobile-bottom-nav d-lg-none">
+            <a href="{{ url_for('passenger_dashboard') }}" class="nav-item" id="nav-home">
+                <i class="fa-solid fa-house"></i>
+                <span>Home</span>
+            </a>
+            <a href="{{ url_for('passenger_dashboard') }}#screen-search-bus" class="nav-item" id="nav-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span>Search</span>
+            </a>
+            <a href="{{ url_for('passenger_dashboard') }}#screen-live-tracking" class="nav-item" id="nav-live-tracking">
+                <i class="fa-solid fa-map-location-dot"></i>
+                <span>Tracking</span>
+            </a>
+            <a href="{{ url_for('passenger_dashboard') }}#screen-favorites" class="nav-item" id="nav-routes">
+                <i class="fa-solid fa-star"></i>
+                <span>Favorites</span>
+            </a>
+            <a href="#" class="nav-item" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu">
+                <i class="fa-solid fa-bars"></i>
+                <span>Menu</span>
+            </a>
+        </nav>
+
+        <script>
+            // Highlight active tab dynamically
+            document.addEventListener("DOMContentLoaded", function() {
+                function updateActiveTab() {
+                    const path = window.location.pathname;
+                    const hash = window.location.hash;
+                    
+                    document.querySelectorAll('.mobile-bottom-nav .nav-item').forEach(el => el.classList.remove('active'));
+                    
+                    if (path.includes('/tracking/')) {
+                        document.getElementById('nav-live-tracking')?.classList.add('active');
+                    } else if (hash.includes('screen-live-tracking')) {
+                        document.getElementById('nav-live-tracking')?.classList.add('active');
+                    } else if (hash.includes('search')) {
+                        document.getElementById('nav-search')?.classList.add('active');
+                    } else if (hash.includes('favorites') || hash.includes('screen-favorites')) {
+                        document.getElementById('nav-routes')?.classList.add('active');
+                    } else {
+                        document.getElementById('nav-home')?.classList.add('active');
+                    }
+                }
+                
+                updateActiveTab();
+                window.addEventListener('hashchange', updateActiveTab);
+            });
+        </script>
+        {% endif %}
+    {% endif %}
+
+
+
+    <!-- Active State Logic for Sidebar -->
+    <script>
+        function syncSidebarActiveState() {
+            const currentPath = window.location.pathname.replace(/\/$/, '');
+            const currentHash = window.location.hash;
+            
+            document.querySelectorAll('.sidebar-link').forEach(link => {
+                const linkHref = link.getAttribute('href');
+                if (!linkHref) return;
+                
+                // Extract path and hash from href
+                const url = new URL(linkHref, window.location.origin);
+                const urlPath = url.pathname.replace(/\/$/, '');
+                
+                // Special case for dashboard default view
+                if (currentPath === '{{ url_for("passenger_dashboard") }}'.replace(/\/$/, '') || currentPath === '{{ url_for("driver_dashboard") }}'.replace(/\/$/, '')) {
+                    if (currentHash === '' || currentHash === '#home') {
+                        if (urlPath === currentPath && (url.hash === '#home' || url.hash === '')) {
+                            link.classList.add('active');
+                            link.setAttribute('aria-current', 'page');
+                            return;
+                        }
+                    }
+                }
+                
+                if (urlPath === currentPath && url.hash === currentHash) {
+                    link.classList.add('active');
+                    link.setAttribute('aria-current', 'page');
+                } else {
+                    link.classList.remove('active');
+                    link.removeAttribute('aria-current');
+                }
+            });
+        }
+        document.addEventListener('DOMContentLoaded', syncSidebarActiveState);
+        window.addEventListener('hashchange', syncSidebarActiveState);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+    <script src="{{ url_for('static', filename='js/enhanced-utils.js') }}?v=fix-13"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=tp-fix-3"></script>
+    <script src="{{ url_for('static', filename='js/map-utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/sos-handler.js') }}?v=fix-13"></script>
+    <script src="{{ url_for('static', filename='js/route-selector.js') }}"></script>
+    {% if current_user.is_authenticated %}
+    <script>
+        window.TP_DRIVER_CODE = "{{ session.get('driver_code', '') }}";
+        window.TP_USER_ID = {{ current_user.id if current_user.is_authenticated else 'null' }};
+        window.TP_USER_ROLE = "{{ current_user.role if current_user.is_authenticated else '' }}";
+    </script>
+    {% endif %}
+    <script src="{{ url_for('static', filename='js/notifications.js') }}?v=fix-14"></script>
+    <script>
+        window.TransPulseCSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('form[method="post"], form[method="POST"]').forEach((form) => {
+                if (!form.querySelector('input[name="csrf_token"]')) {
+                    const tokenInput = document.createElement('input');
+                    tokenInput.type = 'hidden';
+                    tokenInput.name = 'csrf_token';
+                    tokenInput.value = window.TransPulseCSRF;
+                    form.appendChild(tokenInput);
+                }
+            });
+        });
+        if (window.fetch && !window.__transPulseCsrfFetch) {
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = (input, init = {}) => {
+                const method = String(init.method || 'GET').toUpperCase();
+                const url = typeof input === 'string' ? input : input?.url;
+                const isSameOrigin = !url || url.startsWith('/') || url.startsWith(window.location.origin);
+                if (window.TransPulseCSRF && isSameOrigin && !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+                    const headers = new Headers(init.headers || (typeof input !== 'string' ? input.headers : undefined));
+                    if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', window.TransPulseCSRF);
+                    init = { ...init, headers };
+                }
+                return originalFetch(input, init);
+            };
+            window.__transPulseCsrfFetch = true;
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+<!-- TP-v2.0-Release -->
