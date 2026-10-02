@@ -154,7 +154,7 @@ class GPSTrackingTests(unittest.TestCase):
         self.assertEqual(rt["gps_state"], "WAITING_FOR_ROUTE_MATCH")
         self.assertEqual(rt["current_stop"], "Not available")
         # Ensure it doesn't switch route
-        from app import Trip
+        from database.models import Trip
         active_trip = Trip.query.filter_by(bus_id=self.b1.id, status="in_progress").first()
         self.assertEqual(active_trip.route_id, self.r1.id)
 
