@@ -21,7 +21,7 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         self.app_context.push()
         db.create_all()
         
-        from models.user import User
+        from database.models.user import User
         User.query.filter_by(email="testdriver@tp.com").delete()
         self.mock_driver = User(email="testdriver@tp.com", role="driver", full_name="Test Driver", password_hash="dummy")
         db.session.add(self.mock_driver)
