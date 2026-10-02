@@ -8011,9 +8011,10 @@ def register_routes(app: Flask) -> None:
             
         results = db.session.execute(
             text("""
-                SELECT id, stop_name, stop_desc 
+                SELECT MIN(id), stop_name, MAX(stop_desc)
                 FROM stops 
                 WHERE LOWER(stop_name) LIKE LOWER(:q) 
+                GROUP BY LOWER(stop_name), stop_name
                 ORDER BY stop_name ASC 
                 LIMIT 15
             """),
