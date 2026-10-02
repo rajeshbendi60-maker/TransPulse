@@ -36,6 +36,7 @@ class GPSTrackingTests(unittest.TestCase):
         self.app_context.pop()
 
     def _setup_mock_data(self):
+        Bus.query.filter(Bus.bus_number.in_(["APSRTC-101", "APSRTC-102"])).delete()
         Route.query.filter(Route.route_code.in_(["01004", "01003"])).delete()
         Stop.query.filter(Stop.stop_code.in_(["STP-NLR", "STP-GDR", "STP-NPT", "STP-TPT", "STP-VZG", "STP-RJY", "STP-BZA"])).delete()
         db.session.commit()
@@ -87,7 +88,7 @@ class GPSTrackingTests(unittest.TestCase):
         db.session.commit()
 
         # Initialize tracking state
-        from app import LIVE_GPS_DATA, DRIVER_RUNTIME_SESSIONS
+        from backend.app import LIVE_GPS_DATA, DRIVER_RUNTIME_SESSIONS
         LIVE_GPS_DATA.clear()
         DRIVER_RUNTIME_SESSIONS.clear()
         

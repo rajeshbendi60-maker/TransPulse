@@ -44,10 +44,11 @@ class ManualRouteIntegrationTests(unittest.TestCase):
         return response.json, response.status_code
 
     def get_runtime(self, bus_id):
-        from app import DRIVER_RUNTIME_SESSIONS
+        from backend.app import DRIVER_RUNTIME_SESSIONS
         return DRIVER_RUNTIME_SESSIONS.get(bus_id)
 
     def test_7_8_9_manual_route_integration(self):
+        Bus.query.filter_by(bus_number="APSRTC-102").delete()
         Route.query.filter_by(route_code="01003").delete()
         Stop.query.filter(Stop.stop_code.in_(["M-PAL", "M-TEK", "M-SRI"])).delete()
         db.session.commit()
