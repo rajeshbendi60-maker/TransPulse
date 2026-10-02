@@ -6,8 +6,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import app, _apply_manual_route_schedule, _create_trip_for_bus, _route_points_for_assigned_trip
-from models import db, Route, Trip, Stop, StopTime, Bus, Shape
+from backend.app import app, _apply_manual_route_schedule, _create_trip_for_bus, _route_points_for_assigned_trip
+from database.models import db, Route, Trip, Stop, StopTime, Bus, Shape
 
 class ManualRouteIntegrationTests(unittest.TestCase):
     def setUp(self):

@@ -6,8 +6,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import app, _route_points_for_assigned_trip
-from models import db, Route, Trip, Stop, StopTime, Bus
+from backend.app import app, _route_points_for_assigned_trip
+from database.models import db, Route, Trip, Stop, StopTime, Bus
 
 class GPSTrackingTests(unittest.TestCase):
     def setUp(self):
